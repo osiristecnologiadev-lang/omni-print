@@ -16,6 +16,7 @@ import { TenantModule } from './tenant/tenant.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { AgentReleasesModule } from './agent-releases/agent-releases.module';
+import { SignupModule } from './signup/signup.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -41,6 +42,7 @@ import { HealthController } from './health/health.controller';
     NotificationsModule,
     TicketsModule,
     AgentReleasesModule,
+    SignupModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

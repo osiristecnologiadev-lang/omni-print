@@ -64,6 +64,16 @@ export default async function AgentReleasesPage() {
         </label>
 
         <label className="block text-sm text-gray-400">
+          Instalador Windows (opcional — <code>OmniPrintAgentSetup-X.Y.Z.exe</code>, gerado pelo Inno Setup;
+          é o que aparece pro tenant baixar em &quot;Baixar Agente&quot;)
+          <input
+            type="file"
+            name="installer"
+            className="mt-1 block w-full text-sm text-gray-300 file:mr-3 file:rounded-lg file:border-0 file:bg-amber-600 file:px-3 file:py-1.5 file:text-white"
+          />
+        </label>
+
+        <label className="block text-sm text-gray-400">
           Notas da release (opcional)
           <textarea
             name="releaseNotes"
@@ -109,6 +119,7 @@ export default async function AgentReleasesPage() {
                 <div className="mt-1 text-xs text-gray-500">
                   {formatBytes(r.fileSizeBytes)} · publicada em {formatDateTime(r.createdAt)} · sha256{' '}
                   {r.sha256.slice(0, 12)}…
+                  {r.installerFileSizeBytes != null && ` · instalador: ${formatBytes(r.installerFileSizeBytes)}`}
                 </div>
               </div>
               <form action={deleteAgentReleaseAction.bind(null, r.id)}>

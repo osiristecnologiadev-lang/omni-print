@@ -58,6 +58,16 @@ model AgentRelease {
   releaseNotes String?  @map("release_notes")
   createdAt    DateTime @default(now()) @map("created_at")
 
+  // Optional: the Inno Setup wizard installer for this release (Windows
+  // only - Linux has no installer, see agent/README.md's "Instalar"
+  // section). Distinct from filePath above, which is the bare binary the
+  // auto-updater fetches (AgentReleasesController, AgentAuthGuard-gated) -
+  // this is what a logged-in tenant user downloads for a first install
+  // (AgentDownloadController, UserAuthGuard-gated). Null when an admin
+  // published a release without uploading an installer for it.
+  installerFilePath      String? @map("installer_file_path")
+  installerFileSizeBytes Int?    @map("installer_file_size_bytes")
+
   @@unique([platform, version])
   @@map("agent_releases")
 }

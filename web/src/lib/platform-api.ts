@@ -136,6 +136,7 @@ export interface AgentRelease {
   mandatory: boolean;
   releaseNotes: string | null;
   createdAt: string;
+  installerFileSizeBytes: number | null;
 }
 
 export interface AgentFleetEntry {

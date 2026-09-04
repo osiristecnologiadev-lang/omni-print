@@ -6,11 +6,11 @@ import {
   Get,
   Param,
   Post,
-  UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { PlatformAuthGuard } from '../platform/platform-auth.guard';
 import { AgentReleasesService } from './agent-releases.service';
 import { CreateAgentReleaseDto } from './dto/create-agent-release.dto';
@@ -29,13 +29,20 @@ export class AgentReleasesAdminController {
     return this.releases.list();
   }
 
+  // 'installer' is optional - see AgentRelease.installerFilePath's schema
+  // comment (Windows-only, for a human's first install via the Inno Setup
+  // wizard; distinct from 'file', the bare binary the auto-updater fetches).
   @Post()
-  @UseInterceptors(FileInterceptor('file'))
-  async create(@Body() dto: CreateAgentReleaseDto, @UploadedFile() file?: Express.Multer.File) {
+  @UseInterceptors(FileFieldsInterceptor([{ name: 'file', maxCount: 1 }, { name: 'installer', maxCount: 1 }]))
+  async create(
+    @Body() dto: CreateAgentReleaseDto,
+    @UploadedFiles() files: { file?: Express.Multer.File[]; installer?: Express.Multer.File[] },
+  ) {
+    const file = files.file?.[0];
     if (!file) {
       throw new BadRequestException('file is required');
     }
-    return this.releases.create(dto, file);
+    return this.releases.create(dto, file, files.installer?.[0]);
   }
 
   @Delete(':id')

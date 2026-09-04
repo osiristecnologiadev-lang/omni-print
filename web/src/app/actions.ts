@@ -6,19 +6,26 @@ import { SESSION_COOKIE } from '@/lib/api';
 
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3000';
 
-export async function loginAction(formData: FormData) {
+// Mirrors (tenant)/login/actions.ts's loginAction exactly (same cookie name/
+// options) - POST /v1/signup returns the identical {token, user} shape as
+// /v1/auth/login (see api/src/signup/signup.service.ts), so a successful
+// signup logs the new tenant straight into their own dashboard, no separate
+// login step.
+export async function signupAction(formData: FormData) {
+  const companyName = String(formData.get('companyName') ?? '');
   const email = String(formData.get('email') ?? '');
   const password = String(formData.get('password') ?? '');
 
-  const res = await fetch(`${API_BASE_URL}/v1/auth/login`, {
+  const res = await fetch(`${API_BASE_URL}/v1/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ companyName, email, password }),
     cache: 'no-store',
   });
 
   if (!res.ok) {
-    redirect('/login?error=1');
+    const errorCode = res.status === 409 ? 'email-taken' : 'unknown';
+    redirect(`/?signupError=${errorCode}`);
   }
 
   const data = await res.json();
@@ -32,10 +39,4 @@ export async function loginAction(formData: FormData) {
   });
 
   redirect('/dashboard');
-}
-
-export async function logoutAction() {
-  const store = await cookies();
-  store.delete(SESSION_COOKIE);
-  redirect('/login');
 }

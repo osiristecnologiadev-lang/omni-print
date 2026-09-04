@@ -55,6 +55,15 @@ function ReportsIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M10 3.5v9M6.5 9l3.5 3.5L13.5 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 16.5h13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function TicketsIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -79,7 +88,7 @@ export default async function TenantLayout({ children }: { children: React.React
   return (
     <div className="flex">
       <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-surface px-3 py-4">
-        <Link href="/" className="mb-6 flex items-center gap-2 px-2 transition-opacity hover:opacity-80">
+        <Link href="/dashboard" className="mb-6 flex items-center gap-2 px-2 transition-opacity hover:opacity-80">
           <Logo />
         </Link>
 
@@ -88,6 +97,7 @@ export default async function TenantLayout({ children }: { children: React.React
             <>
               <SidebarLink href="/customers" icon={<CustomersIcon />} label="Clientes" />
               <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
+              <SidebarLink href="/agent-download" icon={<DownloadIcon />} label="Baixar Agente" />
             </>
           )}
           {/* Chamados is the one nav item both session types get - a

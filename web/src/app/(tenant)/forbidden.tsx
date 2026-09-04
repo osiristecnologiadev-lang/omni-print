@@ -9,7 +9,7 @@ export default function Forbidden() {
       <p className="max-w-sm text-sm text-ink-muted">
         Sua conta está vinculada a um cliente específico e não tem acesso a esta página.
       </p>
-      <Link href="/" className="mt-2 text-sm font-medium text-accent hover:underline">
+      <Link href="/dashboard" className="mt-2 text-sm font-medium text-accent hover:underline">
         Voltar ao parque de impressoras
       </Link>
     </main>

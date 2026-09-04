@@ -77,7 +77,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
-      <Link href="/" className="text-sm text-ink-muted transition-colors hover:text-accent">
+      <Link href="/dashboard" className="text-sm text-ink-muted transition-colors hover:text-accent">
         ← Voltar
       </Link>
 

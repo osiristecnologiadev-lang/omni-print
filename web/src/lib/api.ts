@@ -664,6 +664,62 @@ export async function fetchInvoicePdf(customerId: string, invoiceId: string): Pr
   return res;
 }
 
+export interface AgentLatestRelease {
+  id: string;
+  version: string;
+  releaseNotes: string | null;
+  hasInstaller: boolean;
+  installerSizeBytes: number | null;
+}
+
+// v1/agent-download/* (api/src/agent-releases/agent-download.controller.ts) -
+// a logged-in tenant user downloading the installer for a first install.
+// Distinct from the agent's own auto-update endpoints (v1/agent/releases/*),
+// which use an agent token, not a dashboard session.
+// Not apiFetch: when no release exists yet, the API sends a genuinely empty
+// 200 body for a `null` return (confirmed - not a bug, agent/internal/updater's
+// Go client has the exact same `len(body) == 0` check for this), and
+// res.json() throws on an empty body instead of parsing it as null.
+export async function getAgentLatestRelease(platform: 'WINDOWS' | 'LINUX'): Promise<AgentLatestRelease | null> {
+  const res = await fetch(`${API_BASE_URL}/v1/agent-download/latest?platform=${platform}`, {
+    headers: await authHeaders(),
+    cache: 'no-store',
+  });
+  if (res.status === 401) {
+    redirect('/login');
+  }
+  if (res.status === 403) {
+    forbidden();
+  }
+  if (!res.ok) {
+    throw new Error(`API GET agent-download latest failed: ${res.status}`);
+  }
+  const text = await res.text();
+  if (!text) {
+    return null;
+  }
+  return JSON.parse(text);
+}
+
+// Same proxy-through-server-side-auth reasoning as fetchInvoicePdf above -
+// used only by the agent-download installer route handler.
+export async function fetchAgentInstaller(releaseId: string): Promise<Response> {
+  const res = await fetch(`${API_BASE_URL}/v1/agent-download/${releaseId}/installer`, {
+    headers: await authHeaders(),
+    cache: 'no-store',
+  });
+  if (res.status === 401) {
+    redirect('/login');
+  }
+  if (res.status === 403) {
+    forbidden();
+  }
+  if (!res.ok) {
+    throw new Error(`API GET agent installer failed: ${res.status}`);
+  }
+  return res;
+}
+
 // Lowest fill level among actual consumables (class "supply" - toner/ink;
 // excludes "other" class items like roller-life counters, which aren't
 // something a fleet manager restocks).

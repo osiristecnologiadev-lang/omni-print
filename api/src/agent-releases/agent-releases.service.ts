@@ -24,7 +24,11 @@ function parseVersion(version: string): { major: number; minor: number; patch: n
 export class AgentReleasesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateAgentReleaseDto, file: Express.Multer.File) {
+  // installer is optional (Windows releases only - see the schema comment
+  // on AgentRelease.installerFilePath) - a logged-in tenant user downloads
+  // it for a first install (AgentDownloadController); the bare `file` is
+  // what the auto-updater fetches for an already-installed agent.
+  async create(dto: CreateAgentReleaseDto, file: Express.Multer.File, installer?: Express.Multer.File) {
     const existing = await this.prisma.agentRelease.findUnique({
       where: { platform_version: { platform: dto.platform, version: dto.version } },
     });
@@ -43,6 +47,14 @@ export class AgentReleasesService {
     const filePath = join(dir, file.originalname);
     await writeFile(filePath, file.buffer);
 
+    let installerFilePath: string | null = null;
+    let installerFileSizeBytes: number | null = null;
+    if (installer) {
+      installerFilePath = join(dir, installer.originalname);
+      await writeFile(installerFilePath, installer.buffer);
+      installerFileSizeBytes = installer.buffer.length;
+    }
+
     return this.prisma.agentRelease.create({
       data: {
         platform: dto.platform,
@@ -55,6 +67,8 @@ export class AgentReleasesService {
         fileSizeBytes: file.buffer.length,
         mandatory: dto.mandatory ?? false,
         releaseNotes: dto.releaseNotes,
+        installerFilePath,
+        installerFileSizeBytes,
       },
     });
   }
@@ -77,6 +91,9 @@ export class AgentReleasesService {
     // Best-effort - a release row disappearing matters more than a leftover
     // file on disk, so a failed unlink doesn't roll back the delete.
     await rm(release.filePath, { force: true }).catch(() => undefined);
+    if (release.installerFilePath) {
+      await rm(release.installerFilePath, { force: true }).catch(() => undefined);
+    }
   }
 
   // Highest (major,minor,patch) for the platform, ordered on the integer

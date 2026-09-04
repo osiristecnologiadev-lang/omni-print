@@ -7,7 +7,14 @@ import { NextRequest, NextResponse } from 'next/server';
 // hand if the cookie name ever changes.
 const SESSION_COOKIE = 'omniprint_session';
 const PLATFORM_SESSION_COOKIE = 'omniprint_platform_session';
-const PUBLIC_PATHS = ['/login'];
+// '/' is the public marketing/signup page (app/page.tsx, outside the
+// (tenant) route group) - exact match only. Everything else here is
+// prefix-matched. Getting this wrong in the permissive direction (e.g.
+// naively doing pathname.startsWith('/') for a public root) would make
+// every route public, so '/' is deliberately its own exact check below,
+// never folded into the startsWith() list.
+const PUBLIC_EXACT_PATHS = ['/'];
+const PUBLIC_PREFIX_PATHS = ['/login'];
 
 // Only checks that a session cookie is present - a fast redirect for the
 // common "not logged in at all" case. It does NOT verify the JWT's
@@ -33,7 +40,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (PUBLIC_EXACT_PATHS.includes(pathname) || PUBLIC_PREFIX_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
