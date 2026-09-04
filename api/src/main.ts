@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { json } from 'express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 // Prisma returns BigInt for bigint columns (page_count, uptime_ticks, ...),
@@ -15,6 +16,12 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Standard security response headers (X-Content-Type-Options,
+  // X-Frame-Options, etc.) - this API never serves HTML of its own (JSON,
+  // PDFs, agent binaries only), so helmet's default CSP is harmless here
+  // and left at its default rather than tuned per-route.
+  app.use(helmet());
+
   // The dashboard (web/) calls this API from a browser on a different
   // origin. CORS_ORIGIN (comma-separated if there's ever more than one
   // real origin) locks this down in production; left unset, it stays wide
@@ -26,7 +33,11 @@ async function bootstrap() {
   // well past Express's 100kb default body limit.
   app.use(json({ limit: '10mb' }));
 
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  // whitelist strips unrecognized fields; forbidNonWhitelisted goes further
+  // and rejects the whole request when one shows up - a client sending a
+  // field no DTO expects is far more likely a bug (or a probe) than
+  // something to quietly ignore.
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);

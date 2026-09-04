@@ -12,10 +12,13 @@
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
-    "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "strict": true,
+    // DTO/entity fields are populated at runtime by class-transformer, not
+    // in a TS constructor - strictPropertyInitialization would otherwise
+    // force a `!` on every single DTO field for no real safety gain. Every
+    // other strict check (noImplicitAny, strictNullChecks, etc.) stays on.
+    "strictPropertyInitialization": false
   }
 }
