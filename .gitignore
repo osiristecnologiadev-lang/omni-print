@@ -1,0 +1,2 @@
+# Local-only Claude Code settings (permissions, etc.) - not shared config.
+.claude/settings.local.json

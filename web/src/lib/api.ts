@@ -1,0 +1,756 @@
+// Server-only: the session token lives in an httpOnly cookie, never read by
+// browser JS. Every call here must run in a Server Component, Server
+// Action, or Route Handler - never import this from a 'use client' file.
+import { cookies } from 'next/headers';
+import { redirect, forbidden } from 'next/navigation';
+
+const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3000';
+export const SESSION_COOKIE = 'omniprint_session';
+
+export interface Supply {
+  description: string;
+  class?: string;
+  type_code?: number;
+  unit_code?: number;
+  colorant?: string;
+  level: number;
+  max_level: number;
+}
+
+export interface Alert {
+  severity: string;
+  code?: number;
+  description?: string;
+}
+
+export interface Customer {
+  id: string;
+  tenantId: string;
+  name: string;
+  document: string | null;
+  address: string | null;
+  createdAt: string;
+  _count?: { devices: number };
+  // Per-customer SLA override for support tickets, in hours - null means
+  // "use the global default for that priority" (see api's common/sla.util.ts).
+  slaHoursLow: number | null;
+  slaHoursMedium: number | null;
+  slaHoursHigh: number | null;
+  slaHoursUrgent: number | null;
+}
+
+export function updateCustomer(
+  customerId: string,
+  input: {
+    document?: string;
+    address?: string;
+    slaHoursLow?: number | null;
+    slaHoursMedium?: number | null;
+    slaHoursHigh?: number | null;
+    slaHoursUrgent?: number | null;
+  },
+): Promise<Customer> {
+  return apiMutate<Customer>(`/v1/customers/${customerId}`, 'PATCH', input);
+}
+
+export interface Tenant {
+  id: string;
+  name: string;
+  document: string | null;
+  address: string | null;
+  phone: string | null;
+  contactEmail: string | null;
+  createdAt: string;
+}
+
+export function getTenant(): Promise<Tenant> {
+  return apiFetch<Tenant>('/v1/tenant');
+}
+
+export function updateTenant(input: {
+  name?: string;
+  document?: string;
+  address?: string;
+  phone?: string;
+  contactEmail?: string;
+}): Promise<Tenant> {
+  return apiMutate<Tenant>('/v1/tenant', 'PATCH', input);
+}
+
+export interface Notification {
+  id: string;
+  type: 'OVERDUE_INVOICE' | 'EXPIRING_CONTRACT' | 'CRITICAL_DEVICE_ALERT' | 'LOW_SUPPLY' | 'UNASSIGNED_DEVICE';
+  title: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  readAt: string | null;
+  resolvedAt: string | null;
+}
+
+export function getNotifications(): Promise<Notification[]> {
+  return apiFetch<Notification[]>('/v1/notifications');
+}
+
+export function getUnreadNotificationCount(): Promise<{ count: number }> {
+  return apiFetch<{ count: number }>('/v1/notifications/unread-count');
+}
+
+export function markAllNotificationsRead(): Promise<{ ok: boolean }> {
+  return apiMutate<{ ok: boolean }>('/v1/notifications/mark-all-read', 'POST', {});
+}
+
+export function syncNotificationsNow(): Promise<{ created: number; updated: number; autoResolved: number }> {
+  return apiMutate<{ created: number; updated: number; autoResolved: number }>('/v1/notifications/sync', 'POST', {});
+}
+
+export function resolveNotification(id: string): Promise<Notification> {
+  return apiMutate<Notification>(`/v1/notifications/${id}/resolve`, 'POST', {});
+}
+
+// Snake_case: this shape comes from the backend's raw SQL "latest metric per
+// device" query, which bypasses Prisma's camelCase field mapping.
+export interface LatestMetric {
+  id: string;
+  device_id: string;
+  collected_at: string;
+  online: boolean;
+  printer_status: string | null;
+  device_status: string | null;
+  page_count: string | null; // BigInt, serialized as a string - see api/src/main.ts
+  error_state: Record<string, boolean> | null;
+  alerts: Alert[] | null;
+  supplies: Supply[] | null;
+}
+
+export interface Device {
+  id: string;
+  tenantId: string;
+  customerId: string | null;
+  customer: Customer | null;
+  serialNumber: string | null;
+  host: string;
+  name: string | null;
+  printerName: string | null;
+  customLabel: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  latestMetric: LatestMetric | null;
+}
+
+// camelCase: this shape comes straight from the Prisma client.
+export interface Metric {
+  id: string;
+  deviceId: string;
+  collectedAt: string;
+  online: boolean;
+  sysDescr: string | null;
+  sysName: string | null;
+  sysLocation: string | null;
+  sysContact: string | null;
+  uptimeTicks: string | null;
+  consoleDisplay: string | null;
+  printerStatusCode: number | null;
+  printerStatus: string | null;
+  deviceStatusCode: number | null;
+  deviceStatus: string | null;
+  errorState: Record<string, boolean> | null;
+  pageCount: string | null;
+  powerOnCount: string | null;
+  supplies: Supply[] | null;
+  inputTrays: unknown[] | null;
+  alerts: Alert[] | null;
+  raw: Record<string, string> | null;
+  errorMessage: string | null;
+}
+
+export async function getSessionToken(): Promise<string | undefined> {
+  const store = await cookies();
+  return store.get(SESSION_COOKIE)?.value;
+}
+
+export interface Session {
+  userId: string;
+  tenantId: string;
+  customerId: string | null;
+}
+
+// Decodes the JWT payload WITHOUT verifying its signature - this is only
+// ever used for UI decisions (e.g. "show the customer picker to tenant-wide
+// users"), never for authorization. Every actual API call still sends the
+// raw token, and the backend's UserAuthGuard re-verifies it properly - that
+// guard is the real security boundary, not this.
+export async function getSession(): Promise<Session | null> {
+  const token = await getSessionToken();
+  if (!token) return null;
+  try {
+    const payloadB64 = token.split('.')[1];
+    const json = Buffer.from(payloadB64, 'base64url').toString('utf8');
+    const payload = JSON.parse(json);
+    return { userId: payload.sub, tenantId: payload.tenantId, customerId: payload.customerId ?? null };
+  } catch {
+    return null;
+  }
+}
+
+async function authHeaders(): Promise<HeadersInit> {
+  const token = await getSessionToken();
+  if (!token) {
+    redirect('/login');
+  }
+  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+}
+
+async function apiFetch<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: await authHeaders(),
+    cache: 'no-store', // fleet status changes frequently; always fetch fresh
+  });
+  if (res.status === 401) {
+    redirect('/login');
+  }
+  if (res.status === 403) {
+    // A customer-scoped session hitting a tenant-wide-only endpoint (e.g. a
+    // stale bookmark to /customers). Pages that know this in advance should
+    // still call forbidden() themselves before fetching - this is the
+    // fallback for when they don't, not the primary check.
+    forbidden();
+  }
+  if (!res.ok) {
+    throw new Error(`API request to ${path} failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+async function apiMutate<T>(path: string, method: 'POST' | 'PATCH', body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: await authHeaders(),
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+  if (res.status === 401) {
+    redirect('/login');
+  }
+  if (res.status === 403) {
+    forbidden();
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export function getDevices(): Promise<Device[]> {
+  return apiFetch<Device[]>('/v1/devices');
+}
+
+export interface DailyPagePoint {
+  date: string;
+  pages: number;
+}
+export interface DailySupplyPoint {
+  date: string;
+  percent: number | null;
+}
+export interface ActiveAlert {
+  deviceId: string;
+  deviceName: string;
+  severity: string;
+  code?: number;
+  description?: string;
+}
+
+export function getFleetPageTrend(days = 30): Promise<DailyPagePoint[]> {
+  return apiFetch<DailyPagePoint[]>(`/v1/devices/trend?days=${days}`);
+}
+
+export function getActiveAlerts(): Promise<ActiveAlert[]> {
+  return apiFetch<ActiveAlert[]>('/v1/alerts');
+}
+
+export function getDevicePageTrend(deviceId: string, days = 30): Promise<DailyPagePoint[]> {
+  return apiFetch<DailyPagePoint[]>(`/v1/devices/${deviceId}/page-trend?days=${days}`);
+}
+
+export function getDeviceSupplyTrend(deviceId: string, days = 30): Promise<DailySupplyPoint[]> {
+  return apiFetch<DailySupplyPoint[]>(`/v1/devices/${deviceId}/supply-trend?days=${days}`);
+}
+
+export interface UsageRevenueMonth {
+  month: string; // ISO date, always the 1st of the month
+  totalDue: number;
+  paidAmount: number;
+  totalPages: number;
+}
+
+export interface UsageRevenueByCustomer {
+  customerId: string;
+  customerName: string;
+  totalDue: number;
+  paidAmount: number;
+  outstanding: number;
+  totalPages: number;
+  invoiceCount: number;
+}
+
+export interface UsageRevenueReport {
+  months: number;
+  windowStart: string;
+  totalRevenue: number;
+  totalPaid: number;
+  totalOutstanding: number;
+  totalPages: number;
+  monthly: UsageRevenueMonth[];
+  byCustomer: UsageRevenueByCustomer[];
+}
+
+export function getUsageRevenueReport(months = 12): Promise<UsageRevenueReport> {
+  return apiFetch<UsageRevenueReport>(`/v1/reports/usage-revenue?months=${months}`);
+}
+
+export interface SupplyForecast {
+  description: string;
+  colorant: string | null;
+  currentPercent: number;
+  dailyConsumptionPercent: number | null;
+  daysRemaining: number | null;
+  estimatedEmptyDate: string | null;
+  likelyEmptyAlready: boolean;
+  replacement: { leftoverPercent: number; at: string } | null;
+  premature: boolean;
+}
+
+export interface LowSupplyForecast {
+  deviceId: string;
+  deviceName: string;
+  customerId: string | null;
+  description: string;
+  colorant: string | null;
+  currentPercent: number;
+  dailyConsumptionPercent: number | null;
+  daysRemaining: number | null;
+  estimatedEmptyDate: string | null;
+  likelyEmptyAlready: boolean;
+  premature: boolean;
+  leftoverPercent: number | null;
+  replacedAt: string | null;
+}
+
+export function getDeviceSupplyForecast(deviceId: string, lookback = 90): Promise<SupplyForecast[]> {
+  return apiFetch<SupplyForecast[]>(`/v1/devices/${deviceId}/supply-forecast?lookback=${lookback}`);
+}
+
+export function getLowSupplyForecast(days = 14, lookback = 90): Promise<LowSupplyForecast[]> {
+  return apiFetch<LowSupplyForecast[]>(`/v1/devices/supply-forecast?days=${days}&lookback=${lookback}`);
+}
+
+export function getDeviceMetrics(deviceId: string, limit = 50): Promise<Metric[]> {
+  return apiFetch<Metric[]>(`/v1/devices/${deviceId}/metrics?limit=${limit}`);
+}
+
+// No single-device endpoint on the backend yet - fine at current fleet
+// sizes, but worth a dedicated GET /v1/devices/:id if this list ever grows
+// large enough for this to matter.
+export async function getDevice(deviceId: string): Promise<Device | undefined> {
+  const devices = await getDevices();
+  return devices.find((d) => d.id === deviceId);
+}
+
+export interface AgentTokenSummary {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export interface CreatedAgentToken {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  token: string; // raw value - only ever present in this one response
+}
+
+export function getCustomers(): Promise<Customer[]> {
+  return apiFetch<Customer[]>('/v1/customers');
+}
+
+export function getCustomer(customerId: string): Promise<Customer> {
+  return apiFetch<Customer>(`/v1/customers/${customerId}`);
+}
+
+export function createCustomer(name: string): Promise<Customer> {
+  return apiMutate<Customer>('/v1/customers', 'POST', { name });
+}
+
+export function getCustomerTokens(customerId: string): Promise<AgentTokenSummary[]> {
+  return apiFetch<AgentTokenSummary[]>(`/v1/customers/${customerId}/agent-tokens`);
+}
+
+export interface DashboardUser {
+  id: string;
+  email: string;
+  name: string | null;
+  customerId: string | null;
+  customer: { id: string; name: string } | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export function getUsers(): Promise<DashboardUser[]> {
+  return apiFetch<DashboardUser[]>('/v1/users');
+}
+
+export function createUser(input: {
+  email: string;
+  password: string;
+  name?: string;
+  customerId?: string | null;
+}): Promise<DashboardUser> {
+  return apiMutate<DashboardUser>('/v1/users', 'POST', input);
+}
+
+export function revokeUser(userId: string): Promise<DashboardUser> {
+  return apiMutate<DashboardUser>(`/v1/users/${userId}/revoke`, 'POST', {});
+}
+
+export function createCustomerToken(customerId: string, label?: string): Promise<CreatedAgentToken> {
+  return apiMutate<CreatedAgentToken>(`/v1/customers/${customerId}/agent-tokens`, 'POST', { label });
+}
+
+export function revokeCustomerToken(customerId: string, tokenId: string): Promise<AgentTokenSummary> {
+  return apiMutate<AgentTokenSummary>(`/v1/customers/${customerId}/agent-tokens/${tokenId}/revoke`, 'POST', {});
+}
+
+export function assignDeviceCustomer(deviceId: string, customerId: string | null): Promise<Device> {
+  return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', { customerId });
+}
+
+export function updateDeviceLabel(deviceId: string, customLabel: string | null): Promise<Device> {
+  return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', { customLabel });
+}
+
+export type ContractStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED';
+
+// Which outsourcing tenants use which model varies - see api's Contract
+// schema comment for the full reasoning:
+//   FLAT_RATE:              fixedFee only, page count doesn't affect price.
+//   ALLOWANCE_PLUS_OVERAGE: fixedFee bundles included pages for free; pages
+//                           beyond that cost overagePrice each.
+//   PER_PAGE:               every billable page costs pricePerPage, but
+//                           never fewer than minimumPages are billed even
+//                           if the customer printed less.
+export type ContractPricingModel = 'FLAT_RATE' | 'ALLOWANCE_PLUS_OVERAGE' | 'PER_PAGE';
+
+export interface Contract {
+  id: string;
+  customerId: string;
+  status: ContractStatus;
+  pricingModel: ContractPricingModel;
+  startDate: string;
+  endDate: string | null;
+  billingDay: number;
+  // Decimal fields serialize as strings - see api/src/main.ts's note on
+  // BigInt for the same reason. Nullable because which ones apply depends
+  // on pricingModel.
+  fixedFee: string | null;
+  includedPagesMono: number | null;
+  includedPagesColor: number | null;
+  overagePriceMono: string | null;
+  overagePriceColor: string | null;
+  pricePerPageMono: string | null;
+  pricePerPageColor: string | null;
+  minimumPagesMono: number | null;
+  minimumPagesColor: number | null;
+  setupFee: string | null;
+  earlyTerminationFee: string | null;
+  adjustmentIndex: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateContractInput {
+  pricingModel: ContractPricingModel;
+  startDate: string;
+  endDate?: string;
+  billingDay: number;
+  fixedFee?: number;
+  includedPagesMono?: number;
+  includedPagesColor?: number;
+  overagePriceMono?: number;
+  overagePriceColor?: number;
+  pricePerPageMono?: number;
+  pricePerPageColor?: number;
+  minimumPagesMono?: number;
+  minimumPagesColor?: number;
+  setupFee?: number;
+  earlyTerminationFee?: number;
+  adjustmentIndex?: string;
+  notes?: string;
+}
+
+export interface DevicePages {
+  deviceId: string;
+  deviceName: string;
+  serialNumber: string | null;
+  host: string;
+  pages: number;
+  monoPages: number;
+  colorPages: number;
+  startReading: number | null;
+  endReading: number | null;
+  counterReset: boolean;
+}
+
+export type BillingResult =
+  | { hasContract: false; periodStart: string; periodEnd: string }
+  | {
+      hasContract: true;
+      periodStart: string;
+      periodEnd: string;
+      contract: Contract;
+      perDevice: DevicePages[];
+      totalPages: number;
+      monoPages: number;
+      colorPages: number;
+      fixedFee: number;
+      includedTotal: number | null;
+      overagePages: number | null;
+      minimumPages: number | null;
+      billablePages: number | null;
+      usageCost: number;
+      totalDue: number;
+    };
+
+export function getContracts(customerId: string): Promise<Contract[]> {
+  return apiFetch<Contract[]>(`/v1/customers/${customerId}/contracts`);
+}
+
+export function getActiveContract(customerId: string): Promise<Contract | null> {
+  return apiFetch<Contract | null>(`/v1/customers/${customerId}/contracts/active`);
+}
+
+export function createContract(customerId: string, input: CreateContractInput): Promise<Contract> {
+  return apiMutate<Contract>(`/v1/customers/${customerId}/contracts`, 'POST', input);
+}
+
+export function updateContract(
+  customerId: string,
+  contractId: string,
+  input: Partial<CreateContractInput>,
+): Promise<Contract> {
+  return apiMutate<Contract>(`/v1/customers/${customerId}/contracts/${contractId}`, 'PATCH', input);
+}
+
+export function cancelContract(customerId: string, contractId: string): Promise<Contract> {
+  return apiMutate<Contract>(`/v1/customers/${customerId}/contracts/${contractId}/cancel`, 'POST', {});
+}
+
+export function getBilling(customerId: string, year: number, month: number): Promise<BillingResult> {
+  return apiFetch<BillingResult>(`/v1/customers/${customerId}/contracts/billing?year=${year}&month=${month}`);
+}
+
+// "Guaranteed so far this month" - the still-open current period, not a
+// closed/past one like getBilling above.
+export function getCurrentPeriodBilling(customerId: string): Promise<BillingResult> {
+  return apiFetch<BillingResult>(`/v1/customers/${customerId}/contracts/billing/current`);
+}
+
+export interface PortfolioCurrentPeriod {
+  periodStart: string;
+  periodEnd: string;
+  totalAccrued: number;
+  byCustomer: Array<{ customerId: string; customerName: string; totalDue: number; totalPages: number }>;
+}
+
+export function getPortfolioCurrentPeriod(): Promise<PortfolioCurrentPeriod> {
+  return apiFetch<PortfolioCurrentPeriod>('/v1/reports/current-period');
+}
+
+export type InvoiceStatus = 'PENDING' | 'PAID' | 'CANCELLED';
+
+export interface InvoicePerDevice {
+  deviceId: string;
+  deviceName: string;
+  serialNumber: string | null;
+  host: string;
+  pages: number;
+  monoPages: number;
+  colorPages: number;
+  startReading: number | null;
+  endReading: number | null;
+  counterReset: boolean;
+}
+
+export interface Invoice {
+  id: string;
+  number: number;
+  customerId: string;
+  contractId: string;
+  periodStart: string;
+  periodEnd: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  pricingModel: ContractPricingModel;
+  totalPages: number;
+  monoPages: number | null;
+  colorPages: number | null;
+  perDevice: InvoicePerDevice[];
+  fixedFee: string;
+  usageCost: string;
+  totalDue: string;
+  paidAt: string | null;
+  paidAmount: string | null;
+  generatedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function getInvoices(customerId: string): Promise<Invoice[]> {
+  return apiFetch<Invoice[]>(`/v1/customers/${customerId}/invoices`);
+}
+
+export function getInvoice(customerId: string, invoiceId: string): Promise<Invoice> {
+  return apiFetch<Invoice>(`/v1/customers/${customerId}/invoices/${invoiceId}`);
+}
+
+export function generateInvoice(customerId: string, year: number, month: number): Promise<Invoice> {
+  return apiMutate<Invoice>(`/v1/customers/${customerId}/invoices/generate`, 'POST', { year, month });
+}
+
+export function markInvoicePaid(customerId: string, invoiceId: string, paidAmount?: number): Promise<Invoice> {
+  return apiMutate<Invoice>(`/v1/customers/${customerId}/invoices/${invoiceId}/pay`, 'POST', { paidAmount });
+}
+
+export function cancelInvoice(customerId: string, invoiceId: string): Promise<Invoice> {
+  return apiMutate<Invoice>(`/v1/customers/${customerId}/invoices/${invoiceId}/cancel`, 'POST', {});
+}
+
+export interface ContractWithCustomer extends Contract {
+  customer: Customer;
+}
+export interface InvoiceWithCustomer extends Invoice {
+  customer: Customer;
+}
+
+export interface BillingAlerts {
+  expiringContracts: ContractWithCustomer[];
+  overdueInvoices: InvoiceWithCustomer[];
+}
+
+export function getBillingAlerts(): Promise<BillingAlerts> {
+  return apiFetch<BillingAlerts>('/v1/billing-alerts');
+}
+
+// Streams the PDF straight from the API - used only by the /invoices/[id]/pdf
+// route handler (a browser <a> tag can't send the httpOnly session cookie's
+// bearer token itself, so that route proxies this through server-side).
+export async function fetchInvoicePdf(customerId: string, invoiceId: string): Promise<Response> {
+  const res = await fetch(`${API_BASE_URL}/v1/customers/${customerId}/invoices/${invoiceId}/pdf`, {
+    headers: await authHeaders(),
+    cache: 'no-store',
+  });
+  if (res.status === 401) {
+    redirect('/login');
+  }
+  if (res.status === 403) {
+    forbidden();
+  }
+  if (!res.ok) {
+    throw new Error(`API GET invoice pdf failed: ${res.status}`);
+  }
+  return res;
+}
+
+// Lowest fill level among actual consumables (class "supply" - toner/ink;
+// excludes "other" class items like roller-life counters, which aren't
+// something a fleet manager restocks).
+export function lowestSupplyPercent(metric: LatestMetric | Metric | null): number | null {
+  if (!metric?.supplies) return null;
+  const percents = metric.supplies
+    .filter((s) => s.class === 'supply' && s.max_level > 0)
+    .map((s) => (s.level / s.max_level) * 100);
+  return percents.length > 0 ? Math.min(...percents) : null;
+}
+
+export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+export type TicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+interface TicketPerson {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
+export interface TicketComment {
+  id: string;
+  ticketId: string;
+  body: string;
+  createdAt: string;
+  authorUser: TicketPerson;
+}
+
+export interface Ticket {
+  id: string;
+  customerId: string;
+  deviceId: string | null;
+  subject: string;
+  description: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  slaDueAt: string;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  customer: { id: string; name: string };
+  device: { id: string; name: string | null; printerName: string | null; customLabel: string | null; host: string } | null;
+  createdByUser: TicketPerson;
+  assignedToUser: TicketPerson | null;
+  comments?: TicketComment[];
+}
+
+// Both sides use this: a customer-scoped session only ever sees its own
+// customerId anyway (see TicketsController on the backend), so the same
+// call works whether the caller is staff or the customer who owns them.
+export function getCustomerTickets(customerId: string, status?: TicketStatus): Promise<Ticket[]> {
+  return apiFetch<Ticket[]>(`/v1/customers/${customerId}/tickets${status ? `?status=${status}` : ''}`);
+}
+
+export function getTicket(customerId: string, ticketId: string): Promise<Ticket> {
+  return apiFetch<Ticket>(`/v1/customers/${customerId}/tickets/${ticketId}`);
+}
+
+export function createTicket(
+  customerId: string,
+  input: { subject: string; description: string; priority?: TicketPriority; deviceId?: string },
+): Promise<Ticket> {
+  return apiMutate<Ticket>(`/v1/customers/${customerId}/tickets`, 'POST', input);
+}
+
+export function addTicketComment(customerId: string, ticketId: string, body: string): Promise<TicketComment> {
+  return apiMutate<TicketComment>(`/v1/customers/${customerId}/tickets/${ticketId}/comments`, 'POST', { body });
+}
+
+// Tenant-wide only - the staff queue across every customer at once.
+export function getAllTickets(status?: TicketStatus): Promise<Ticket[]> {
+  return apiFetch<Ticket[]>(`/v1/tickets${status ? `?status=${status}` : ''}`);
+}
+
+// Tenant-wide only - fetches one ticket without needing to know its
+// customerId ahead of time (unlike getTicket, which is customer-scoped by
+// path) - what the flat /tickets/:id detail page uses for a staff session.
+export function getAnyTicket(ticketId: string): Promise<Ticket> {
+  return apiFetch<Ticket>(`/v1/tickets/${ticketId}`);
+}
+
+// Tenant-wide only - status/priority/assignment. Pass assignedToUserId:
+// null to unassign.
+export function updateTicket(
+  ticketId: string,
+  input: { status?: TicketStatus; priority?: TicketPriority; assignedToUserId?: string | null },
+): Promise<Ticket> {
+  return apiMutate<Ticket>(`/v1/tickets/${ticketId}`, 'PATCH', input);
+}

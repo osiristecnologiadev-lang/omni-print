@@ -1,0 +1,4 @@
+/dist/
+*.syso
+*.log
+config.yaml

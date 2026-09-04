@@ -1,0 +1,581 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// A login for OmniPrint's own operator (you), not any outsourcing tenant's
+// staff - sees and manages every tenant. Deliberately a separate model/auth
+// path from User (see auth/platform-auth.guard.ts), not a "super" flag on
+// User: every tenant-scoping query in the codebase filters by tenantId, and
+// keeping platform admins structurally incapable of holding a tenantId
+// means there's no single forgotten `where` clause that could leak
+// cross-tenant data to a regular login.
+model PlatformAdmin {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  name         String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  revokedAt    DateTime? @map("revoked_at")
+
+  @@map("platform_admins")
+}
+
+enum AgentPlatform {
+  WINDOWS
+  LINUX
+}
+
+// A published build of the on-prem agent binary (agent/, not this API).
+// Global, not tenant-scoped - same reasoning as PlatformAdmin above: every
+// tenant's agents check against the same release catalog, published only by
+// OmniPrint's own operators (see AgentReleasesAdminController /
+// PlatformAuthGuard), never by a tenant. majorVersion/minorVersion/
+// patchVersion are stored alongside the display `version` string
+// specifically so "latest" can be found by ordering on real integers
+// (`orderBy: [{majorVersion:'desc'},...]`) instead of a string sort, which
+// would wrongly rank "0.9.0" above "0.10.0". filePath is a server-local
+// path under storage/ and is never returned to a client directly - agents
+// only ever see the :id/download URL (AgentReleasesController).
+model AgentRelease {
+  id            String        @id @default(uuid())
+  platform      AgentPlatform
+  version       String
+  majorVersion  Int           @map("major_version")
+  minorVersion  Int           @map("minor_version")
+  patchVersion  Int           @map("patch_version")
+  filePath      String        @map("file_path")
+  sha256        String
+  fileSizeBytes Int           @map("file_size_bytes")
+  // A release an already-installed agent applies even if that install's own
+  // config.yaml has auto_update.enabled: false (e.g. a security fix) - see
+  // agent/internal/svc's update-check logic for the actual bypass rule.
+  mandatory    Boolean  @default(false)
+  releaseNotes String?  @map("release_notes")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([platform, version])
+  @@map("agent_releases")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Shown on the invoice PDF's "prestador" (issuer) block when filled in -
+  // optional because plenty of tenants exist before this was added; the PDF
+  // just omits a line rather than showing blank/placeholder text for
+  // whichever of these aren't set yet. Edited via GET/PATCH /v1/tenant (own
+  // tenant only - see TenantController).
+  document     String? // CNPJ/CPF, free text - no format validation, varies by entity type
+  address      String?
+  phone        String?
+  contactEmail String? @map("contact_email")
+
+  agentTokens AgentToken[]
+  devices     Device[]
+  customers     Customer[]
+  users         User[]
+  contracts     Contract[]
+  invoices      Invoice[]
+  notifications Notification[]
+  tickets       Ticket[]
+
+  @@map("tenants")
+}
+
+// Customer is one of the tenant's own clients - the outsourcing/MSP tenant
+// manages printer fleets on behalf of several customers, and groups devices
+// by customer for both visibility (see User.customerId) and, eventually,
+// billing. A device with customerId null hasn't been assigned to a customer
+// yet (e.g. just discovered) - it's visible only to tenant-wide users.
+model Customer {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Shown on the invoice PDF's "cliente" block when filled in - same
+  // optional/omit-if-blank reasoning as Tenant's own document/address.
+  document String?
+  address  String?
+
+  // Per-customer SLA override for support tickets, in hours - null means
+  // "use common/sla.util.ts's global default for this priority" (see
+  // resolveSlaHours). Different customers legitimately negotiate different
+  // response-time guarantees (a bigger/paying-more client might get a 2h
+  // urgent SLA instead of the 4h default) - lets the outsource tenant set
+  // that per client without touching the global defaults everyone else
+  // still uses. Edited via the existing PATCH /v1/customers/:id
+  // (tenant-wide only, same as document/address above).
+  slaHoursLow    Int? @map("sla_hours_low")
+  slaHoursMedium Int? @map("sla_hours_medium")
+  slaHoursHigh   Int? @map("sla_hours_high")
+  slaHoursUrgent Int? @map("sla_hours_urgent")
+
+  devices     Device[]
+  users       User[]
+  agentTokens AgentToken[]
+  contracts   Contract[]
+  invoices    Invoice[]
+  tickets     Ticket[]
+
+  @@unique([tenantId, name])
+  @@map("customers")
+}
+
+enum ContractStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+// Different outsourcing tenants bill their own customers differently - the
+// user was explicit multiple real pricing shapes are needed, not just one:
+//   FLAT_RATE:              fixedFee only, page count doesn't affect price.
+//   ALLOWANCE_PLUS_OVERAGE: fixedFee bundles includedPages* for free; pages
+//                           beyond that are billed at overagePrice* (the
+//                           classic "plano com franquia").
+//   PER_PAGE:               every billable page costs pricePerPage*, but
+//                           never fewer than minimumPages* are billed even
+//                           if the customer printed less (the classic
+//                           "franquia mínima garantida").
+// Which of the fields below apply depends on pricingModel - see
+// ContractsService.calculateBilling for the per-model formula. They're kept
+// on one table (nullable, not required) rather than three separate tables:
+// a contract only ever uses one model at a time, the set of fields is small,
+// and one table keeps history/listing/display queries simple.
+enum ContractPricingModel {
+  FLAT_RATE
+  ALLOWANCE_PLUS_OVERAGE
+  PER_PAGE
+}
+
+// The outsourcing tenant's billing agreement with one of its own customers -
+// not OmniPrint's own SaaS billing of the tenant (that's a separate,
+// not-yet-built concern). Historical/versioned rather than a single row per
+// customer: renegotiating a contract creates a new row and expires the old
+// one (see ContractsService.create) instead of overwriting it, so past
+// pricing stays auditable. At most one row per customer should be ACTIVE at
+// a time - enforced in application code, not a DB constraint, since
+// Postgres partial-unique-on-status would need a raw-SQL migration for
+// little benefit at this scale.
+//
+// Known gap (see ContractsService.calculateBilling): the agent currently
+// reports one combined page counter, not separate mono/color counts (RFC
+// 3805's prtMarkerTable didn't expose that split on either real device
+// tested this project - see agent/internal/collector). Every model below
+// bills entirely at the "mono" fields until the agent/collector can report
+// a real split; the color fields still exist so contracts are correct now
+// and nothing needs re-entering once that data exists.
+model Contract {
+  id           String               @id @default(uuid())
+  tenantId     String               @map("tenant_id")
+  tenant       Tenant               @relation(fields: [tenantId], references: [id])
+  customerId   String               @map("customer_id")
+  customer     Customer             @relation(fields: [customerId], references: [id])
+  status       ContractStatus       @default(ACTIVE)
+  pricingModel ContractPricingModel @default(ALLOWANCE_PLUS_OVERAGE) @map("pricing_model")
+
+  startDate  DateTime  @map("start_date")
+  endDate    DateTime? @map("end_date")
+  billingDay Int       @map("billing_day") // day of month invoices are due, 1-31
+
+  // FLAT_RATE: the whole bill. ALLOWANCE_PLUS_OVERAGE: the base fee before
+  // overage. PER_PAGE: an optional extra fixed charge (e.g. equipment
+  // rental) on top of usage - 0/null if there isn't one.
+  fixedFee Decimal? @map("fixed_fee") @db.Decimal(12, 2)
+
+  // ALLOWANCE_PLUS_OVERAGE only
+  includedPagesMono  Int?     @map("included_pages_mono")
+  includedPagesColor Int?     @map("included_pages_color")
+  overagePriceMono   Decimal? @map("overage_price_mono") @db.Decimal(12, 4)
+  overagePriceColor  Decimal? @map("overage_price_color") @db.Decimal(12, 4)
+
+  // PER_PAGE only
+  pricePerPageMono  Decimal? @map("price_per_page_mono") @db.Decimal(12, 4)
+  pricePerPageColor Decimal? @map("price_per_page_color") @db.Decimal(12, 4)
+  minimumPagesMono  Int?     @map("minimum_pages_mono")
+  minimumPagesColor Int?     @map("minimum_pages_color")
+
+  setupFee            Decimal? @map("setup_fee") @db.Decimal(12, 2)
+  earlyTerminationFee Decimal? @map("early_termination_fee") @db.Decimal(12, 2)
+  adjustmentIndex     String?  @map("adjustment_index") // e.g. "IPCA", "IGPM" - free text
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  invoices Invoice[]
+
+  @@index([customerId, status])
+  @@index([tenantId])
+  @@map("contracts")
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+// One row per billed period per customer - the persisted result of what
+// ContractsService.calculateBilling used to only compute on the fly. Every
+// number that went into the total is snapshotted here at generation time
+// (fixedFee, usageCost, totalPages, perDevice breakdown, even the contract's
+// terms as they were then) rather than re-derived from Contract/Metric on
+// every read - so a contract edit or a metric backfill after the fact can
+// never silently change a bill that was already generated and possibly
+// already sent to the client. contractId is kept for traceability but the
+// snapshot fields, not the relation, are the source of truth for display/PDF.
+model Invoice {
+  id String @id @default(uuid())
+
+  // Human-facing sequential number for the PDF ("Fatura Nº 000123") - a UUID
+  // is fine as a primary key but not something you print on a document
+  // meant to be referenced over the phone. Global (not per-tenant) sequence:
+  // simpler and race-free via Postgres's own autoincrement, and uniqueness
+  // is all that actually matters here since it's a display/reference number,
+  // not a legal document id (no NF-e integration yet - see roadmap memory).
+  number Int @unique @default(autoincrement())
+
+  tenantId   String   @map("tenant_id")
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id])
+  contractId String   @map("contract_id")
+  contract   Contract @relation(fields: [contractId], references: [id])
+
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  dueDate     DateTime @map("due_date")
+
+  status InvoiceStatus @default(PENDING)
+
+  // Snapshot of the contract terms used, so relabeling/editing the contract
+  // later can't retroactively change an already-generated invoice.
+  pricingModel ContractPricingModel @map("pricing_model")
+
+  totalPages    Int      @map("total_pages")
+  monoPages     Int?     @map("mono_pages") // null until the agent reports a real split
+  colorPages    Int?     @map("color_pages")
+  perDevice     Json     @map("per_device") // [{deviceId, deviceName, pages}] at generation time
+
+  fixedFee   Decimal @default(0) @map("fixed_fee") @db.Decimal(12, 2)
+  usageCost  Decimal @default(0) @map("usage_cost") @db.Decimal(12, 2)
+  totalDue   Decimal @map("total_due") @db.Decimal(12, 2)
+
+  paidAt     DateTime? @map("paid_at")
+  paidAmount Decimal?  @map("paid_amount") @db.Decimal(12, 2)
+
+  generatedAt DateTime @default(now()) @map("generated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // One invoice per customer per calendar period - both the automatic cron
+  // and the manual "generate" endpoint rely on this to be safely idempotent.
+  @@unique([customerId, periodStart])
+  @@index([tenantId, status])
+  @@index([customerId, status])
+  @@map("invoices")
+}
+
+// A dashboard login. Every user belongs to a tenant. customerId is the
+// visibility scope: null means "tenant-wide" (the outsourcing company's own
+// staff - sees every customer's devices), set means "restricted to that one
+// customer" (that customer's own staff - sees only their own devices). This
+// is deliberately simpler than a full role system for the MVP: scope is
+// entirely determined by whether customerId is set.
+model User {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  customerId   String?   @map("customer_id")
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  name         String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  revokedAt    DateTime? @map("revoked_at")
+
+  createdTickets  Ticket[]        @relation("TicketCreatedBy")
+  assignedTickets Ticket[]        @relation("TicketAssignedTo")
+  ticketComments  TicketComment[]
+
+  @@map("users")
+}
+
+// AgentToken authenticates one agent install (see agent/config.yaml's
+// agent_token) against a tenant - and, when customerId is set, against one
+// specific customer. This is deliberate: a token minted for a customer is
+// how a newly-discovered device gets tagged with the right customer
+// automatically at ingest time, with no manual per-device sorting
+// afterward (see IngestService.upsertDevice). A customerId-less token still
+// works (tenant-wide, matches the original dev seed token) but any device
+// it discovers starts unassigned, same as before this feature existed.
+//
+// Only the hash is stored - the raw token is shown once, at creation time,
+// and never persisted. The raw value is a random 16-digit number (not a
+// sequential/guessable id - see feedback memory on why that was rejected),
+// grouped as e.g. "1234 5678 9012 3456" for readability. Shorter than a
+// cryptographically-sized secret by design (a human copies/types this into
+// a client's config.yaml), so brute-forcing it is mitigated by rate
+// limiting on the auth endpoints (see api/src/auth or ingest guards) rather
+// than by raw entropy alone.
+model AgentToken {
+  id         String    @id @default(uuid())
+  tenantId   String    @map("tenant_id")
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  tokenHash  String    @unique @map("token_hash")
+  label      String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  // Set by AgentReleasesController.latest on every version-check call an
+  // agent makes (see agent/internal/updater) - not from /v1/ingest, since an
+  // agent could in principle poll updates on a different cadence than it
+  // polls printers. Purely observational (fleet-version visibility for
+  // PlatformService.listAgentFleet), never used for auth/authorization.
+  lastSeenVersion String?   @map("last_seen_version")
+  lastCheckinAt   DateTime? @map("last_checkin_at")
+
+  @@index([customerId])
+  @@map("agent_tokens")
+}
+
+// Device is deduplicated primarily by serial number (stable across DHCP
+// re-leases), falling back to host only when there's no serial conflict -
+// see IngestService.upsertDevice for why a same-host-different-serial ingest
+// creates a new row instead of overwriting the old one (a physical printer
+// swap at the same IP is a different device, not the old one resetting).
+// serialNumber is nullable so the unique constraint doesn't collide across
+// multiple such devices (Postgres treats NULL as distinct in unique
+// indexes).
+model Device {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  customerId   String?   @map("customer_id")
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  serialNumber String?   @map("serial_number")
+  host         String
+  name         String?
+  printerName  String?   @map("printer_name")
+  // Set only by a tenant-wide user in the dashboard, never by ingest (unlike
+  // name/printerName, which the agent overwrites every poll) - lets the
+  // outsourcing company's own staff tell devices apart by where they
+  // physically are ("Recepção 2º andar") rather than whatever the printer's
+  // own firmware reports. Takes display priority over printerName/name/host
+  // wherever a device's name is shown - see IngestService (never touches
+  // this field) and DevicesService.updateLabel.
+  customLabel  String?   @map("custom_label")
+  firstSeenAt  DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt   DateTime  @updatedAt @map("last_seen_at")
+
+  metrics Metric[]
+  tickets Ticket[]
+
+  @@unique([tenantId, serialNumber])
+  @@index([tenantId, host])
+  @@index([customerId])
+  @@map("devices")
+}
+
+// One row per agent poll cycle per device. Converted to a TimescaleDB
+// hypertable (partitioned on collectedAt) via raw SQL in the initial
+// migration - see prisma/migrations/*/migration.sql.
+//
+// Nested collections (supplies/trays/alerts) and the raw OID capture are
+// stored as JSONB rather than child tables: this is snapshot/time-series
+// data queried mostly as "latest state" or "chart this field over time",
+// not relationally joined, so JSONB avoids row-count explosion for little
+// practical cost. Revisit if per-supply history queries become common.
+// id + collectedAt form the primary key (not id alone): TimescaleDB requires
+// the partitioning column (collectedAt) to be part of every unique/primary
+// key constraint on a hypertable.
+model Metric {
+  id       String @default(uuid())
+  deviceId String @map("device_id")
+  device   Device @relation(fields: [deviceId], references: [id])
+
+  collectedAt DateTime @map("collected_at")
+  online      Boolean
+
+  sysDescr    String? @map("sys_descr")
+  sysName     String? @map("sys_name")
+  sysLocation String? @map("sys_location")
+  sysContact  String? @map("sys_contact")
+  uptimeTicks BigInt? @map("uptime_ticks")
+
+  consoleDisplay String? @map("console_display")
+
+  printerStatusCode Int?    @map("printer_status_code")
+  printerStatus     String? @map("printer_status")
+  deviceStatusCode  Int?    @map("device_status_code")
+  deviceStatus      String? @map("device_status")
+  errorState        Json?   @map("error_state")
+
+  pageCount    BigInt? @map("page_count")
+  // Best-effort split of pageCount by mono/color, from a vendor-specific
+  // marker counter when the device exposes one (most don't - see
+  // agent/internal/collector's collectMarkerSplit). Null means "no split
+  // available"; billing then falls back to treating pageCount entirely as
+  // mono, same as before this field existed.
+  monoPageCount  BigInt? @map("mono_page_count")
+  colorPageCount BigInt? @map("color_page_count")
+  powerOnCount   BigInt? @map("power_on_count")
+
+  supplies   Json?
+  inputTrays Json? @map("input_trays")
+  alerts     Json?
+  raw        Json?
+
+  errorMessage String? @map("error_message")
+
+  @@id([id, collectedAt])
+  @@index([deviceId, collectedAt])
+  @@map("metrics")
+}
+
+enum NotificationType {
+  OVERDUE_INVOICE
+  EXPIRING_CONTRACT
+  CRITICAL_DEVICE_ALERT
+  LOW_SUPPLY
+  // A device with no customer assigned (customerId null) - normally just a
+  // brief transient state right after discovery, but real when a single
+  // network is shared by more than one of the tenant's own customers (SNMP
+  // discovery can't know which company a printer actually belongs to -
+  // only a human sorting it out can). Without this alert, an unassigned
+  // device silently misses billing for whatever period it sits unassigned.
+  UNASSIGNED_DEVICE
+}
+
+// One row per distinct issue (not per day) - dedupeKey is the stable
+// identity of the underlying thing (an invoice id, a contract id, a
+// device+alert-code pair, a device+supply-description pair - see
+// NotificationsService.collectCurrentAlerts for exactly how each is built).
+// The daily sync upserts against dedupeKey rather than creating a fresh row
+// every day, which is what makes "resolve this and stop reminding me"
+// actually work: a resolved row is left alone even when the same issue is
+// still detected on a later sync, and an unresolved row's content is
+// refreshed in place (without touching readAt) rather than duplicated - so
+// someone who's already seen "fatura X vencida" doesn't get re-flagged as
+// unread just because it's still true tomorrow. A row auto-resolves itself
+// when a later sync no longer detects it at all (the real problem went
+// away - paid, renegotiated, replaced), which is different from someone
+// clicking "Resolver" (see resolvedAt) but lands in the same state.
+model Notification {
+  id         String           @id @default(uuid())
+  tenantId   String           @map("tenant_id")
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  type       NotificationType
+  dedupeKey  String           @map("dedupe_key")
+  title      String
+  body       String
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  // Shared across the tenant's own users (no per-user state, same
+  // simplification the rest of this app makes for contracts/invoices/etc).
+  readAt     DateTime?        @map("read_at")
+  resolvedAt DateTime?        @map("resolved_at")
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, resolvedAt])
+  @@map("notifications")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// A support ticket the CUSTOMER opens (unlike Contract/Invoice, which are
+// tenant-wide-only paperwork the customer never sees) - the one place in
+// this app where a customer-scoped user creates data, not just reads it.
+// slaDueAt is computed once at creation from the priority (see
+// common/sla.util.ts) and recomputed if the priority changes later: it's a
+// stored deadline, not derived at read time, so it stays stable even if the
+// SLA_HOURS_BY_PRIORITY table itself is ever tuned - a ticket already in
+// flight keeps the deadline it was promised. Whether that deadline was
+// actually met (slaBreached) IS computed at read time instead, from
+// slaDueAt vs. resolvedAt/now - see TicketsService.
+model Ticket {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id])
+  // Optional - a ticket can be about a specific printer ("atolando toda
+  // hora") or something general (a billing question, a new-device request).
+  deviceId String? @map("device_id")
+  device   Device? @relation(fields: [deviceId], references: [id])
+
+  subject     String
+  description String
+
+  status   TicketStatus   @default(OPEN)
+  priority TicketPriority @default(MEDIUM)
+
+  createdByUserId String @map("created_by_user_id")
+  createdByUser   User   @relation("TicketCreatedBy", fields: [createdByUserId], references: [id])
+
+  // Tenant-wide staff only (see TicketsService.update's validation) - a
+  // customer-scoped user is never a valid assignee, there's no one on their
+  // side to route a ticket to.
+  assignedToUserId String? @map("assigned_to_user_id")
+  assignedToUser   User?   @relation("TicketAssignedTo", fields: [assignedToUserId], references: [id])
+
+  slaDueAt   DateTime  @map("sla_due_at")
+  resolvedAt DateTime? @map("resolved_at")
+  closedAt   DateTime? @map("closed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  comments TicketComment[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@map("tickets")
+}
+
+// A flat comment thread, visible to both sides (tenant staff and the
+// customer who opened the ticket) - matches Printwayy's own described
+// "comment sections for status updates between technician and client," not
+// a separate internal-notes channel (that's a real gap vs. some fuller
+// helpdesk products, but wasn't asked for - revisit if the user wants
+// staff-only notes later).
+model TicketComment {
+  id       String @id @default(uuid())
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+
+  authorUserId String @map("author_user_id")
+  authorUser   User   @relation(fields: [authorUserId], references: [id])
+
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_comments")
+}

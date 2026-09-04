@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+/* OmniPrint design tokens.
+ *
+ * Palette is a cool, ink-tinted neutral scale (not stock Tailwind gray) so
+ * it reads as a deliberate choice, not an inherited default - "paper" and
+ * "ink" naming is literal for a print-fleet product, not just flavor text.
+ * accent (#2547D0) is the same blue the invoice PDF already uses
+ * (InvoicePdfService's ACCENT) - one brand color across the actual product
+ * and the documents it generates, not two unrelated blues.
+ *
+ * Three ways this resolves, in increasing priority:
+ *  1. No preference either way: bare :root below (light).
+ *  2. OS/browser set to dark, no explicit in-app choice: the plain media
+ *     query redefines the tokens - guarded with :not([data-theme="light"])
+ *     so an explicit light choice (see ThemeToggle) still wins over it.
+ *  3. Explicit in-app choice (ThemeToggle writes data-theme on <html>,
+ *     applied before paint by the beforeInteractive script in layout.tsx
+ *     so there's no flash): the [data-theme="dark"] block below, which
+ *     always wins since it isn't gated by any media query.
+ * A component styled with bg-surface/text-ink/border-line adapts
+ * automatically in all three cases - no dark: needed on custom tokens
+ * (stock Tailwind colors, e.g. status badges, still use explicit dark: as
+ * before, since those aren't part of this token system).
+ */
+:root {
+  --color-paper: #f6f7fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef0f5;
+  --color-line: #e1e4ea;
+  --color-ink: #12141c;
+  --color-ink-muted: #5b6472;
+  --color-ink-faint: #97a1b0;
+  --color-accent: #2547d0;
+  --color-accent-soft: #eaf0fe;
+  --color-accent-fg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-paper: #0b0d13;
+    --color-surface: #12151d;
+    --color-surface-2: #1a1f2b;
+    --color-line: #262b38;
+    --color-ink: #e8eaf0;
+    --color-ink-muted: #99a2b4;
+    --color-ink-faint: #626b7d;
+    --color-accent: #7093ff;
+    --color-accent-soft: #1a2340;
+    --color-accent-fg: #0b0d13;
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-paper: #0b0d13;
+  --color-surface: #12151d;
+  --color-surface-2: #1a1f2b;
+  --color-line: #262b38;
+  --color-ink: #e8eaf0;
+  --color-ink-muted: #99a2b4;
+  --color-ink-faint: #626b7d;
+  --color-accent: #7093ff;
+  --color-accent-soft: #1a2340;
+  --color-accent-fg: #0b0d13;
+}
+
+@theme inline {
+  --color-paper: var(--color-paper);
+  --color-surface: var(--color-surface);
+  --color-surface-2: var(--color-surface-2);
+  --color-line: var(--color-line);
+  --color-ink: var(--color-ink);
+  --color-ink-muted: var(--color-ink-muted);
+  --color-ink-faint: var(--color-ink-faint);
+  --color-accent: var(--color-accent);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-accent-fg: var(--color-accent-fg);
+  --font-sans: var(--font-manrope);
+  --font-mono: var(--font-plex-mono);
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}

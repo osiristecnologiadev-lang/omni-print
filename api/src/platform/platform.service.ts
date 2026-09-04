@@ -1,0 +1,73 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from '../users/users.service';
+
+@Injectable()
+export class PlatformService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly usersService: UsersService,
+  ) {}
+
+  // Deliberately no tenantId filter anywhere in this file - this is the one
+  // part of the codebase that's supposed to see across every tenant. See
+  // PlatformAuthGuard for how access to it is gated.
+  listTenants() {
+    return this.prisma.tenant.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { customers: true, devices: true, users: true } } },
+    });
+  }
+
+  createTenant(name: string) {
+    return this.prisma.tenant.create({ data: { name } });
+  }
+
+  async getTenant(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: { _count: { select: { customers: true, devices: true, users: true } } },
+    });
+    if (!tenant) {
+      throw new NotFoundException('tenant not found');
+    }
+    return tenant;
+  }
+
+  async getTenantUsers(tenantId: string) {
+    await this.getTenant(tenantId);
+    return this.usersService.list(tenantId);
+  }
+
+  // Bootstraps a tenant-wide user for a tenant that has none yet (a brand
+  // new signup has no way to log in otherwise - see UsersController, which
+  // requires an existing tenant-wide user to create more). Reuses
+  // UsersService's actual create logic (email-uniqueness check, hashing)
+  // rather than duplicating it.
+  async createTenantUser(tenantId: string, dto: { email: string; password: string; name?: string }) {
+    await this.getTenant(tenantId);
+    return this.usersService.create(tenantId, { ...dto, customerId: null });
+  }
+
+  // Fleet-wide agent version visibility - which client installs are still
+  // on an old/vulnerable version, and which haven't checked in recently
+  // (agent/internal/svc's updateTicker check-in - see AgentToken's schema
+  // comment). Tokens that have never checked in (lastCheckinAt null, e.g.
+  // an agent build older than this feature, or one that's never reached the
+  // internet) are still listed rather than filtered out - that's useful
+  // information too, not noise.
+  listAgentFleet() {
+    return this.prisma.agentToken.findMany({
+      where: { revokedAt: null },
+      orderBy: { lastCheckinAt: { sort: 'desc', nulls: 'last' } },
+      select: {
+        id: true,
+        label: true,
+        lastSeenVersion: true,
+        lastCheckinAt: true,
+        tenant: { select: { name: true } },
+        customer: { select: { name: true } },
+      },
+    });
+  }
+}

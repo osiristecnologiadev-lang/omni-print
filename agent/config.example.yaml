@@ -1,0 +1,49 @@
+# Copy this file to config.yaml and fill in your values.
+
+tenant_id: "REPLACE_WITH_TENANT_ID"
+agent_token: "REPLACE_WITH_AGENT_TOKEN"
+cloud_url: "https://api.omniprint.io"
+
+poll_interval: 30m
+request_delay: 500ms # pause between devices during a poll cycle - keeps SNMP
+# traffic from looking like a network scan to IDS/EDR heuristics
+log_file: "omniprint-agent.log"
+
+# Captures every OID under the printer's Printer-MIB subtree, not just the
+# fields this agent parses into structured data. Defaults to true (this is
+# the "get as much information as possible" switch). Set to false for large
+# fleets if payload size/poll duration becomes a concern.
+full_raw_capture: true
+
+# Printers can be listed explicitly here, found automatically via
+# discovery below, or both (duplicates by host are deduplicated).
+devices:
+  - name: "Printer - Recepcao"
+    host: "192.168.1.50"
+    community: "public"
+    port: 161
+  - name: "Printer - Financeiro"
+    host: "192.168.1.51"
+    community: "public"
+    port: 161
+
+# Finds printers on the network instead of requiring every IP to be typed by
+# hand. Bounded and admin-controlled, not an open-ended scan - see
+# agent/README.md ("Descoberta automática de impressoras") for how.
+discovery:
+  enabled: false
+  # ranges: ["192.168.1.0/24"]  # optional; auto-detects the host's own
+  #                               subnet(s) when omitted
+  interval: 24h
+  concurrency: 8
+  probe_timeout: 800ms
+
+# Lets an already-installed agent update its own binary from a new release
+# published on the OmniPrint platform (see agent/README.md's "Atualização
+# automática" section for how it works). Defaults to true when this whole
+# block is omitted. A release explicitly marked "mandatory" on the server
+# (e.g. a security fix) still applies even with enabled: false here - only a
+# non-mandatory release is skippable this way.
+auto_update:
+  enabled: true
+  check_interval: 6h
