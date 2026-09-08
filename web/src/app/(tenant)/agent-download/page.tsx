@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { forbidden } from 'next/navigation';
-import { getSession, getAgentLatestRelease } from '@/lib/api';
+import { getSession, getAgentLatestRelease, getTenant } from '@/lib/api';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { EmptyState } from '@/components/EmptyState';
@@ -20,7 +20,7 @@ export default async function AgentDownloadPage() {
     forbidden();
   }
 
-  const windows = await getAgentLatestRelease('WINDOWS');
+  const [windows, tenant] = await Promise.all([getAgentLatestRelease('WINDOWS'), getTenant()]);
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
@@ -51,14 +51,32 @@ export default async function AgentDownloadPage() {
 
       <Panel>
         <h2 className="mb-2 text-sm font-medium text-ink">Antes de instalar</h2>
-        <p className="text-sm text-ink-muted">
-          Durante a instalação, o assistente vai pedir o <strong>token do agente</strong> do cliente específico onde
-          você está instalando. Gere um em{' '}
-          <Link href="/customers" className="text-accent hover:underline">
-            Clientes
-          </Link>{' '}
-          → escolha o cliente → seção de tokens do agente.
+        <p className="mb-3 text-sm text-ink-muted">
+          O assistente de instalação vai pedir 3 dados:
         </p>
+        <dl className="space-y-3 text-sm">
+          <div>
+            <dt className="text-ink-muted">Tenant ID</dt>
+            <dd className="mt-0.5 select-all rounded-md bg-surface-2 px-2 py-1 font-mono text-xs text-ink">
+              {tenant.id}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-ink-muted">URL da API</dt>
+            <dd className="mt-0.5 select-all rounded-md bg-surface-2 px-2 py-1 font-mono text-xs text-ink">
+              {process.env.API_BASE_URL ?? 'http://localhost:3000'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-ink-muted">
+              Token do agente — gere um específico para o cliente onde você está instalando, em{' '}
+              <Link href="/customers" className="text-accent hover:underline">
+                Clientes
+              </Link>{' '}
+              → escolha o cliente → seção de tokens do agente. Ele só é exibido uma vez.
+            </dt>
+          </div>
+        </dl>
       </Panel>
     </main>
   );
