@@ -44,13 +44,16 @@ Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{group}\Desinstalar {#MyAppName}"; Filename: "{uninstallexe}"
 
-; Post-install: register and start the Windows Service using the config.yaml
-; this script writes in CurStepChanged below. runhidden avoids flashing a
-; console window during a silent/attended install; waituntilterminated
-; makes each step finish before the next runs.
-[Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "-config ""{app}\config.yaml"" install"; Flags: runhidden waituntilterminated; StatusMsg: "Registrando o serviço OmniPrint Agent..."
-Filename: "{app}\{#MyAppExeName}"; Parameters: "-config ""{app}\config.yaml"" start"; Flags: runhidden waituntilterminated; StatusMsg: "Iniciando o serviço OmniPrint Agent..."
+; Registering/starting the service is driven from CurStepChanged (below,
+; via RegisterAndStartService) instead of a declarative [Run] entry - see
+; that procedure's comment for why: a plain [Run] entry proved unreliable
+; against this exe specifically (confirmed via repeated real installs and
+; isolated Inno-only test packages - intermittently succeeds, partially
+; succeeds, or silently does nothing at all, with Inno's own /LOG showing
+; a clean exit code 0 even on a run that produced no service - almost
+; certainly antivirus real-time protection reacting to the freshly-written,
+; unsigned exe's first-ever execution on the machine). Exec() lets this
+; script check the actual result and retry, which [Run] alone cannot do.
 
 ; Reverse order on uninstall: stop before removing the service registration,
 ; both before Inno deletes the files.
@@ -105,6 +108,59 @@ begin
   Result := '"' + Escaped + '"';
 end;
 
+// Runs one service-control action (install/start), retrying a few times
+// with a short pause if it doesn't succeed - see the [Run]-removal comment
+// above for why a plain declarative [Run] entry wasn't trustworthy here.
+// A failed attempt can leave the exe running briefly in the background
+// (e.g. a delayed AV scan holding it) even though Exec() already returned,
+// so this also confirms via `sc query`'s own exit code (0) rather than
+// trusting the agent process's own exit code alone.
+function RunServiceAction(const Action: String): Boolean;
+var
+  ExePath, ConfigPath, Params: String;
+  ResultCode, Attempt: Integer;
+begin
+  ExePath := ExpandConstant('{app}\{#MyAppExeName}');
+  ConfigPath := ExpandConstant('{app}\config.yaml');
+  Params := '-config "' + ConfigPath + '" ' + Action;
+  Result := False;
+  for Attempt := 1 to 5 do
+  begin
+    Exec(ExePath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(1000);
+    if Exec('sc.exe', 'query OmniPrintAgent', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      if (Action = 'install') or (ResultCode = 0) then
+      begin
+        Result := True;
+        Exit;
+      end;
+    end;
+    Sleep(2000);
+  end;
+end;
+
+procedure RegisterAndStartService;
+begin
+  if not RunServiceAction('install') then
+  begin
+    MsgBox('Nao foi possivel registrar o servico OmniPrint Agent apos varias tentativas. ' +
+      'Isso pode acontecer se um antivirus estiver bloqueando a primeira execucao do ' +
+      'programa. Tente instalar novamente, ou execute manualmente como administrador: ' +
+      '"' + ExpandConstant('{app}\{#MyAppExeName}') + '" -config "' +
+      ExpandConstant('{app}\config.yaml') + '" install', mbError, MB_OK);
+    Exit;
+  end;
+  if not RunServiceAction('start') then
+  begin
+    MsgBox('O servico OmniPrint Agent foi registrado, mas nao iniciou apos varias ' +
+      'tentativas. Abra o Painel de Servicos do Windows e inicie "OmniPrint Monitoring ' +
+      'Agent" manualmente, ou execute como administrador: "' +
+      ExpandConstant('{app}\{#MyAppExeName}') + '" -config "' +
+      ExpandConstant('{app}\config.yaml') + '" start', mbError, MB_OK);
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ConfigPath, Content: String;
@@ -118,6 +174,12 @@ begin
     // (meant as a blank-line separator) fails to compile with "Unknown
     // preprocessor directive". Each blank-line break is appended to the end
     // of the preceding string literal's line instead.
+    // Every string literal below must stay plain ASCII: SaveStringToFile
+    // writes the Pascal String's raw bytes (Windows-1252/ANSI on this
+    // build), not UTF-8 - an accented character here produced a real,
+    // confirmed-in-production config.yaml the Go agent's YAML parser
+    // rejected outright ("invalid trailing UTF-8 octet"), caught only by
+    // an actual end-to-end install, not by compiling or unit tests.
     Content :=
       'tenant_id: ' + YamlQuote(Trim(ConnectionPage.Values[0])) + #13#10 +
       'agent_token: ' + YamlQuote(Trim(ConnectionPage.Values[1])) + #13#10 +
@@ -128,8 +190,8 @@ begin
       'full_raw_capture: true' + #13#10 + #13#10 +
       'devices: []' + #13#10 + #13#10 +
       '# Sem impressoras cadastradas manualmente pelo instalador - descoberta' + #13#10 +
-      '# automática ligada por padrão para encontrar impressoras na rede local' + #13#10 +
-      '# sozinha. Edite este arquivo e reinicie o serviço para ajustar.' + #13#10 +
+      '# automatica ligada por padrao para encontrar impressoras na rede local' + #13#10 +
+      '# sozinha. Edite este arquivo e reinicie o servico para ajustar.' + #13#10 +
       'discovery:' + #13#10 +
       '  enabled: true' + #13#10 +
       '  interval: 24h' + #13#10 +
@@ -141,5 +203,7 @@ begin
 
     if not SaveStringToFile(ConfigPath, Content, False) then
       RaiseException('Falha ao gravar ' + ConfigPath);
+
+    RegisterAndStartService;
   end;
 end;
