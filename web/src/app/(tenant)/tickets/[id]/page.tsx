@@ -4,7 +4,8 @@ import { isTicketSlaBreached } from '@/lib/sla';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { Badge, type BadgeTone } from '@/components/Badge';
-import { Button } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 import { addTicketCommentAction, updateTicketAction } from '../actions';
 
 const STATUS_LABEL: Record<TicketStatus, string> = {
@@ -32,6 +33,7 @@ const selectClass = inputClass;
 
 export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>) {
   const { id } = await props.params;
+  const searchParams = await props.searchParams;
   const session = await getSession();
   if (!session) return null;
 
@@ -50,6 +52,11 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       <PageHeader title={ticket.subject} subtitle={isTenantWide ? ticket.customer.name : undefined} />
+
+      {searchParams?.updated === '1' && <Banner tone="success">Chamado atualizado.</Banner>}
+      {searchParams?.updateError === '1' && <Banner tone="error">Não foi possível atualizar o chamado. Tente novamente.</Banner>}
+      {searchParams?.commentAdded === '1' && <Banner tone="success">Comentário adicionado.</Banner>}
+      {searchParams?.commentError === '1' && <Banner tone="error">Não foi possível adicionar o comentário. Tente novamente.</Banner>}
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <Badge tone={STATUS_TONE[ticket.status]}>{STATUS_LABEL[ticket.status]}</Badge>
@@ -108,9 +115,9 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
               </select>
             </label>
             <div className="sm:col-span-3">
-              <Button type="submit" variant="secondary">
+              <SubmitButton variant="secondary" pendingLabel="Salvando...">
                 Salvar
-              </Button>
+              </SubmitButton>
             </div>
           </form>
         </Panel>
@@ -135,9 +142,9 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
         )}
         <form action={boundComment}>
           <textarea name="body" required minLength={1} rows={3} className={inputClass} placeholder="Escreva um comentário..." />
-          <Button type="submit" variant="secondary" className="mt-2">
+          <SubmitButton variant="secondary" className="mt-2" pendingLabel="Enviando...">
             Comentar
-          </Button>
+          </SubmitButton>
         </form>
       </Panel>
     </main>

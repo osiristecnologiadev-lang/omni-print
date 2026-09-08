@@ -16,12 +16,17 @@ export async function signupAction(formData: FormData) {
   const email = String(formData.get('email') ?? '');
   const password = String(formData.get('password') ?? '');
 
-  const res = await fetch(`${API_BASE_URL}/v1/signup`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ companyName, email, password }),
-    cache: 'no-store',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/v1/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyName, email, password }),
+      cache: 'no-store',
+    });
+  } catch {
+    redirect('/?signupError=unknown');
+  }
 
   if (!res.ok) {
     const errorCode = res.status === 409 ? 'email-taken' : 'unknown';

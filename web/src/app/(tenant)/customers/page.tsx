@@ -4,9 +4,12 @@ import { getCustomers, getSession } from '@/lib/api';
 import { createCustomerAction } from './actions';
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
-import { Button } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 
-export default async function CustomersPage() {
+export default async function CustomersPage(props: PageProps<'/customers'>) {
+  const searchParams = await props.searchParams;
+
   const session = await getSession();
   if (session?.customerId) {
     forbidden();
@@ -21,6 +24,9 @@ export default async function CustomersPage() {
         subtitle="Empresas que você atende. Atribua impressoras a um cliente na página de cada dispositivo."
       />
 
+      {searchParams?.created === '1' && <Banner tone="success">Cliente adicionado.</Banner>}
+      {searchParams?.error === '1' && <Banner tone="error">Não foi possível adicionar o cliente. Tente novamente.</Banner>}
+
       <form action={createCustomerAction} className="flex gap-2">
         <input
           name="name"
@@ -28,9 +34,9 @@ export default async function CustomersPage() {
           required
           className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent"
         />
-        <Button type="submit" variant="primary">
+        <SubmitButton variant="primary" pendingLabel="Adicionando...">
           Adicionar
-        </Button>
+        </SubmitButton>
       </form>
 
       {customers.length === 0 ? (

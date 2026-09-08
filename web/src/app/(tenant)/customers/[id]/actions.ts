@@ -26,8 +26,13 @@ export async function createTokenAction(
 }
 
 export async function revokeTokenAction(customerId: string, tokenId: string) {
-  await revokeCustomerToken(customerId, tokenId);
+  try {
+    await revokeCustomerToken(customerId, tokenId);
+  } catch {
+    redirect(`/customers/${customerId}?tokenError=1`);
+  }
   revalidatePath(`/customers/${customerId}`);
+  redirect(`/customers/${customerId}?tokenRevoked=1`);
 }
 
 // Creates a view-only dashboard login already scoped to this customer - the
@@ -51,19 +56,26 @@ export async function createCustomerUserAction(customerId: string, formData: For
 }
 
 export async function revokeCustomerUserAction(customerId: string, userId: string) {
-  await revokeUser(userId);
+  try {
+    await revokeUser(userId);
+  } catch {
+    redirect(`/customers/${customerId}?userRevokeError=1`);
+  }
   revalidatePath(`/customers/${customerId}`);
+  redirect(`/customers/${customerId}?userRevoked=1`);
 }
 
-// Document/address are only used to fill the "cliente" block on the invoice
-// PDF (see api's Customer schema comment) - not shown anywhere else, so
-// there's no separate confirmation banner, just a silent revalidate.
 export async function updateCustomerInfoAction(customerId: string, formData: FormData) {
   const document = String(formData.get('document') ?? '').trim() || undefined;
   const address = String(formData.get('address') ?? '').trim() || undefined;
 
-  await updateCustomer(customerId, { document, address });
+  try {
+    await updateCustomer(customerId, { document, address });
+  } catch {
+    redirect(`/customers/${customerId}?infoError=1`);
+  }
   revalidatePath(`/customers/${customerId}`);
+  redirect(`/customers/${customerId}?infoSaved=1`);
 }
 
 // An empty field means "use the global default" - sent as null (explicit
@@ -78,11 +90,16 @@ function slaHoursField(formData: FormData, name: string): number | null {
 }
 
 export async function updateCustomerSlaAction(customerId: string, formData: FormData) {
-  await updateCustomer(customerId, {
-    slaHoursLow: slaHoursField(formData, 'slaHoursLow'),
-    slaHoursMedium: slaHoursField(formData, 'slaHoursMedium'),
-    slaHoursHigh: slaHoursField(formData, 'slaHoursHigh'),
-    slaHoursUrgent: slaHoursField(formData, 'slaHoursUrgent'),
-  });
+  try {
+    await updateCustomer(customerId, {
+      slaHoursLow: slaHoursField(formData, 'slaHoursLow'),
+      slaHoursMedium: slaHoursField(formData, 'slaHoursMedium'),
+      slaHoursHigh: slaHoursField(formData, 'slaHoursHigh'),
+      slaHoursUrgent: slaHoursField(formData, 'slaHoursUrgent'),
+    });
+  } catch {
+    redirect(`/customers/${customerId}?slaError=1`);
+  }
   revalidatePath(`/customers/${customerId}`);
+  redirect(`/customers/${customerId}?slaSaved=1`);
 }

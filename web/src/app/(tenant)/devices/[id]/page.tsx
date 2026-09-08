@@ -14,7 +14,8 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { SupplyBar } from '@/components/SupplyBar';
 import { SupplyForecastFacts } from '@/components/SupplyForecastFacts';
 import { Panel, PanelSection } from '@/components/Panel';
-import { Button } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 import { TrendChart } from '@/components/TrendChart';
 import { assignCustomerAction, updateLabelAction } from './actions';
 
@@ -47,7 +48,10 @@ function formatUptime(ticks: string | null): string {
 export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
   const { id } = await props.params;
   const searchParams = await props.searchParams;
-  const justSaved = searchParams?.saved === '1';
+  const customerSaved = searchParams?.customerSaved === '1';
+  const customerError = searchParams?.customerError === '1';
+  const labelSaved = searchParams?.labelSaved === '1';
+  const labelError = searchParams?.labelError === '1';
 
   const device = await getDevice(id);
   if (!device) {
@@ -81,11 +85,10 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
         ← Voltar
       </Link>
 
-      {justSaved && (
-        <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-          Cliente atualizado.
-        </p>
-      )}
+      {customerSaved && <Banner tone="success" className="mt-4">Cliente atualizado.</Banner>}
+      {customerError && <Banner tone="error" className="mt-4">Não foi possível atualizar o cliente. Tente novamente.</Banner>}
+      {labelSaved && <Banner tone="success" className="mt-4">Apelido salvo.</Banner>}
+      {labelError && <Banner tone="error" className="mt-4">Não foi possível salvar o apelido. Tente novamente.</Banner>}
 
       <header className="mt-4 mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -107,9 +110,9 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
                 placeholder="ex.: Recepção 2º andar"
                 className={fieldClass}
               />
-              <Button type="submit" variant="secondary" size="sm">
+              <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
                 Salvar
-              </Button>
+              </SubmitButton>
             </form>
           )}
           {isTenantWide ? (
@@ -125,9 +128,9 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
                   </option>
                 ))}
               </select>
-              <Button type="submit" variant="secondary" size="sm">
+              <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
                 Salvar
-              </Button>
+              </SubmitButton>
             </form>
           ) : (
             device.customer && <p className="mt-2 text-xs text-ink-muted">Cliente: {device.customer.name}</p>

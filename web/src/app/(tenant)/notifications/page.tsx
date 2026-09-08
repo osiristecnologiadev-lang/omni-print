@@ -5,7 +5,8 @@ import { Panel } from '@/components/Panel';
 import { Badge, type BadgeTone } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
 import { syncNowAction, resolveNotificationAction } from './actions';
-import { Button } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 
 function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
@@ -54,25 +55,24 @@ export default async function NotificationsPage(props: PageProps<'/notifications
         subtitle="Faturas vencidas, contratos perto do fim, alertas críticos e suprimentos acabando. Resolva um item para parar de ser lembrado dele."
       />
 
-      {searchParams?.sync === 'changes' && (
-        <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-          Notificações atualizadas.
-        </p>
-      )}
+      {searchParams?.sync === 'changes' && <Banner tone="success">Notificações atualizadas.</Banner>}
       {searchParams?.sync === 'nothing' && (
         <p className="mb-4 rounded-lg bg-surface-2 px-3 py-2 text-sm text-ink-muted">
           Nada mudou desde a última atualização.
         </p>
       )}
+      {searchParams?.sync === 'error' && <Banner tone="error">Não foi possível atualizar as notificações. Tente novamente.</Banner>}
+      {searchParams?.resolved === '1' && <Banner tone="success">Notificação resolvida.</Banner>}
+      {searchParams?.resolveError === '1' && <Banner tone="error">Não foi possível resolver a notificação. Tente novamente.</Banner>}
 
       <Panel className="mb-6">
         <p className="mb-3 text-xs text-ink-faint">
           Isso é verificado automaticamente todo dia. Use o botão abaixo para atualizar agora, sem esperar.
         </p>
         <form action={syncNowAction}>
-          <Button type="submit" variant="secondary">
+          <SubmitButton variant="secondary" pendingLabel="Atualizando...">
             Atualizar agora
-          </Button>
+          </SubmitButton>
         </form>
       </Panel>
 
@@ -95,9 +95,9 @@ export default async function NotificationsPage(props: PageProps<'/notifications
                     </div>
                     <p className="text-sm text-ink-muted">{n.body}</p>
                     <form action={boundResolve} className="mt-3">
-                      <Button type="submit" variant="ghost" size="sm">
+                      <SubmitButton variant="ghost" size="sm" pendingLabel="Resolvendo...">
                         Resolver
-                      </Button>
+                      </SubmitButton>
                     </form>
                   </Panel>
                 );

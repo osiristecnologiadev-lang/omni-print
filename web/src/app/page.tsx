@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { Logo, LogoMark } from '@/components/Logo';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { PlainSubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 import { signupAction } from './actions';
 
 export const metadata = {
@@ -357,15 +359,9 @@ export default async function LandingPage(props: PageProps<'/'>) {
           </p>
 
           {signupError === 'email-taken' && (
-            <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-              Esse e-mail já está cadastrado. Tente entrar em vez de criar uma conta nova.
-            </p>
+            <Banner tone="error">Esse e-mail já está cadastrado. Tente entrar em vez de criar uma conta nova.</Banner>
           )}
-          {signupError === 'unknown' && (
-            <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-              Não foi possível criar a conta. Tente novamente.
-            </p>
-          )}
+          {signupError === 'unknown' && <Banner tone="error">Não foi possível criar a conta. Tente novamente.</Banner>}
 
           <label className="mb-1 block text-sm font-medium text-ink" htmlFor="companyName">
             Nome da empresa
@@ -382,12 +378,12 @@ export default async function LandingPage(props: PageProps<'/'>) {
           </label>
           <input id="password" name="password" type="password" required minLength={8} className={`${inputClass} mb-6`} />
 
-          <button
-            type="submit"
+          <PlainSubmitButton
             className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg transition-opacity hover:opacity-90"
+            pendingLabel="Criando conta..."
           >
             Criar conta
-          </button>
+          </PlainSubmitButton>
 
           <p className="mt-4 text-center text-xs text-ink-faint">
             Já tem conta?{' '}

@@ -1,5 +1,7 @@
 import { Logo } from '@/components/Logo';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 import { loginAction } from './actions';
 
 const inputClass =
@@ -22,11 +24,7 @@ export default async function LoginPage(props: PageProps<'/login'>) {
           <h1 className="mb-1 text-lg font-semibold text-ink">Entrar</h1>
           <p className="mb-6 text-sm text-ink-muted">Acompanhe o parque de impressoras que você atende.</p>
 
-          {hasError && (
-            <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-              E-mail ou senha inválidos.
-            </p>
-          )}
+          {hasError && <Banner tone="error">E-mail ou senha inválidos.</Banner>}
 
           <label className="mb-1 block text-sm font-medium text-ink" htmlFor="email">
             E-mail
@@ -44,12 +42,9 @@ export default async function LoginPage(props: PageProps<'/login'>) {
             className={`${inputClass} mb-6`}
           />
 
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper transition-opacity hover:opacity-90"
-          >
+          <SubmitButton variant="primary" className="w-full" pendingLabel="Entrando...">
             Entrar
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </main>

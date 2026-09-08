@@ -3,7 +3,8 @@ import { getCustomers, getSession, getUsers } from '@/lib/api';
 import { createUserAction, revokeUserAction } from './actions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
-import { Button } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 
 const fieldClass =
   'rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
@@ -21,6 +22,8 @@ export default async function UsersPage(props: PageProps<'/users'>) {
   const searchParams = await props.searchParams;
   const errorParam = searchParams?.error;
   const created = searchParams?.created === '1';
+  const revoked = searchParams?.revoked === '1';
+  const revokeError = searchParams?.revokeError === '1';
 
   const [users, customers] = await Promise.all([getUsers(), getCustomers()]);
 
@@ -31,21 +34,11 @@ export default async function UsersPage(props: PageProps<'/users'>) {
         subtitle="Login sem cliente selecionado enxerga todos os clientes (equipe da sua empresa). Com um cliente selecionado, o login só vê os dispositivos daquele cliente."
       />
 
-      {created && (
-        <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-          Usuário criado.
-        </p>
-      )}
-      {errorParam === 'email_in_use' && (
-        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-          Já existe um usuário com esse e-mail.
-        </p>
-      )}
-      {errorParam === '1' && (
-        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-          Não foi possível criar o usuário. Confira os dados e tente novamente.
-        </p>
-      )}
+      {created && <Banner tone="success">Usuário criado.</Banner>}
+      {errorParam === 'email_in_use' && <Banner tone="error">Já existe um usuário com esse e-mail.</Banner>}
+      {errorParam === '1' && <Banner tone="error">Não foi possível criar o usuário. Confira os dados e tente novamente.</Banner>}
+      {revoked && <Banner tone="success">Usuário revogado.</Banner>}
+      {revokeError && <Banner tone="error">Não foi possível revogar o usuário. Tente novamente.</Banner>}
 
       <Panel>
         <form action={createUserAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -60,9 +53,9 @@ export default async function UsersPage(props: PageProps<'/users'>) {
               </option>
             ))}
           </select>
-          <Button type="submit" variant="primary" className="sm:col-span-2">
+          <SubmitButton variant="primary" className="sm:col-span-2" pendingLabel="Criando...">
             Criar usuário
-          </Button>
+          </SubmitButton>
         </form>
       </Panel>
 
@@ -80,9 +73,9 @@ export default async function UsersPage(props: PageProps<'/users'>) {
             </div>
             {!u.revokedAt && (
               <form action={revokeUserAction.bind(null, u.id)}>
-                <Button type="submit" variant="danger">
+                <SubmitButton variant="danger" pendingLabel="Revogando...">
                   Revogar
-                </Button>
+                </SubmitButton>
               </form>
             )}
           </li>

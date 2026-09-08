@@ -5,13 +5,23 @@ import { redirect } from 'next/navigation';
 import { syncNotificationsNow, resolveNotification } from '@/lib/api';
 
 export async function syncNowAction() {
-  const result = await syncNotificationsNow();
+  let hasChanges = false;
+  try {
+    const result = await syncNotificationsNow();
+    hasChanges = result.created > 0 || result.autoResolved > 0;
+  } catch {
+    redirect('/notifications?sync=error');
+  }
   revalidatePath('/notifications');
-  const hasChanges = result.created > 0 || result.autoResolved > 0;
   redirect(`/notifications?sync=${hasChanges ? 'changes' : 'nothing'}`);
 }
 
 export async function resolveNotificationAction(id: string) {
-  await resolveNotification(id);
+  try {
+    await resolveNotification(id);
+  } catch {
+    redirect('/notifications?resolveError=1');
+  }
   revalidatePath('/notifications');
+  redirect('/notifications?resolved=1');
 }

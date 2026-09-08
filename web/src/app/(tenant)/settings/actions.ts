@@ -9,13 +9,17 @@ function str(formData: FormData, name: string): string | undefined {
 }
 
 export async function updateTenantAction(formData: FormData) {
-  await updateTenant({
-    name: str(formData, 'name'),
-    document: str(formData, 'document'),
-    address: str(formData, 'address'),
-    phone: str(formData, 'phone'),
-    contactEmail: str(formData, 'contactEmail'),
-  });
+  try {
+    await updateTenant({
+      name: str(formData, 'name'),
+      document: str(formData, 'document'),
+      address: str(formData, 'address'),
+      phone: str(formData, 'phone'),
+      contactEmail: str(formData, 'contactEmail'),
+    });
+  } catch {
+    redirect('/settings?error=1');
+  }
 
   revalidatePath('/settings');
   redirect('/settings?saved=1');

@@ -1,12 +1,15 @@
 import Link from 'next/link';
 import { getTenants } from '@/lib/platform-api';
 import { createTenantAction } from './actions';
+import { PlainSubmitButton } from '@/components/SubmitButton';
+import { PlatformBanner } from '@/components/Banner';
 
 function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(iso));
 }
 
-export default async function PlatformDashboard() {
+export default async function PlatformDashboard(props: PageProps<'/platform'>) {
+  const searchParams = await props.searchParams;
   const tenants = await getTenants();
 
   return (
@@ -16,6 +19,11 @@ export default async function PlatformDashboard() {
         {tenants.length} empresa{tenants.length === 1 ? '' : 's'} usando a OmniPrint.
       </p>
 
+      {searchParams?.created === '1' && <PlatformBanner tone="success">Empresa cadastrada.</PlatformBanner>}
+      {searchParams?.error === '1' && (
+        <PlatformBanner tone="error">Não foi possível cadastrar a empresa. Tente novamente.</PlatformBanner>
+      )}
+
       <form action={createTenantAction} className="flex gap-2">
         <input
           name="name"
@@ -23,12 +31,12 @@ export default async function PlatformDashboard() {
           required
           className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-amber-600"
         />
-        <button
-          type="submit"
+        <PlainSubmitButton
           className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+          pendingLabel="Cadastrando..."
         >
           Cadastrar
-        </button>
+        </PlainSubmitButton>
       </form>
 
       {tenants.length === 0 ? (

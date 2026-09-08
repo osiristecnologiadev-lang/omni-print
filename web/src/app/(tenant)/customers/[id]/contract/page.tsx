@@ -13,6 +13,8 @@ import { ContractForm } from './ContractForm';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel, PanelSection } from '@/components/Panel';
 import { Button } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 import { Badge, type BadgeTone } from '@/components/Badge';
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -162,16 +164,12 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
         }
       />
 
-      {searchParams?.saved === '1' && (
-        <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-          Contrato salvo.
-        </p>
-      )}
+      {searchParams?.saved === '1' && <Banner tone="success">Contrato salvo.</Banner>}
       {searchParams?.error === '1' && (
-        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-          Não foi possível salvar o contrato. Confira os valores e tente novamente.
-        </p>
+        <Banner tone="error">Não foi possível salvar o contrato. Confira os valores e tente novamente.</Banner>
       )}
+      {searchParams?.cancelled === '1' && <Banner tone="success">Contrato cancelado.</Banner>}
+      {searchParams?.cancelError === '1' && <Banner tone="error">Não foi possível cancelar o contrato. Tente novamente.</Banner>}
 
       {/* --- Active contract --- */}
       <Panel>
@@ -183,9 +181,9 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
         )}
         {active && (
           <form action={boundCancel.bind(null, active.id)} className="mt-4">
-            <Button type="submit" variant="danger">
+            <SubmitButton variant="danger" pendingLabel="Cancelando...">
               Cancelar contrato
-            </Button>
+            </SubmitButton>
           </form>
         )}
       </Panel>

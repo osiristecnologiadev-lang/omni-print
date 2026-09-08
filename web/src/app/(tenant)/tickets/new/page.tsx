@@ -1,7 +1,8 @@
 import { getSession, getCustomers, getDevices, getCustomer, type Device } from '@/lib/api';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
-import { Button } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 import { createTicketAction } from '../actions';
 
 const inputClass =
@@ -47,9 +48,9 @@ export default async function NewTicketPage(props: PageProps<'/tickets/new'>) {
                 ))}
               </select>
             </label>
-            <Button type="submit" variant="primary">
+            <SubmitButton variant="primary" pendingLabel="Continuando...">
               Continuar
-            </Button>
+            </SubmitButton>
           </form>
         </Panel>
       </main>
@@ -70,6 +71,9 @@ export default async function NewTicketPage(props: PageProps<'/tickets/new'>) {
   return (
     <main className="mx-auto max-w-lg px-6 py-10">
       <PageHeader title="Abrir chamado" subtitle={customer ? `Para: ${customer.name}` : undefined} />
+      {searchParams?.error === '1' && (
+        <Banner tone="error">Não foi possível abrir o chamado. Confira os dados e tente novamente.</Banner>
+      )}
       <Panel>
         <form action={boundCreate} className="space-y-4">
           <label className="block text-xs text-ink-muted">
@@ -110,9 +114,9 @@ export default async function NewTicketPage(props: PageProps<'/tickets/new'>) {
               <span className="mt-1 block text-xs text-ink-faint">Apelido — nome capturado da impressora — IP</span>
             </label>
           )}
-          <Button type="submit" variant="primary">
+          <SubmitButton variant="primary" pendingLabel="Abrindo...">
             Abrir chamado
-          </Button>
+          </SubmitButton>
         </form>
       </Panel>
     </main>

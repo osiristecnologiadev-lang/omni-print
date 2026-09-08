@@ -363,6 +363,8 @@ export interface AgentTokenSummary {
   label: string | null;
   createdAt: string;
   revokedAt: string | null;
+  lastCheckinAt: string | null;
+  lastSeenVersion: string | null;
 }
 
 export interface CreatedAgentToken {

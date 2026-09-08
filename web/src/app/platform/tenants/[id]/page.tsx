@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { getTenant, getTenantUsers } from '@/lib/platform-api';
 import { createTenantUserAction } from './actions';
+import { PlainSubmitButton } from '@/components/SubmitButton';
+import { PlatformBanner } from '@/components/Banner';
 
 function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
@@ -32,19 +34,11 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
           dispositivos). Depois disso, a própria empresa cria os demais usuários pela conta dela.
         </p>
 
-        {searchParams?.created === '1' && (
-          <p className="mb-3 rounded-lg bg-emerald-950 px-3 py-2 text-sm text-emerald-300">Usuário criado.</p>
-        )}
+        {searchParams?.created === '1' && <PlatformBanner tone="success">Usuário criado.</PlatformBanner>}
         {searchParams?.error === 'email_in_use' && (
-          <p className="mb-3 rounded-lg bg-red-950 px-3 py-2 text-sm text-red-300">
-            Já existe um usuário com esse e-mail.
-          </p>
+          <PlatformBanner tone="error">Já existe um usuário com esse e-mail.</PlatformBanner>
         )}
-        {searchParams?.error === '1' && (
-          <p className="mb-3 rounded-lg bg-red-950 px-3 py-2 text-sm text-red-300">
-            Não foi possível criar o usuário.
-          </p>
-        )}
+        {searchParams?.error === '1' && <PlatformBanner tone="error">Não foi possível criar o usuário.</PlatformBanner>}
 
         <form action={boundCreateUser} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <input
@@ -67,12 +61,12 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
             minLength={8}
             className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-amber-600"
           />
-          <button
-            type="submit"
+          <PlainSubmitButton
             className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 sm:col-span-3"
+            pendingLabel="Criando..."
           >
             Criar usuário
-          </button>
+          </PlainSubmitButton>
         </form>
 
         {users.length > 0 && (

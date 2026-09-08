@@ -25,6 +25,11 @@ export async function createUserAction(formData: FormData) {
 }
 
 export async function revokeUserAction(userId: string) {
-  await revokeUser(userId);
+  try {
+    await revokeUser(userId);
+  } catch {
+    redirect('/users?revokeError=1');
+  }
   revalidatePath('/users');
+  redirect('/users?revoked=1');
 }

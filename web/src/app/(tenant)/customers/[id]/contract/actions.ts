@@ -67,6 +67,11 @@ export async function createContractAction(customerId: string, formData: FormDat
 }
 
 export async function cancelContractAction(customerId: string, contractId: string) {
-  await cancelContract(customerId, contractId);
+  try {
+    await cancelContract(customerId, contractId);
+  } catch {
+    redirect(`/customers/${customerId}/contract?cancelError=1`);
+  }
   revalidatePath(`/customers/${customerId}/contract`);
+  redirect(`/customers/${customerId}/contract?cancelled=1`);
 }

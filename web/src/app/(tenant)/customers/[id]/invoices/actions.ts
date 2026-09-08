@@ -19,11 +19,21 @@ export async function generateInvoiceAction(customerId: string, formData: FormDa
 }
 
 export async function markPaidAction(customerId: string, invoiceId: string) {
-  await markInvoicePaid(customerId, invoiceId);
+  try {
+    await markInvoicePaid(customerId, invoiceId);
+  } catch {
+    redirect(`/customers/${customerId}/invoices?payError=1`);
+  }
   revalidatePath(`/customers/${customerId}/invoices`);
+  redirect(`/customers/${customerId}/invoices?paid=1`);
 }
 
 export async function cancelInvoiceAction(customerId: string, invoiceId: string) {
-  await cancelInvoice(customerId, invoiceId);
+  try {
+    await cancelInvoice(customerId, invoiceId);
+  } catch {
+    redirect(`/customers/${customerId}/invoices?cancelError=1`);
+  }
   revalidatePath(`/customers/${customerId}/invoices`);
+  redirect(`/customers/${customerId}/invoices?cancelled=1`);
 }

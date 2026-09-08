@@ -49,12 +49,23 @@ export class CustomersService {
 
   // Tokens are listed without their hash or raw value - only the raw value
   // (shown once, here at creation) can ever authenticate as this customer.
+  // lastCheckinAt/lastSeenVersion (set on every real update-check an agent
+  // makes - see AgentReleasesService.recordCheckin) are included so the
+  // tenant can tell a token is actually in use, without needing the value
+  // itself back.
   async listTokens(tenantId: string, customerId: string) {
     await this.requireCustomer(tenantId, customerId);
     return this.prisma.agentToken.findMany({
       where: { tenantId, customerId },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, label: true, createdAt: true, revokedAt: true },
+      select: {
+        id: true,
+        label: true,
+        createdAt: true,
+        revokedAt: true,
+        lastCheckinAt: true,
+        lastSeenVersion: true,
+      },
     });
   }
 

@@ -4,6 +4,8 @@ import { generateInvoiceAction, markPaidAction, cancelInvoiceAction } from './ac
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { Button } from '@/components/Button';
+import { SubmitButton, PlainSubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 import { Badge, type BadgeTone } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
 
@@ -46,16 +48,14 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
         back={{ href: `/customers/${id}`, label: customer.name }}
       />
 
-      {searchParams?.generated === '1' && (
-        <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-          Fatura gerada.
-        </p>
-      )}
+      {searchParams?.generated === '1' && <Banner tone="success">Fatura gerada.</Banner>}
       {searchParams?.error === '1' && (
-        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-          Não foi possível gerar a fatura - confira se existe um contrato cobrindo esse período.
-        </p>
+        <Banner tone="error">Não foi possível gerar a fatura - confira se existe um contrato cobrindo esse período.</Banner>
       )}
+      {searchParams?.paid === '1' && <Banner tone="success">Fatura marcada como paga.</Banner>}
+      {searchParams?.payError === '1' && <Banner tone="error">Não foi possível marcar a fatura como paga. Tente novamente.</Banner>}
+      {searchParams?.cancelled === '1' && <Banner tone="success">Fatura cancelada.</Banner>}
+      {searchParams?.cancelError === '1' && <Banner tone="error">Não foi possível cancelar a fatura. Tente novamente.</Banner>}
 
       <Panel className="mb-6">
         <h2 className="mb-1 text-sm font-medium text-ink">Gerar fatura</h2>
@@ -78,9 +78,9 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
               </option>
             ))}
           </select>
-          <Button type="submit" variant="primary">
+          <SubmitButton variant="primary" pendingLabel="Gerando...">
             Gerar
-          </Button>
+          </SubmitButton>
         </form>
       </Panel>
 
@@ -121,14 +121,17 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
                   {invoice.status === 'PENDING' && (
                     <>
                       <form action={boundMarkPaid}>
-                        <button type="submit" className="text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400">
+                        <PlainSubmitButton
+                          className="text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                          pendingLabel="Marcando..."
+                        >
                           Marcar como paga
-                        </button>
+                        </PlainSubmitButton>
                       </form>
                       <form action={boundCancel}>
-                        <Button type="submit" variant="danger">
+                        <SubmitButton variant="danger" pendingLabel="Cancelando...">
                           Cancelar
-                        </Button>
+                        </SubmitButton>
                       </form>
                     </>
                   )}

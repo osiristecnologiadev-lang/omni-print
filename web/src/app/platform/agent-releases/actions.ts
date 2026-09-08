@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { publishAgentRelease, deleteAgentRelease } from '@/lib/platform-api';
 
 // This page has a second Server Action (deleteAgentReleaseAction.bind, one
@@ -21,11 +22,23 @@ export async function publishAgentReleaseAction(formData: FormData) {
       clean.append(field, value);
     }
   }
-  await publishAgentRelease(clean);
+
+  try {
+    await publishAgentRelease(clean);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '';
+    redirect(`/platform/agent-releases?error=${message.includes('already published') ? 'duplicate' : '1'}`);
+  }
   revalidatePath('/platform/agent-releases');
+  redirect('/platform/agent-releases?published=1');
 }
 
 export async function deleteAgentReleaseAction(id: string) {
-  await deleteAgentRelease(id);
+  try {
+    await deleteAgentRelease(id);
+  } catch {
+    redirect('/platform/agent-releases?deleteError=1');
+  }
   revalidatePath('/platform/agent-releases');
+  redirect('/platform/agent-releases?deleted=1');
 }

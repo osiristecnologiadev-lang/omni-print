@@ -1,5 +1,7 @@
 import { getAgentReleases } from '@/lib/platform-api';
 import { publishAgentReleaseAction, deleteAgentReleaseAction } from './actions';
+import { PlainSubmitButton } from '@/components/SubmitButton';
+import { PlatformBanner } from '@/components/Banner';
 
 function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
@@ -10,7 +12,8 @@ function formatBytes(bytes: number): string {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
 }
 
-export default async function AgentReleasesPage() {
+export default async function AgentReleasesPage(props: PageProps<'/platform/agent-releases'>) {
+  const searchParams = await props.searchParams;
   const releases = await getAgentReleases();
 
   return (
@@ -22,6 +25,18 @@ export default async function AgentReleasesPage() {
         ser que <code>auto_update.enabled</code> esteja desligado no <code>config.yaml</code> do cliente e a
         release não esteja marcada como obrigatória.
       </p>
+
+      {searchParams?.published === '1' && <PlatformBanner tone="success">Release publicada.</PlatformBanner>}
+      {searchParams?.error === 'duplicate' && (
+        <PlatformBanner tone="error">Já existe uma release dessa plataforma com essa versão.</PlatformBanner>
+      )}
+      {searchParams?.error === '1' && (
+        <PlatformBanner tone="error">Não foi possível publicar a release. Confira os dados e tente novamente.</PlatformBanner>
+      )}
+      {searchParams?.deleted === '1' && <PlatformBanner tone="success">Release removida.</PlatformBanner>}
+      {searchParams?.deleteError === '1' && (
+        <PlatformBanner tone="error">Não foi possível remover a release. Tente novamente.</PlatformBanner>
+      )}
 
       <form
         action={publishAgentReleaseAction}
@@ -87,12 +102,12 @@ export default async function AgentReleasesPage() {
           Obrigatória (aplica mesmo em instalações com auto_update desligado)
         </label>
 
-        <button
-          type="submit"
+        <PlainSubmitButton
           className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+          pendingLabel="Publicando... pode levar alguns segundos"
         >
           Publicar release
-        </button>
+        </PlainSubmitButton>
       </form>
 
       {releases.length === 0 ? (
@@ -123,9 +138,9 @@ export default async function AgentReleasesPage() {
                 </div>
               </div>
               <form action={deleteAgentReleaseAction.bind(null, r.id)}>
-                <button type="submit" className="text-sm text-gray-500 transition-colors hover:text-red-400">
+                <PlainSubmitButton className="text-sm text-gray-500 transition-colors hover:text-red-400" pendingLabel="Removendo...">
                   Remover
-                </button>
+                </PlainSubmitButton>
               </form>
             </li>
           ))}

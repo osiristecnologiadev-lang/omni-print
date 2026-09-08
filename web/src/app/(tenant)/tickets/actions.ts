@@ -10,21 +10,33 @@ function str(formData: FormData, name: string): string | undefined {
 
 export async function createTicketAction(customerId: string, formData: FormData) {
   const deviceId = str(formData, 'deviceId');
-  const ticket = await createTicket(customerId, {
-    subject: str(formData, 'subject') ?? '',
-    description: str(formData, 'description') ?? '',
-    priority: (str(formData, 'priority') as TicketPriority | undefined) ?? undefined,
-    deviceId: deviceId || undefined,
-  });
+  let ticketId: string;
+  try {
+    const ticket = await createTicket(customerId, {
+      subject: str(formData, 'subject') ?? '',
+      description: str(formData, 'description') ?? '',
+      priority: (str(formData, 'priority') as TicketPriority | undefined) ?? undefined,
+      deviceId: deviceId || undefined,
+    });
+    ticketId = ticket.id;
+  } catch {
+    redirect(`/tickets/new?customerId=${customerId}&error=1`);
+  }
   revalidatePath('/tickets');
-  redirect(`/tickets/${ticket.id}`);
+  redirect(`/tickets/${ticketId}`);
 }
 
 export async function addTicketCommentAction(customerId: string, ticketId: string, formData: FormData) {
   const body = str(formData, 'body');
   if (!body) return;
-  await addTicketComment(customerId, ticketId, body);
+
+  try {
+    await addTicketComment(customerId, ticketId, body);
+  } catch {
+    redirect(`/tickets/${ticketId}?commentError=1`);
+  }
   revalidatePath(`/tickets/${ticketId}`);
+  redirect(`/tickets/${ticketId}?commentAdded=1`);
 }
 
 export async function updateTicketAction(ticketId: string, formData: FormData) {
@@ -33,7 +45,12 @@ export async function updateTicketAction(ticketId: string, formData: FormData) {
   const assignedToRaw = formData.get('assignedToUserId');
   const assignedToUserId = assignedToRaw === null ? undefined : String(assignedToRaw) || null;
 
-  await updateTicket(ticketId, { status, priority, assignedToUserId });
+  try {
+    await updateTicket(ticketId, { status, priority, assignedToUserId });
+  } catch {
+    redirect(`/tickets/${ticketId}?updateError=1`);
+  }
   revalidatePath(`/tickets/${ticketId}`);
   revalidatePath('/tickets');
+  redirect(`/tickets/${ticketId}?updated=1`);
 }

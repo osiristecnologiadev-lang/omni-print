@@ -3,7 +3,8 @@ import { getSession, getTenant } from '@/lib/api';
 import { updateTenantAction } from './actions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
-import { Button } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 
 const inputClass =
   'mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
@@ -25,11 +26,8 @@ export default async function SettingsPage(props: PageProps<'/settings'>) {
         subtitle='Essas informações aparecem como o emissor ("prestador") nas faturas geradas para os seus clientes.'
       />
 
-      {searchParams?.saved === '1' && (
-        <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-          Dados salvos.
-        </p>
-      )}
+      {searchParams?.saved === '1' && <Banner tone="success">Dados salvos.</Banner>}
+      {searchParams?.error === '1' && <Banner tone="error">Não foi possível salvar os dados. Tente novamente.</Banner>}
 
       <Panel>
         <form action={updateTenantAction} className="space-y-4">
@@ -73,9 +71,9 @@ export default async function SettingsPage(props: PageProps<'/settings'>) {
               </span>
             </label>
           </div>
-          <Button type="submit" variant="primary">
+          <SubmitButton variant="primary" pendingLabel="Salvando...">
             Salvar
-          </Button>
+          </SubmitButton>
         </form>
       </Panel>
     </main>

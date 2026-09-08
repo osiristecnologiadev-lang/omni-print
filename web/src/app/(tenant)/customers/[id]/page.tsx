@@ -8,6 +8,7 @@ import {
   getLowSupplyForecast,
   getSession,
   getUsers,
+  type AgentTokenSummary,
 } from '@/lib/api';
 import { CreateTokenForm } from './CreateTokenForm';
 import {
@@ -19,7 +20,9 @@ import {
 } from './actions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel, PanelSection } from '@/components/Panel';
-import { Button, buttonClasses } from '@/components/Button';
+import { buttonClasses } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
+import { Banner } from '@/components/Banner';
 import { Badge } from '@/components/Badge';
 import { SupplyForecastFacts } from '@/components/SupplyForecastFacts';
 
@@ -29,6 +32,18 @@ const inputClass = `mt-1 ${fieldClass}`;
 
 function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+}
+
+// A token is only meaningfully "active" if an agent has actually checked in
+// with it recently - auto_update's default check_interval is 6h, so a real
+// live install should never go much past that without being seen again.
+const TOKEN_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+function tokenStatusBadge(t: AgentTokenSummary) {
+  if (t.revokedAt) return <Badge tone="neutral">Revogado</Badge>;
+  if (!t.lastCheckinAt) return <Badge tone="warning">Nunca usado</Badge>;
+  const stale = Date.now() - new Date(t.lastCheckinAt).getTime() > TOKEN_STALE_AFTER_MS;
+  return stale ? <Badge tone="warning">Inativo</Badge> : <Badge tone="ok">Ativo</Badge>;
 }
 
 // periodStart is a UTC-midnight-anchored calendar date (always the 1st of
@@ -147,6 +162,10 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
         <p className="mb-4 text-xs text-ink-faint">
           Aparecem no bloco &ldquo;cliente&rdquo; das faturas geradas para &ldquo;{customer.name}&rdquo;.
         </p>
+        {searchParams?.infoSaved === '1' && <Banner tone="success">Dados fiscais salvos.</Banner>}
+        {searchParams?.infoError === '1' && (
+          <Banner tone="error">Não foi possível salvar os dados fiscais. Tente novamente.</Banner>
+        )}
         <form action={boundUpdateInfo} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="text-xs text-ink-muted">
             CNPJ/CPF
@@ -161,9 +180,9 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
               className={inputClass}
             />
           </label>
-          <Button type="submit" variant="secondary" size="sm" className="sm:col-span-2 sm:w-fit">
+          <SubmitButton variant="secondary" size="sm" className="sm:col-span-2 sm:w-fit" pendingLabel="Salvando...">
             Salvar
-          </Button>
+          </SubmitButton>
         </form>
       </Panel>
 
@@ -173,6 +192,8 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           Prazo de resposta por prioridade para os chamados de &ldquo;{customer.name}&rdquo;. Deixe em branco para usar
           o padrão do sistema (Urgente 4h, Alta 24h, Média 48h, Baixa 72h).
         </p>
+        {searchParams?.slaSaved === '1' && <Banner tone="success">SLA salvo.</Banner>}
+        {searchParams?.slaError === '1' && <Banner tone="error">Não foi possível salvar o SLA. Tente novamente.</Banner>}
         <form action={boundUpdateSla} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <label className="text-xs text-ink-muted">
             Urgente (h)
@@ -222,9 +243,9 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
               className={inputClass}
             />
           </label>
-          <Button type="submit" variant="secondary" size="sm" className="col-span-2 w-fit sm:col-span-4">
+          <SubmitButton variant="secondary" size="sm" className="col-span-2 w-fit sm:col-span-4" pendingLabel="Salvando...">
             Salvar
-          </Button>
+          </SubmitButton>
         </form>
       </Panel>
 
@@ -235,29 +256,21 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           somente leitura — não gerencia clientes, usuários ou tokens.
         </p>
 
-        {searchParams?.userCreated === '1' && (
-          <p className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-            Acesso criado.
-          </p>
-        )}
-        {searchParams?.userError === 'email_in_use' && (
-          <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-            Já existe um usuário com esse e-mail.
-          </p>
-        )}
+        {searchParams?.userCreated === '1' && <Banner tone="success">Acesso criado.</Banner>}
+        {searchParams?.userError === 'email_in_use' && <Banner tone="error">Já existe um usuário com esse e-mail.</Banner>}
         {searchParams?.userError === '1' && (
-          <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
-            Não foi possível criar o acesso. Confira os dados e tente novamente.
-          </p>
+          <Banner tone="error">Não foi possível criar o acesso. Confira os dados e tente novamente.</Banner>
         )}
+        {searchParams?.userRevoked === '1' && <Banner tone="success">Acesso revogado.</Banner>}
+        {searchParams?.userRevokeError === '1' && <Banner tone="error">Não foi possível revogar o acesso. Tente novamente.</Banner>}
 
         <form action={boundCreateUser} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <input name="name" placeholder="Nome" className={fieldClass} />
           <input name="email" type="email" placeholder="E-mail" required className={fieldClass} />
           <input name="password" type="password" placeholder="Senha (mín. 8)" required minLength={8} className={fieldClass} />
-          <Button type="submit" variant="primary" className="sm:col-span-3">
+          <SubmitButton variant="primary" className="sm:col-span-3" pendingLabel="Criando...">
             Criar acesso
-          </Button>
+          </SubmitButton>
         </form>
 
         {customerUsers.length > 0 && (
@@ -272,9 +285,9 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
                   <span className="text-xs text-ink-faint">revogado</span>
                 ) : (
                   <form action={boundRevokeUser.bind(null, u.id)}>
-                    <Button type="submit" variant="danger">
+                    <SubmitButton variant="danger" pendingLabel="Revogando...">
                       Revogar
-                    </Button>
+                    </SubmitButton>
                   </form>
                 )}
               </li>
@@ -290,23 +303,36 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           encontrar já chega marcada como &ldquo;{customer.name}&rdquo; automaticamente.
         </p>
 
+        {searchParams?.tokenRevoked === '1' && <Banner tone="success">Token revogado.</Banner>}
+        {searchParams?.tokenError === '1' && <Banner tone="error">Não foi possível revogar o token. Tente novamente.</Banner>}
+
         <CreateTokenForm customerId={id} />
 
         {tokens.length > 0 && (
           <ul className="mt-4 divide-y divide-line border-t border-line">
             {tokens.map((t) => (
-              <li key={t.id} className="flex items-center justify-between py-2.5 text-sm">
+              <li key={t.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                 <div>
-                  <span className="text-ink">{t.label || 'Sem rótulo'}</span>
-                  <span className="ml-2 text-xs text-ink-faint">criado em {formatDateTime(t.createdAt)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-ink">{t.label || 'Sem rótulo'}</span>
+                    {tokenStatusBadge(t)}
+                  </div>
+                  <div className="text-xs text-ink-faint">
+                    criado em {formatDateTime(t.createdAt)}
+                    {t.lastCheckinAt && (
+                      <>
+                        {' '}
+                        · última atividade em {formatDateTime(t.lastCheckinAt)}
+                        {t.lastSeenVersion && ` (v${t.lastSeenVersion})`}
+                      </>
+                    )}
+                  </div>
                 </div>
-                {t.revokedAt ? (
-                  <span className="text-xs text-ink-faint">revogado</span>
-                ) : (
+                {t.revokedAt ? null : (
                   <form action={boundRevokeToken.bind(null, t.id)}>
-                    <Button type="submit" variant="danger">
+                    <SubmitButton variant="danger" pendingLabel="Revogando...">
                       Revogar
-                    </Button>
+                    </SubmitButton>
                   </form>
                 )}
               </li>

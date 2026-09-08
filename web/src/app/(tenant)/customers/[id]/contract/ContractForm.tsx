@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { ContractPricingModel } from '@/lib/api';
-import { buttonClasses } from '@/components/Button';
+import { SubmitButton } from '@/components/SubmitButton';
 
 const inputClass =
   'mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
@@ -119,9 +119,9 @@ export function ContractForm({
         </div>
       </div>
 
-      <button type="submit" className={buttonClasses('primary')}>
+      <SubmitButton variant="primary" pendingLabel="Salvando...">
         {isRenegotiate ? 'Renegociar' : 'Criar contrato'}
-      </button>
+      </SubmitButton>
     </form>
   );
 }
