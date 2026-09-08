@@ -47,6 +47,12 @@ const nextConfig: NextConfig = {
     // error occurred" against a real ~12mb binary). Raised with headroom
     // for the binary to grow (embedded version info, larger installers).
     serverActions: { bodySizeLimit: "50mb" },
+    // Separate limit, also hit by the same upload (confirmed via production
+    // logs: "Request body exceeded 10MB ... Unexpected end of form") - every
+    // request body is also cloned/re-read once by proxy.ts (this app's
+    // middleware, renamed in Next 16), capped independently at 10mb by
+    // default regardless of serverActions.bodySizeLimit above.
+    proxyClientMaxBodySize: "50mb",
   },
   async headers() {
     if (process.env.NODE_ENV !== "production") {
