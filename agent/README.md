@@ -230,12 +230,47 @@ diferença que importa é **escopo e transparência**, não "nunca varrer nada":
 Para o TI do cliente liberar o agente no antivírus/firewall corporativo, ele
 vai precisar saber:
 
+- Caminho do executável instalado: `C:\Program Files\OmniPrint\Agent\omniprint-agent.exe`
+  (`{autopf}\OmniPrint\Agent`, gerado pelo instalador)
+- Nome do serviço instalado: `OmniPrintAgent`
 - Porta de saída UDP 161 (SNMP, para as impressoras configuradas)
 - Porta de saída TCP 443 (HTTPS, para `cloud_url`)
-- Nome do serviço instalado: `OmniPrintAgent`
 
 Depois de assinar os binários com um certificado de code signing, inclua o
 hash/thumbprint do certificado nessa lista.
+
+### Caso real confirmado: FortiClient
+
+Testado e confirmado em 2026-09-08: com o **FortiClient VPN** instalado e
+seus serviços em execução (`FA_Scheduler` e afins), o agente rodando como
+serviço Windows (`LocalSystem`) trava indefinidamente durante a descoberta
+automática — nem uma varredura de 6 hosts termina em minutos, embora o
+mesmo binário rodando em primeiro plano (sessão interativa do usuário)
+funcione normalmente. Fechando o FortiClient, a mesma varredura de 510 hosts
+completou em ~104s, idêntico ao tempo esperado — confirma que o driver de
+rede do FortiClient (que fica carregado mesmo sem uma sessão VPN ativa) é a
+causa, não um bug do agente.
+
+Isso importa porque um cliente real vai ter o agente instalado numa máquina
+com antivírus/EDR corporativo (FortiClient ou equivalente) rodando o tempo
+todo - não dá pra depender de "peça pro cliente fechar o antivírus da
+empresa dele". Até ter o executável assinado (ver "Assinatura de código"
+abaixo, a mitigação mais efetiva pra esse tipo de bloqueio), se a descoberta
+automática travar num cliente:
+
+1. Confirme que é isso mesmo: veja se `omniprint-agent.log` para de progredir
+   logo após `discovery: scanning ...` (varredura completa) sem nunca listar
+   nenhuma impressora encontrada, mesmo em redes onde se sabe que existem
+   impressoras respondendo.
+2. Peça ao TI do cliente pra abrir o console do EDR/antivírus da empresa
+   (FortiClient EMS, ou equivalente de CrowdStrike/SentinelOne/outro) e
+   adicionar uma exceção pelo caminho do executável e/ou nome do serviço
+   acima - isso normalmente é feito de forma centralizada pela política do
+   EDR, não localmente em cada máquina.
+3. Como contorno temporário enquanto a exceção não é aplicada: desabilitar
+   `discovery.enabled` no `config.yaml` e listar os IPs das impressoras
+   manualmente em `devices` continua funcionando normalmente (coleta e
+   envio de métricas não dependem da varredura automática).
 
 ## Assinatura de código
 

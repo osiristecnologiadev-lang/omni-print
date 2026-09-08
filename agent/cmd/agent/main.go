@@ -14,6 +14,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/kardianos/service"
@@ -58,8 +59,21 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
+	absConfigPath, err := filepath.Abs(*configPath)
+	if err != nil {
+		log.Fatalf("failed to resolve config path: %v", err)
+	}
+
 	if cfg.LogFile != "" {
-		f, err := os.OpenFile(cfg.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		// A relative log_file is resolved against config.yaml's own directory,
+		// not the process's working directory - a Windows service doesn't run
+		// with the directory `install` was invoked from as its CWD, same
+		// reasoning as absConfigPath above.
+		logPath := cfg.LogFile
+		if !filepath.IsAbs(logPath) {
+			logPath = filepath.Join(filepath.Dir(absConfigPath), logPath)
+		}
+		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Fatalf("failed to open log file: %v", err)
 		}
@@ -67,7 +81,7 @@ func main() {
 		log.SetOutput(f)
 	}
 
-	svcInstance, err := svc.New(cfg, version)
+	svcInstance, err := svc.New(cfg, version, absConfigPath)
 	if err != nil {
 		log.Fatalf("failed to create service: %v", err)
 	}

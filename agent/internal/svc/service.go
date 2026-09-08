@@ -33,12 +33,17 @@ type program struct {
 // admins and to AV/EDR heuristics inspecting installed services. version is
 // this build's own version string (see cmd/agent/main.go's -X main.version
 // ldflag) - threaded through so the update checker knows what it's
-// currently running.
-func New(cfg *config.Config, version string) (service.Service, error) {
+// currently running. configPath is recorded as a service startup argument
+// (Arguments below) so the installed service knows where config.yaml lives
+// even though the OS starts it with an unrelated working directory (e.g.
+// System32 on Windows) rather than the directory `install` was run from -
+// without this, the started service can't find its config at all.
+func New(cfg *config.Config, version string, configPath string) (service.Service, error) {
 	svcConfig := &service.Config{
 		Name:        updater.ServiceName,
 		DisplayName: "OmniPrint Monitoring Agent",
 		Description: "Collects printer fleet metrics via SNMP and reports them to the OmniPrint cloud platform.",
+		Arguments:   []string{"-config", configPath},
 	}
 	prg := &program{cfg: cfg, version: version, done: make(chan struct{})}
 	return service.New(prg, svcConfig)
