@@ -92,10 +92,17 @@ end;
 
 // YAML string values are wrapped in double quotes with any embedded quote
 // escaped - tenant/token/URL are opaque platform-issued values, never
-// user-typed YAML syntax, so this simple escaping is enough.
+// user-typed YAML syntax, so this simple escaping is enough. StringChange
+// mutates its first argument by reference and returns the replacement
+// count (an Integer), not the resulting string - it needs a local var,
+// not S itself (declared const here).
 function YamlQuote(const S: String): String;
+var
+  Escaped: String;
 begin
-  Result := '"' + StringChange(S, '"', '\"') + '"';
+  Escaped := S;
+  StringChange(Escaped, '"', '\"');
+  Result := '"' + Escaped + '"';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -105,19 +112,21 @@ begin
   if CurStep = ssPostInstall then
   begin
     ConfigPath := ExpandConstant('{app}\config.yaml');
+    // Every line here starts with a string literal, never a bare #13#10 -
+    // Inno Setup's preprocessor treats a line whose first non-whitespace
+    // character is '#' as a directive, so a standalone "#13#10 +" line
+    // (meant as a blank-line separator) fails to compile with "Unknown
+    // preprocessor directive". Each blank-line break is appended to the end
+    // of the preceding string literal's line instead.
     Content :=
       'tenant_id: ' + YamlQuote(Trim(ConnectionPage.Values[0])) + #13#10 +
       'agent_token: ' + YamlQuote(Trim(ConnectionPage.Values[1])) + #13#10 +
-      'cloud_url: ' + YamlQuote(Trim(ConnectionPage.Values[2])) + #13#10 +
-      #13#10 +
+      'cloud_url: ' + YamlQuote(Trim(ConnectionPage.Values[2])) + #13#10 + #13#10 +
       'poll_interval: 30m' + #13#10 +
       'request_delay: 500ms' + #13#10 +
-      'log_file: "omniprint-agent.log"' + #13#10 +
-      #13#10 +
-      'full_raw_capture: true' + #13#10 +
-      #13#10 +
-      'devices: []' + #13#10 +
-      #13#10 +
+      'log_file: "omniprint-agent.log"' + #13#10 + #13#10 +
+      'full_raw_capture: true' + #13#10 + #13#10 +
+      'devices: []' + #13#10 + #13#10 +
       '# Sem impressoras cadastradas manualmente pelo instalador - descoberta' + #13#10 +
       '# automática ligada por padrão para encontrar impressoras na rede local' + #13#10 +
       '# sozinha. Edite este arquivo e reinicie o serviço para ajustar.' + #13#10 +
@@ -125,8 +134,7 @@ begin
       '  enabled: true' + #13#10 +
       '  interval: 24h' + #13#10 +
       '  concurrency: 8' + #13#10 +
-      '  probe_timeout: 800ms' + #13#10 +
-      #13#10 +
+      '  probe_timeout: 800ms' + #13#10 + #13#10 +
       'auto_update:' + #13#10 +
       '  enabled: true' + #13#10 +
       '  check_interval: 6h' + #13#10;

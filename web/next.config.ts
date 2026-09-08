@@ -40,6 +40,13 @@ const nextConfig: NextConfig = {
     // a proper 403 page to customer-scoped users who land on a tenant-wide
     // route (e.g. /customers) instead of crashing with an unhandled error.
     authInterrupts: true,
+    // Next's Server Action body limit defaults to 1mb - the platform-admin
+    // agent release publish form (publishAgentReleaseAction) uploads the
+    // agent binary and Windows installer directly as FormData, both
+    // routinely well over 1mb (confirmed failing with a generic "A server
+    // error occurred" against a real ~12mb binary). Raised with headroom
+    // for the binary to grow (embedded version info, larger installers).
+    serverActions: { bodySizeLimit: "50mb" },
   },
   async headers() {
     if (process.env.NODE_ENV !== "production") {
