@@ -98,9 +98,9 @@ export function DeviceFleetTable({ devices, isTenantWide }: { devices: DeviceRow
                       <div className="font-medium text-ink">
                         {device.customLabel ?? device.printerName ?? device.name ?? device.host}
                       </div>
-                      {device.customLabel && (device.printerName ?? device.name) && (
-                        <div className="text-xs text-ink-faint">{device.printerName ?? device.name}</div>
-                      )}
+                      <div className="text-xs text-ink-faint">
+                        Apelido: {device.customLabel ?? '—'} · Nome: {device.printerName ?? device.name ?? device.host}
+                      </div>
                     </Link>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-ink-muted">{device.host}</td>

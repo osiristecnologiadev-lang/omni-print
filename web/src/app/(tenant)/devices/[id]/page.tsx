@@ -107,7 +107,10 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
           <p className="mt-1 text-sm text-ink-muted">
             {device.host}
             {device.serialNumber ? ` · S/N ${device.serialNumber}` : ''}
-            {device.customLabel ? ` · reportado pelo agente como "${agentReportedName}"` : ''}
+          </p>
+          <p className="mt-0.5 text-sm text-ink-muted">
+            Apelido: {device.customLabel ?? <span className="text-ink-faint">não definido</span>} · Nome do agente:{' '}
+            {agentReportedName}
           </p>
           {isTenantWide && (
             <form action={boundUpdateLabel} className="mt-3 flex items-center gap-2">
