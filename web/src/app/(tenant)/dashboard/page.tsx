@@ -12,7 +12,7 @@ import { deriveHealth } from '@/lib/health';
 import { Badge, type BadgeTone } from '@/components/Badge';
 import { DeviceFleetTable } from '@/components/DeviceFleetTable';
 import { PageHeader } from '@/components/PageHeader';
-import { Panel } from '@/components/Panel';
+import { Panel, PanelSection } from '@/components/Panel';
 import { EmptyState } from '@/components/EmptyState';
 import { TrendChart } from '@/components/TrendChart';
 import { SupplyForecastFacts } from '@/components/SupplyForecastFacts';
@@ -42,6 +42,11 @@ function formatUtcDate(iso: string): string {
 
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(iso));
+}
+
+function formatPageCount(value: string | null | undefined): string {
+  if (value == null) return '—';
+  return new Intl.NumberFormat('pt-BR').format(Number(value));
 }
 
 function StatTile({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'warning' | 'critical' }) {
@@ -138,22 +143,46 @@ export default async function DashboardPage() {
       )}
 
       {activeAlerts.length > 0 && (
-        <Panel className="mb-8">
-          <h2 className="mb-3 text-sm font-medium text-ink">Alertas ativos da frota ({activeAlerts.length})</h2>
-          <ul className="divide-y divide-line">
-            {activeAlerts.map((a, i) => (
-              <li key={`${a.deviceId}-${i}`} className="flex items-center justify-between gap-3 py-2 text-sm">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Badge tone={SEVERITY_TONE[a.severity] ?? 'neutral'}>{SEVERITY_LABEL[a.severity] ?? a.severity}</Badge>
-                  <Link href={`/devices/${a.deviceId}`} className="truncate font-medium text-ink transition-colors hover:text-accent">
-                    {a.deviceName}
-                  </Link>
-                </div>
-                <span className="max-w-[55%] truncate text-xs text-ink-faint">{a.description ?? '—'}</span>
-              </li>
-            ))}
-          </ul>
-        </Panel>
+        <PanelSection title={`Alertas ativos da frota (${activeAlerts.length})`} className="mb-8">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-surface-2 text-xs uppercase tracking-wide text-ink-muted">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium">Dispositivo</th>
+                  <th className="px-4 py-2.5 font-medium">IP</th>
+                  <th className="px-4 py-2.5 font-medium">Nº de série</th>
+                  {isTenantWide && <th className="px-4 py-2.5 font-medium">Cliente</th>}
+                  <th className="px-4 py-2.5 font-medium">Status</th>
+                  <th className="px-4 py-2.5 font-medium">Páginas</th>
+                  <th className="px-4 py-2.5 font-medium">Descrição</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {activeAlerts.map((a, i) => (
+                  <tr key={`${a.deviceId}-${i}`} className="transition-colors hover:bg-surface-2">
+                    <td className="px-4 py-2.5">
+                      <Link href={`/devices/${a.deviceId}`} className="font-medium text-ink transition-colors hover:text-accent">
+                        {a.deviceName}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink-muted">{a.host}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink-muted">{a.serialNumber ?? '—'}</td>
+                    {isTenantWide && (
+                      <td className="px-4 py-2.5 text-ink-muted">
+                        {a.customerName ?? <span className="text-ink-faint">—</span>}
+                      </td>
+                    )}
+                    <td className="px-4 py-2.5">
+                      <Badge tone={SEVERITY_TONE[a.severity] ?? 'neutral'}>{SEVERITY_LABEL[a.severity] ?? a.severity}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums text-ink-muted">{formatPageCount(a.pageCount)}</td>
+                    <td className="max-w-[320px] truncate px-4 py-2.5 text-xs text-ink-faint">{a.description ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </PanelSection>
       )}
 
       {lowSupplies.length > 0 && (

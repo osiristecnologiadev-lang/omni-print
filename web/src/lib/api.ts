@@ -263,6 +263,11 @@ export interface DailySupplyPoint {
 export interface ActiveAlert {
   deviceId: string;
   deviceName: string;
+  host: string;
+  serialNumber: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  pageCount: string | null;
   severity: string;
   code?: number;
   description?: string;

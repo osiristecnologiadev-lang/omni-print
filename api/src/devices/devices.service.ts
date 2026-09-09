@@ -238,6 +238,11 @@ export class DevicesService {
     const rows: Array<{
       deviceId: string;
       deviceName: string;
+      host: string;
+      serialNumber: string | null;
+      customerId: string | null;
+      customerName: string | null;
+      pageCount: bigint | null;
       severity: string;
       code?: number;
       description?: string;
@@ -248,6 +253,11 @@ export class DevicesService {
         rows.push({
           deviceId: device.id,
           deviceName: device.customLabel ?? device.printerName ?? device.name ?? device.host,
+          host: device.host,
+          serialNumber: device.serialNumber,
+          customerId: device.customerId,
+          customerName: device.customer?.name ?? null,
+          pageCount: device.latestMetric?.page_count ?? null,
           severity: alert.severity,
           code: alert.code,
           description: alert.description,

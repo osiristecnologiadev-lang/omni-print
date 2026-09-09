@@ -19,12 +19,14 @@ import {
   updateCustomerSlaAction,
 } from './actions';
 import { PageHeader } from '@/components/PageHeader';
-import { Panel, PanelSection } from '@/components/Panel';
+import { Panel } from '@/components/Panel';
 import { buttonClasses } from '@/components/Button';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
 import { Badge } from '@/components/Badge';
 import { SupplyForecastFacts } from '@/components/SupplyForecastFacts';
+import { DeviceFleetTable } from '@/components/DeviceFleetTable';
+import { deriveHealth } from '@/lib/health';
 
 const fieldClass =
   'w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
@@ -341,22 +343,19 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
         )}
       </Panel>
 
-      <PanelSection title="Dispositivos" className="mt-6">
+      <div className="mt-6">
+        <h2 className="mb-3 text-sm font-medium text-ink">Dispositivos</h2>
         {customerDevices.length === 0 ? (
-          <p className="p-5 text-sm text-ink-faint">Nenhum dispositivo atribuído ainda.</p>
+          <p className="rounded-xl border border-dashed border-line p-5 text-sm text-ink-faint">
+            Nenhum dispositivo atribuído ainda.
+          </p>
         ) : (
-          <ul className="divide-y divide-line">
-            {customerDevices.map((d) => (
-              <li key={d.id} className="px-5 py-3 text-sm">
-                <Link href={`/devices/${d.id}`} className="text-ink transition-colors hover:text-accent">
-                  {d.customLabel ?? d.printerName ?? d.name ?? d.host}
-                </Link>
-                <span className="ml-2 text-xs text-ink-faint">{d.host}</span>
-              </li>
-            ))}
-          </ul>
+          <DeviceFleetTable
+            devices={customerDevices.map((d) => ({ ...d, health: deriveHealth(d.latestMetric) }))}
+            isTenantWide={false}
+          />
         )}
-      </PanelSection>
+      </div>
     </main>
   );
 }
