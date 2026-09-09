@@ -18,6 +18,11 @@ export class DevicesController {
     return this.devicesService.fleetPageTrend(req.tenantId, req.customerId, parseDays(days));
   }
 
+  @Get('devices/current-month-pages')
+  async fleetCurrentMonthPages(@Req() req: any) {
+    return this.devicesService.fleetCurrentMonthPages(req.tenantId, req.customerId);
+  }
+
   @Get('alerts')
   async activeAlerts(@Req() req: any) {
     return this.devicesService.activeAlerts(req.tenantId, req.customerId);
@@ -45,6 +50,11 @@ export class DevicesController {
   @Get('devices/:id/page-trend')
   async pageTrend(@Req() req: any, @Param('id') id: string, @Query('days') days?: string) {
     return this.devicesService.pageTrend(req.tenantId, req.customerId, id, parseDays(days));
+  }
+
+  @Get('devices/:id/current-month-pages')
+  async currentMonthPages(@Req() req: any, @Param('id') id: string) {
+    return this.devicesService.currentMonthPages(req.tenantId, req.customerId, id);
   }
 
   @Get('devices/:id/supply-trend')

@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { ContractsService } from './contracts.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DevicePagesService } from '../common/device-pages.service';
 
 // End-to-end coverage of resolveBilling's per-pricing-model math, using the
 // exact real numbers validated by hand against real customer data this
@@ -43,7 +44,7 @@ describe('ContractsService.resolveBilling', () => {
     };
 
     const moduleRef = await Test.createTestingModule({
-      providers: [ContractsService, { provide: PrismaService, useValue: prisma }],
+      providers: [ContractsService, DevicePagesService, { provide: PrismaService, useValue: prisma }],
     }).compile();
 
     service = moduleRef.get(ContractsService);
@@ -517,7 +518,7 @@ describe('ContractsService.currentPeriodPreview', () => {
     };
 
     const moduleRef = await Test.createTestingModule({
-      providers: [ContractsService, { provide: PrismaService, useValue: prisma }],
+      providers: [ContractsService, DevicePagesService, { provide: PrismaService, useValue: prisma }],
     }).compile();
 
     service = moduleRef.get(ContractsService);
@@ -553,7 +554,7 @@ describe('ContractsService.portfolioCurrentPeriodPreview', () => {
     };
 
     const moduleRef = await Test.createTestingModule({
-      providers: [ContractsService, { provide: PrismaService, useValue: prisma }],
+      providers: [ContractsService, DevicePagesService, { provide: PrismaService, useValue: prisma }],
     }).compile();
 
     service = moduleRef.get(ContractsService);

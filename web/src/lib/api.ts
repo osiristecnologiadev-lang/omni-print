@@ -313,6 +313,40 @@ export function getFleetPageTrend(days = 30): Promise<DailyPagePoint[]> {
   return apiFetch<DailyPagePoint[]>(`/v1/devices/trend?days=${days}`);
 }
 
+// "How much has been printed since the 1st of this month, right now" - the
+// same window/math ContractsService bills off, but doesn't need a billing
+// contract to exist (unlike getCurrentPeriodBilling/getPortfolioCurrentPeriod).
+export interface DeviceCurrentMonthPages {
+  periodStart: string;
+  periodEnd: string;
+  pages: number;
+  monoPages: number;
+  colorPages: number;
+  startReading: number | null;
+  endReading: number | null;
+  counterReset: boolean;
+  usedManualBaseline: boolean;
+  usedFallbackForReset: boolean;
+  enginePages: number;
+  engineStartReading: number | null;
+  engineEndReading: number | null;
+}
+
+export function getDeviceCurrentMonthPages(deviceId: string): Promise<DeviceCurrentMonthPages> {
+  return apiFetch<DeviceCurrentMonthPages>(`/v1/devices/${deviceId}/current-month-pages`);
+}
+
+export interface FleetCurrentMonthPages {
+  periodStart: string;
+  periodEnd: string;
+  totalPages: number;
+  deviceCount: number;
+}
+
+export function getFleetCurrentMonthPages(): Promise<FleetCurrentMonthPages> {
+  return apiFetch<FleetCurrentMonthPages>('/v1/devices/current-month-pages');
+}
+
 export function getActiveAlerts(): Promise<ActiveAlert[]> {
   return apiFetch<ActiveAlert[]>('/v1/alerts');
 }

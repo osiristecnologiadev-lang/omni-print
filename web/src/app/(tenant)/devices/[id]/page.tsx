@@ -6,6 +6,7 @@ import {
   getDevicePageTrend,
   getDeviceSupplyTrend,
   getDeviceSupplyForecast,
+  getDeviceCurrentMonthPages,
   getCustomers,
   getSession,
   getViewerTimeZone,
@@ -65,12 +66,13 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
     notFound();
   }
 
-  const [metrics, session, pageTrend, supplyTrend, supplyForecast, tz] = await Promise.all([
+  const [metrics, session, pageTrend, supplyTrend, supplyForecast, currentMonthPages, tz] = await Promise.all([
     getDeviceMetrics(id, 50),
     getSession(),
     getDevicePageTrend(id, 30),
     getDeviceSupplyTrend(id, 30),
     getDeviceSupplyForecast(id, 90),
+    getDeviceCurrentMonthPages(id),
     getViewerTimeZone(),
   ]);
   const forecastByDescription = new Map(supplyForecast.map((f) => [f.description, f]));
@@ -195,6 +197,38 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
               <div className="flex justify-between gap-4">
                 <dt className="text-ink-muted">Contador do mecanismo</dt>
                 <dd className="tabular-nums text-ink-faint">{formatPageCount(engineDisplayPageCount(latest))}</dd>
+              </div>
+            )}
+            <div className="flex justify-between gap-4">
+              <dt className="text-ink-muted">
+                Impresso este mês (até agora)
+                {currentMonthPages.counterReset && (
+                  <span
+                    title={
+                      currentMonthPages.usedFallbackForReset
+                        ? 'O contador de páginas impressas reiniciou neste mês - esse trecho foi calculado pelo contador do mecanismo.'
+                        : 'Contador reiniciado neste mês - páginas já recalculadas corretamente.'
+                    }
+                    className="ml-1 text-amber-600 dark:text-amber-400"
+                  >
+                    *
+                  </span>
+                )}
+                {currentMonthPages.usedManualBaseline && (
+                  <span
+                    title="Leitura anterior informada manualmente - monitoramento começou depois do início do mês."
+                    className="ml-1 text-accent"
+                  >
+                    †
+                  </span>
+                )}
+              </dt>
+              <dd className="tabular-nums font-medium text-ink">{formatPageCount(currentMonthPages.pages)}</dd>
+            </div>
+            {currentMonthPages.enginePages !== currentMonthPages.pages && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-ink-muted">Mecanismo, este mês</dt>
+                <dd className="tabular-nums text-ink-faint">{formatPageCount(currentMonthPages.enginePages)}</dd>
               </div>
             )}
             <div className="flex justify-between gap-4">

@@ -4,6 +4,7 @@ import {
   getBillingAlerts,
   getDevices,
   getFleetPageTrend,
+  getFleetCurrentMonthPages,
   getLowSupplyForecast,
   getPortfolioCurrentPeriod,
   getSession,
@@ -58,7 +59,7 @@ function StatTile({ label, value, tone = 'default' }: { label: string; value: nu
   return (
     <div className="rounded-xl border border-line bg-surface px-5 py-4">
       <p className="text-xs font-medium text-ink-muted">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${valueClass}`}>{value}</p>
+      <p className={`mt-1 text-2xl font-semibold tabular-nums ${valueClass}`}>{integer.format(value)}</p>
     </div>
   );
 }
@@ -66,12 +67,13 @@ function StatTile({ label, value, tone = 'default' }: { label: string; value: nu
 export default async function DashboardPage() {
   const [devices, session] = await Promise.all([getDevices(), getSession()]);
   const isTenantWide = session != null && !session.customerId;
-  const [alerts, activeAlerts, pageTrend, lowSupplies, currentPeriod] = await Promise.all([
+  const [alerts, activeAlerts, pageTrend, lowSupplies, currentPeriod, currentMonthPages] = await Promise.all([
     isTenantWide ? getBillingAlerts() : Promise.resolve(null),
     getActiveAlerts(),
     getFleetPageTrend(30),
     getLowSupplyForecast(14, 90),
     isTenantWide ? getPortfolioCurrentPeriod() : Promise.resolve(null),
+    getFleetCurrentMonthPages(),
   ]);
   const hasAlerts = !!alerts && (alerts.expiringContracts.length > 0 || alerts.overdueInvoices.length > 0);
   const trendData = pageTrend.map((p) => ({ label: formatShortDate(p.date), value: p.pages }));
@@ -89,11 +91,12 @@ export default async function DashboardPage() {
       />
 
       {devices.length > 0 && (
-        <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <StatTile label="Total" value={devices.length} />
           <StatTile label="Normais" value={okCount} />
           <StatTile label="Atenção" value={warningCount} tone="warning" />
           <StatTile label="Críticos" value={criticalCount} tone="critical" />
+          <StatTile label="Páginas este mês" value={currentMonthPages.totalPages} />
         </div>
       )}
 

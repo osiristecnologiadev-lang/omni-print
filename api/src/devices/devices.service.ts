@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { bucketDeltas, displayPageCount } from '../common/counter.util';
 import { lowestSupplyPercent } from '../common/supplies.util';
 import { forecastSupply, type SupplyReading } from '../common/supply-forecast.util';
+import { DevicePagesService } from '../common/device-pages.service';
 
 interface DailyPoint {
   date: string;
@@ -36,7 +37,10 @@ interface LatestMetricRow {
 
 @Injectable()
 export class DevicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly devicePages: DevicePagesService,
+  ) {}
 
   // customerId narrows visibility: null (tenant-wide user) sees every
   // device in the tenant; set (customer-scoped user) sees only that
@@ -172,6 +176,48 @@ export class DevicesService {
       throw new NotFoundException('device not found');
     }
     return this.deviceDailyPageDeltas(deviceId, days);
+  }
+
+  // "How many pages has this device printed since the start of the current
+  // calendar month, right now" - same UTC month anchor
+  // ContractsService.calculateBilling uses, and the exact same
+  // reset/fallback/printed-vs-engine-counter math (via the shared
+  // DevicePagesService), but deliberately does NOT need a billing contract
+  // to exist - ContractsService.currentPeriodPreview does the equivalent
+  // computation but only for a customer that already has one. A tenant
+  // that hasn't set up billing yet (or a device with no customer assigned
+  // at all) still gets to see real usage.
+  async currentMonthPages(tenantId: string, customerId: string | null, deviceId: string) {
+    const device = await this.prisma.device.findFirst({
+      where: { id: deviceId, tenantId, ...(customerId ? { customerId } : {}) },
+    });
+    if (!device) {
+      throw new NotFoundException('device not found');
+    }
+    const now = new Date();
+    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const result = await this.devicePages.pagesInPeriod(device, periodStart, now);
+    return { periodStart: periodStart.toISOString(), periodEnd: now.toISOString(), ...result };
+  }
+
+  // Same as currentMonthPages but summed across every device visible to the
+  // caller - the fleet-wide "how much has been printed this month so far"
+  // headline, for the dashboard. No contract needed anywhere in the fleet
+  // for this to show real numbers, unlike the "receita garantida" panel.
+  async fleetCurrentMonthPages(tenantId: string, customerId: string | null) {
+    const devices = await this.prisma.device.findMany({
+      where: { tenantId, ...(customerId ? { customerId } : {}) },
+    });
+    const now = new Date();
+    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const perDevice = await Promise.all(devices.map((d) => this.devicePages.pagesInPeriod(d, periodStart, now)));
+    const totalPages = perDevice.reduce((sum, r) => sum + r.pages, 0);
+    return {
+      periodStart: periodStart.toISOString(),
+      periodEnd: now.toISOString(),
+      totalPages,
+      deviceCount: devices.length,
+    };
   }
 
   private async deviceDailyPageDeltas(deviceId: string, days: number): Promise<DailyPoint[]> {
