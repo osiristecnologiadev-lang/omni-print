@@ -8,16 +8,30 @@ export interface PagesInPeriodResult {
   colorPages: number;
   startReading: number | null;
   endReading: number | null;
+  // When each figure above actually starts/ends counting from - NOT always
+  // periodStart/periodEnd. `pages`' own start can be the manual baseline
+  // date (earlier than periodStart) or a device's first-ever real reading
+  // (later than periodStart, if monitoring started mid-period) - showing
+  // these dates is what actually explains why `pages` and `enginePages`
+  // below can cover different windows and so aren't directly comparable.
+  startReadingAt: string | null;
+  endReadingAt: string | null;
   counterReset: boolean;
   usedManualBaseline: boolean;
   // The device's own lifetime engine/mechanism counter (prtMarkerLifeCount)
   // - shown as supplementary info alongside `pages` above, which prefers
   // the vendor's "pages actually printed" counter when available (see this
   // method's body). Always computed, even when `pages` came from a
-  // different source entirely.
+  // different source entirely. Its own start/end dates are tracked
+  // separately (engineStartReadingAt/engineEndReadingAt) since the manual
+  // baseline only ever anchors ONE of the two pipelines (see
+  // manualBaselineValid's comment) - this one's window is often shorter,
+  // starting from the device's first real reading instead.
   enginePages: number;
   engineStartReading: number | null;
   engineEndReading: number | null;
+  engineStartReadingAt: string | null;
+  engineEndReadingAt: string | null;
   // True when at least one hop this period had the "printed" counter
   // reset and got bridged using the engine counter's own delta for that
   // hop instead - see the fallback loop in this method's body.
@@ -120,6 +134,8 @@ export class DevicePagesService {
     let usedManualBaseline = false;
     let splitStartReading: number | null = null;
     let splitEndReading: number | null = null;
+    let splitStartReadingAt: Date | null = null;
+    let splitEndReadingAt: Date | null = null;
 
     if (useSplitPipeline) {
       const splitReadings = manualHelpsSplit
@@ -194,6 +210,8 @@ export class DevicePagesService {
       usedFallbackForReset = usedFallback;
       splitStartReading = filtered[0].combined;
       splitEndReading = filtered[filtered.length - 1].combined;
+      splitStartReadingAt = filtered[0].collectedAt;
+      splitEndReadingAt = filtered[filtered.length - 1].collectedAt;
     }
 
     // The device's own lifetime engine/mechanism counter (prtMarkerLifeCount)
@@ -232,10 +250,13 @@ export class DevicePagesService {
       ];
       usedManualBaseline = true;
     }
-    const pageCounts = filterTransientDropoutsBy(engineSequence, (r) => r.value).map((r) => r.value);
+    const filteredEngine = filterTransientDropoutsBy(engineSequence, (r) => r.value);
+    const pageCounts = filteredEngine.map((r) => r.value);
     const { total: enginePages, reset: engineReset } = sumWithResetHandling(pageCounts);
     const engineStartReading = pageCounts[0] ?? null;
     const engineEndReading = pageCounts[pageCounts.length - 1] ?? null;
+    const engineStartReadingAt = filteredEngine[0]?.collectedAt ?? null;
+    const engineEndReadingAt = filteredEngine[filteredEngine.length - 1]?.collectedAt ?? null;
 
     if (!useSplitPipeline) {
       pages = enginePages;
@@ -254,11 +275,15 @@ export class DevicePagesService {
       // the total).
       startReading: splitStartReading ?? engineStartReading,
       endReading: splitEndReading ?? engineEndReading,
+      startReadingAt: (splitStartReadingAt ?? engineStartReadingAt)?.toISOString() ?? null,
+      endReadingAt: (splitEndReadingAt ?? engineEndReadingAt)?.toISOString() ?? null,
       counterReset,
       usedManualBaseline,
       enginePages,
       engineStartReading,
       engineEndReading,
+      engineStartReadingAt: engineStartReadingAt?.toISOString() ?? null,
+      engineEndReadingAt: engineEndReadingAt?.toISOString() ?? null,
       usedFallbackForReset,
     };
   }

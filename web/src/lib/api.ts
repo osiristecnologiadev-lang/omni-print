@@ -324,12 +324,21 @@ export interface DeviceCurrentMonthPages {
   colorPages: number;
   startReading: number | null;
   endReading: number | null;
+  // When `pages` actually starts/ends counting from - not always
+  // periodStart/periodEnd (the manual baseline date, or the device's first
+  // real reading if monitoring started mid-period, can push it later or
+  // earlier). See enginePages' own dates below for why the two figures
+  // often cover different windows and aren't directly comparable.
+  startReadingAt: string | null;
+  endReadingAt: string | null;
   counterReset: boolean;
   usedManualBaseline: boolean;
   usedFallbackForReset: boolean;
   enginePages: number;
   engineStartReading: number | null;
   engineEndReading: number | null;
+  engineStartReadingAt: string | null;
+  engineEndReadingAt: string | null;
 }
 
 export function getDeviceCurrentMonthPages(deviceId: string): Promise<DeviceCurrentMonthPages> {

@@ -43,6 +43,15 @@ function formatPageCount(value: number | string | null): string {
   return new Intl.NumberFormat('pt-BR').format(Number(value));
 }
 
+// Just "DD/MM" - used as a short "desde ..." caption under a page-count
+// figure, to make clear which two figures start counting from different
+// dates (the manual baseline date vs. a device's first real reading) rather
+// than looking like directly comparable totals for the same window.
+function formatShortReadingDate(iso: string | null, timeZone?: string): string {
+  if (!iso) return '—';
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone }).format(new Date(iso));
+}
+
 function formatUptime(ticks: string | null): string {
   if (ticks == null) return '—';
   const totalSeconds = Number(ticks) / 100; // SNMP TimeTicks are hundredths of a second
@@ -223,12 +232,20 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
                   </span>
                 )}
               </dt>
-              <dd className="tabular-nums font-medium text-ink">{formatPageCount(currentMonthPages.pages)}</dd>
+              <dd className="text-right">
+                <div className="tabular-nums font-medium text-ink">{formatPageCount(currentMonthPages.pages)}</div>
+                <div className="text-xs text-ink-faint">desde {formatShortReadingDate(currentMonthPages.startReadingAt, tz)}</div>
+              </dd>
             </div>
             {currentMonthPages.enginePages !== currentMonthPages.pages && (
               <div className="flex justify-between gap-4">
                 <dt className="text-ink-muted">Mecanismo, este mês</dt>
-                <dd className="tabular-nums text-ink-faint">{formatPageCount(currentMonthPages.enginePages)}</dd>
+                <dd className="text-right">
+                  <div className="tabular-nums text-ink-faint">{formatPageCount(currentMonthPages.enginePages)}</div>
+                  <div className="text-xs text-ink-faint">
+                    desde {formatShortReadingDate(currentMonthPages.engineStartReadingAt, tz)}
+                  </div>
+                </dd>
               </div>
             )}
             <div className="flex justify-between gap-4">
