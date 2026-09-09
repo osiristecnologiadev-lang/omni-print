@@ -18,6 +18,8 @@ function makeDevice(overrides: Partial<Record<string, unknown>> = {}) {
     host: '10.0.0.1',
     customLabel: null,
     serialNumber: 'SN1',
+    manualBaselineDate: null,
+    manualBaselinePageCount: null,
     ...overrides,
   };
 }
@@ -187,6 +189,88 @@ describe('ContractsService.resolveBilling', () => {
     if (result.hasContract) {
       expect(result.totalPages).toBe(800); // 500 + 50 (reset) + 250, not 0 or a negative delta
       expect(result.perDevice[0].counterReset).toBe(true);
+    }
+  });
+  it('a manual baseline fills the gap when monitoring started after the period began', async () => {
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.10',
+      pricePerPageColor: '0.10',
+      minimumPagesMono: 0,
+      minimumPagesColor: 0,
+    });
+    // No metric at all before periodStart (Sept 1) - monitoring only
+    // started mid-month, same real situation this test guards against.
+    prisma.metric.findFirst.mockResolvedValue(null);
+    prisma.metric.findMany.mockResolvedValue([
+      { collectedAt: new Date('2026-09-08T00:00:00Z'), pageCount: BigInt(200500), monoPageCount: null, colorPageCount: null },
+      { collectedAt: periodEnd, pageCount: BigInt(205000), monoPageCount: null, colorPageCount: null },
+    ]);
+
+    // Known reading from a manual check on Sept 7, the day before the agent
+    // started polling - earlier than the first real metric (Sept 8).
+    prisma.device.findMany.mockResolvedValue([
+      makeDevice({
+        manualBaselineDate: new Date('2026-09-07T00:00:00Z'),
+        manualBaselinePageCount: BigInt(200000),
+      }),
+    ]);
+    const withBaseline = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+    expect(withBaseline.hasContract).toBe(true);
+    if (withBaseline.hasContract) {
+      expect(withBaseline.totalPages).toBe(5000); // 200000 -> 205000, includes the Sept 7-8 gap
+      expect(withBaseline.perDevice[0].usedManualBaseline).toBe(true);
+      expect(withBaseline.perDevice[0].startReading).toBe(200000);
+      expect(withBaseline.usageCost).toBeCloseTo(500, 5);
+    }
+
+    // Same device, no manual baseline - the same real metrics alone
+    // undercount by exactly the manual entry's contribution (500 pages),
+    // confirming the flag isn't a no-op.
+    prisma.device.findMany.mockResolvedValue([makeDevice()]);
+    const withoutBaseline = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+    expect(withoutBaseline.hasContract).toBe(true);
+    if (withoutBaseline.hasContract) {
+      expect(withoutBaseline.totalPages).toBe(4500); // 200500 -> 205000 only
+      expect(withoutBaseline.perDevice[0].usedManualBaseline).toBe(false);
+    }
+  });
+
+  it('ignores a manual baseline dated after the first real reading, or after the period ends', async () => {
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.10',
+      pricePerPageColor: '0.10',
+      minimumPagesMono: 0,
+      minimumPagesColor: 0,
+    });
+    prisma.metric.findFirst.mockResolvedValue({
+      collectedAt: new Date('2026-08-31T00:00:00Z'),
+      pageCount: BigInt(1000),
+      monoPageCount: null,
+      colorPageCount: null,
+    });
+    prisma.metric.findMany.mockResolvedValue([
+      { collectedAt: periodEnd, pageCount: BigInt(1500), monoPageCount: null, colorPageCount: null },
+    ]);
+
+    // A real reading already exists before periodStart, so a manual entry
+    // dated after it (even if still inside the period) shouldn't override
+    // it or get spliced into the sequence.
+    prisma.device.findMany.mockResolvedValue([
+      makeDevice({
+        manualBaselineDate: new Date('2026-09-15T00:00:00Z'),
+        manualBaselinePageCount: BigInt(999999),
+      }),
+    ]);
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      expect(result.totalPages).toBe(500); // 1000 -> 1500, real data only
+      expect(result.perDevice[0].usedManualBaseline).toBe(false);
     }
   });
 });

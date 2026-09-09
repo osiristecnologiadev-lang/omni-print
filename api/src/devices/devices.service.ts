@@ -104,13 +104,27 @@ export class DevicesService {
   // field is only touched when actually present in the request body
   // (`!== undefined`, not just falsy) - a PATCH that only sends customLabel
   // must not accidentally unassign the device's customer, and vice versa.
-  async update(tenantId: string, deviceId: string, dto: { customerId?: string | null; customLabel?: string | null }) {
+  async update(
+    tenantId: string,
+    deviceId: string,
+    dto: {
+      customerId?: string | null;
+      customLabel?: string | null;
+      manualBaselineDate?: string | null;
+      manualBaselinePageCount?: number | null;
+    },
+  ) {
     const device = await this.prisma.device.findFirst({ where: { id: deviceId, tenantId } });
     if (!device) {
       throw new NotFoundException('device not found');
     }
 
-    const data: { customerId?: string | null; customLabel?: string | null } = {};
+    const data: {
+      customerId?: string | null;
+      customLabel?: string | null;
+      manualBaselineDate?: Date | null;
+      manualBaselinePageCount?: bigint | null;
+    } = {};
 
     if (dto.customerId !== undefined) {
       const customerId = dto.customerId || null;
@@ -125,6 +139,18 @@ export class DevicesService {
 
     if (dto.customLabel !== undefined) {
       data.customLabel = dto.customLabel?.trim() || null;
+    }
+
+    // Only meaningful as a pair - a date with no count (or vice versa) can't
+    // act as a reading, so either both are present or both are cleared.
+    if (dto.manualBaselineDate !== undefined || dto.manualBaselinePageCount !== undefined) {
+      if (!dto.manualBaselineDate || dto.manualBaselinePageCount == null) {
+        data.manualBaselineDate = null;
+        data.manualBaselinePageCount = null;
+      } else {
+        data.manualBaselineDate = new Date(dto.manualBaselineDate);
+        data.manualBaselinePageCount = BigInt(dto.manualBaselinePageCount);
+      }
     }
 
     return this.prisma.device.update({ where: { id: deviceId }, data });

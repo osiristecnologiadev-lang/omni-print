@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { assignDeviceCustomer, updateDeviceLabel } from '@/lib/api';
+import { assignDeviceCustomer, updateDeviceLabel, updateDeviceManualBaseline } from '@/lib/api';
 
 export async function assignCustomerAction(deviceId: string, formData: FormData) {
   const raw = String(formData.get('customerId') ?? '');
@@ -32,4 +32,22 @@ export async function updateLabelAction(deviceId: string, formData: FormData) {
   revalidatePath('/');
   revalidatePath('/customers');
   redirect(`/devices/${deviceId}?labelSaved=1`);
+}
+
+export async function updateManualBaselineAction(deviceId: string, formData: FormData) {
+  const rawDate = String(formData.get('manualBaselineDate') ?? '').trim();
+  const rawCount = String(formData.get('manualBaselinePageCount') ?? '').trim();
+
+  try {
+    if (!rawDate || !rawCount) {
+      await updateDeviceManualBaseline(deviceId, null, null);
+    } else {
+      await updateDeviceManualBaseline(deviceId, new Date(rawDate).toISOString(), Number(rawCount));
+    }
+  } catch {
+    redirect(`/devices/${deviceId}?baselineError=1`);
+  }
+  revalidatePath(`/devices/${deviceId}`);
+  revalidatePath(`/customers`);
+  redirect(`/devices/${deviceId}?baselineSaved=1`);
 }

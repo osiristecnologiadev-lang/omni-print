@@ -17,7 +17,7 @@ import { Panel, PanelSection } from '@/components/Panel';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
 import { TrendChart } from '@/components/TrendChart';
-import { assignCustomerAction, updateLabelAction } from './actions';
+import { assignCustomerAction, updateLabelAction, updateManualBaselineAction } from './actions';
 
 const fieldClass =
   'rounded-lg border border-line bg-surface px-2 py-1 text-xs text-ink outline-none transition-colors focus:border-accent';
@@ -52,6 +52,8 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
   const customerError = searchParams?.customerError === '1';
   const labelSaved = searchParams?.labelSaved === '1';
   const labelError = searchParams?.labelError === '1';
+  const baselineSaved = searchParams?.baselineSaved === '1';
+  const baselineError = searchParams?.baselineError === '1';
 
   const device = await getDevice(id);
   if (!device) {
@@ -77,6 +79,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
   const latest = metrics[0];
   const boundAssignCustomer = assignCustomerAction.bind(null, device.id);
   const boundUpdateLabel = updateLabelAction.bind(null, device.id);
+  const boundUpdateManualBaseline = updateManualBaselineAction.bind(null, device.id);
   const agentReportedName = device.printerName ?? device.name ?? device.host;
 
   return (
@@ -89,6 +92,8 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
       {customerError && <Banner tone="error" className="mt-4">Não foi possível atualizar o cliente. Tente novamente.</Banner>}
       {labelSaved && <Banner tone="success" className="mt-4">Apelido salvo.</Banner>}
       {labelError && <Banner tone="error" className="mt-4">Não foi possível salvar o apelido. Tente novamente.</Banner>}
+      {baselineSaved && <Banner tone="success" className="mt-4">Leitura inicial salva.</Banner>}
+      {baselineError && <Banner tone="error" className="mt-4">Não foi possível salvar a leitura inicial. Tente novamente.</Banner>}
 
       <header className="mt-4 mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -192,6 +197,53 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
           </dl>
         </Panel>
       </div>
+
+      {isTenantWide && (
+        <Panel className="mt-6">
+          <h2 className="mb-1 text-sm font-medium text-ink-muted">Leitura inicial manual</h2>
+          <p className="mb-4 text-xs text-ink-faint">
+            Se este dispositivo já imprimia antes do monitoramento começar, informe aqui a contagem de páginas que ele
+            já tinha em uma data conhecida - o faturamento passa a contar a partir desse ponto em vez de só a partir da
+            primeira coleta real.
+          </p>
+          <form action={boundUpdateManualBaseline} className="flex flex-wrap items-end gap-3">
+            <div>
+              <label htmlFor="manualBaselineDate" className="block text-xs text-ink-muted">
+                Data da leitura
+              </label>
+              <input
+                type="date"
+                id="manualBaselineDate"
+                name="manualBaselineDate"
+                defaultValue={device.manualBaselineDate ? device.manualBaselineDate.slice(0, 10) : ''}
+                className={`mt-1 ${fieldClass}`}
+              />
+            </div>
+            <div>
+              <label htmlFor="manualBaselinePageCount" className="block text-xs text-ink-muted">
+                Páginas até essa data
+              </label>
+              <input
+                type="number"
+                min={0}
+                id="manualBaselinePageCount"
+                name="manualBaselinePageCount"
+                defaultValue={device.manualBaselinePageCount ?? ''}
+                placeholder="ex.: 200000"
+                className={`mt-1 w-40 ${fieldClass}`}
+              />
+            </div>
+            <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
+              Salvar
+            </SubmitButton>
+            {device.manualBaselineDate && (
+              <p className="w-full text-xs text-ink-faint">
+                Deixe os dois campos em branco e salve para remover a leitura manual.
+              </p>
+            )}
+          </form>
+        </Panel>
+      )}
 
       <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
         <Panel>

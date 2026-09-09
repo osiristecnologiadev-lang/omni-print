@@ -389,6 +389,17 @@ model Device {
   // wherever a device's name is shown - see IngestService (never touches
   // this field) and DevicesService.updateLabel.
   customLabel  String?   @map("custom_label")
+  // A known page count from before this device was ever polled - e.g.
+  // monitoring only started mid-month, but the outsourcing admin already
+  // knows the printer's counter reading from an earlier manual check.
+  // ContractsService.pagesInPeriod treats this as one more reading in the
+  // device's history (the earliest one, if it's actually earlier than any
+  // real metric) rather than a special case, so a billing period that
+  // starts before the first real poll still bills the real usage instead
+  // of silently undercounting the gap. Both fields are set together or not
+  // at all - see DevicesService.update.
+  manualBaselineDate      DateTime? @map("manual_baseline_date")
+  manualBaselinePageCount BigInt?   @map("manual_baseline_page_count")
   firstSeenAt  DateTime  @default(now()) @map("first_seen_at")
   lastSeenAt   DateTime  @updatedAt @map("last_seen_at")
 

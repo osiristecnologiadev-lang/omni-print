@@ -11,6 +11,7 @@ interface InvoicePerDevice {
   startReading?: number | null;
   endReading?: number | null;
   counterReset?: boolean;
+  usedManualBaseline?: boolean;
 }
 
 interface PartyInfo {
@@ -196,8 +197,12 @@ export class InvoicePdfService {
         // Asterisk flags a mid-period counter reset (device reset/replaced) -
         // pages already account for it correctly (see pagesInPeriod), this
         // just tells whoever reads the invoice why start/end readings alone
-        // don't arithmetically explain the total.
-        const nameCell = d.counterReset ? `${d.deviceName} *` : d.deviceName;
+        // don't arithmetically explain the total. Dagger flags a manually
+        // entered starting reading (monitoring started after the period
+        // began) - same reasoning, different marker so the two don't read
+        // as the same caveat.
+        const marker = `${d.counterReset ? ' *' : ''}${d.usedManualBaseline ? ' †' : ''}`;
+        const nameCell = `${d.deviceName}${marker}`;
         const readingCols = [d.serialNumber || '—', fmtReading(d.startReading), fmtReading(d.endReading)];
         const rowValues = hasColorSplit
           ? [nameCell, ...readingCols, fmtInt(d.monoPages ?? d.pages), fmtInt(d.colorPages ?? 0), fmtInt(d.pages)]
@@ -215,6 +220,16 @@ export class InvoicePdfService {
         .fontSize(7.5)
         .fillColor(MUTED)
         .text('* contador reiniciado durante o período (equipamento resetado/substituído) - páginas já recalculadas corretamente.', left, y, {
+          width: contentWidth,
+        });
+      y = doc.y + 4;
+    }
+    if (perDevice.some((d) => d.usedManualBaseline)) {
+      doc
+        .font('Helvetica')
+        .fontSize(7.5)
+        .fillColor(MUTED)
+        .text('† leitura anterior informada manualmente (monitoramento começou depois do início do período).', left, y, {
           width: contentWidth,
         });
       y = doc.y + 4;

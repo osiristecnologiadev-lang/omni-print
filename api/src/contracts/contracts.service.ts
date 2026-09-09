@@ -218,11 +218,8 @@ export class ContractsService {
 
     const perDevice = await Promise.all(
       devices.map(async (device) => {
-        const { pages, monoPages, colorPages, startReading, endReading, counterReset } = await this.pagesInPeriod(
-          device.id,
-          periodStart,
-          periodEnd,
-        );
+        const { pages, monoPages, colorPages, startReading, endReading, counterReset, usedManualBaseline } =
+          await this.pagesInPeriod(device, periodStart, periodEnd);
         return {
           deviceId: device.id,
           deviceName: device.customLabel ?? device.printerName ?? device.name ?? device.host,
@@ -244,6 +241,10 @@ export class ContractsService {
           // the bill can see why start/end readings alone don't explain the
           // total (see the PDF/UI, which show a note when this is true).
           counterReset,
+          // True when the "leitura anterior" above is actually the manually
+          // entered baseline, not a real poll - see
+          // Device.manualBaselineDate's schema comment.
+          usedManualBaseline,
         };
       }),
     );
@@ -320,7 +321,7 @@ export class ContractsService {
   // for real: device "HPBF6178" in the real September data went from
   // 306,261 to 0 mid-period and billed as 0 pages before this fix.
   private async pagesInPeriod(
-    deviceId: string,
+    device: { id: string; manualBaselineDate: Date | null; manualBaselinePageCount: bigint | null },
     start: Date,
     end: Date,
   ): Promise<{
@@ -330,7 +331,9 @@ export class ContractsService {
     startReading: number | null;
     endReading: number | null;
     counterReset: boolean;
+    usedManualBaseline: boolean;
   }> {
+    const deviceId = device.id;
     const [baseline, inPeriod] = await Promise.all([
       this.prisma.metric.findFirst({
         where: { deviceId, collectedAt: { lte: start } },
@@ -342,10 +345,41 @@ export class ContractsService {
       }),
     ]);
 
-    const sequence = [...(baseline ? [baseline] : []), ...inPeriod];
+    let sequence: Array<{ collectedAt: Date; pageCount: bigint | null; monoPageCount?: bigint | null; colorPageCount?: bigint | null }> =
+      [...(baseline ? [baseline] : []), ...inPeriod];
+
+    // A manually-entered "as of this date, the counter read this" reading -
+    // see Device.manualBaselineDate's schema comment. Only useful as an
+    // earlier anchor than whatever real data already exists (its whole
+    // purpose is covering the gap before monitoring started), and only
+    // relevant to this period at all if it isn't dated after it - a manual
+    // entry dated later than the earliest real reading, or after this
+    // period ends, is silently ignored rather than spliced into the middle
+    // of real data.
+    const earliestReal = sequence[0]?.collectedAt ?? null;
+    const usedManualBaseline =
+      device.manualBaselineDate != null &&
+      device.manualBaselinePageCount != null &&
+      device.manualBaselineDate <= end &&
+      (earliestReal == null || device.manualBaselineDate < earliestReal);
+    if (usedManualBaseline) {
+      sequence = [
+        { collectedAt: device.manualBaselineDate!, pageCount: device.manualBaselinePageCount },
+        ...sequence,
+      ];
+    }
+
     const readings = sequence.filter((m) => m.pageCount != null);
     if (readings.length === 0) {
-      return { pages: 0, monoPages: 0, colorPages: 0, startReading: null, endReading: null, counterReset: false };
+      return {
+        pages: 0,
+        monoPages: 0,
+        colorPages: 0,
+        startReading: null,
+        endReading: null,
+        counterReset: false,
+        usedManualBaseline: false,
+      };
     }
 
     // Filter transient read glitches before looking for real resets - see
@@ -393,6 +427,7 @@ export class ContractsService {
       startReading: pageCounts[0],
       endReading: pageCounts[pageCounts.length - 1],
       counterReset: pagesReset || splitReset,
+      usedManualBaseline,
     };
   }
 }

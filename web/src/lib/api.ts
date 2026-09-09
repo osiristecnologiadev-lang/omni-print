@@ -133,6 +133,10 @@ export interface Device {
   name: string | null;
   printerName: string | null;
   customLabel: string | null;
+  // A known page count from before this device was ever polled - see the
+  // schema comment on the API's Device model. Both null, or both set.
+  manualBaselineDate: string | null;
+  manualBaselinePageCount: string | null;
   firstSeenAt: string;
   lastSeenAt: string;
   latestMetric: LatestMetric | null;
@@ -444,6 +448,15 @@ export function updateDeviceLabel(deviceId: string, customLabel: string | null):
   return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', { customLabel });
 }
 
+// Both null clears it back to "no baseline" - see Device.manualBaselineDate.
+export function updateDeviceManualBaseline(
+  deviceId: string,
+  manualBaselineDate: string | null,
+  manualBaselinePageCount: number | null,
+): Promise<Device> {
+  return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', { manualBaselineDate, manualBaselinePageCount });
+}
+
 export type ContractStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED';
 
 // Which outsourcing tenants use which model varies - see api's Contract
@@ -515,6 +528,7 @@ export interface DevicePages {
   startReading: number | null;
   endReading: number | null;
   counterReset: boolean;
+  usedManualBaseline: boolean;
 }
 
 export type BillingResult =

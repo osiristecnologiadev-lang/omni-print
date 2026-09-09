@@ -266,6 +266,14 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
                           *
                         </span>
                       )}
+                      {d.usedManualBaseline && (
+                        <span
+                          title="Leitura anterior informada manualmente - monitoramento começou depois do início do período."
+                          className="ml-1 text-accent"
+                        >
+                          †
+                        </span>
+                      )}
                     </span>
                     <span className="tabular-nums text-ink-faint">{integer.format(d.pages)} pág.</span>
                   </li>
