@@ -349,19 +349,25 @@ export class ContractsService {
       [...(baseline ? [baseline] : []), ...inPeriod];
 
     // A manually-entered "as of this date, the counter read this" reading -
-    // see Device.manualBaselineDate's schema comment. Only useful as an
-    // earlier anchor than whatever real data already exists (its whole
-    // purpose is covering the gap before monitoring started), and only
-    // relevant to this period at all if it isn't dated after it - a manual
-    // entry dated later than the earliest real reading, or after this
-    // period ends, is silently ignored rather than spliced into the middle
-    // of real data.
-    const earliestReal = sequence[0]?.collectedAt ?? null;
+    // see Device.manualBaselineDate's schema comment. Only steps in when
+    // there's no real metric before periodStart at all (`baseline` above is
+    // null) - that's the one gap it exists to plug. Once a real reading
+    // exists before periodStart (any later period, once monitoring has been
+    // running a while), the real data always wins and the manual entry is
+    // ignored entirely for that period - it must NOT get spliced in ahead
+    // of a real baseline just because it's chronologically earlier, or
+    // every later period would re-walk the same delta an earlier period
+    // (and its already-generated invoice) already billed, double-counting
+    // every page from the manual date forward. Also ignored if it's dated
+    // after the first in-period reading (would be out of order) or after
+    // this period ends (not relevant to it).
+    const earliestInPeriod = inPeriod[0]?.collectedAt ?? null;
     const usedManualBaseline =
+      baseline == null &&
       device.manualBaselineDate != null &&
       device.manualBaselinePageCount != null &&
       device.manualBaselineDate <= end &&
-      (earliestReal == null || device.manualBaselineDate < earliestReal);
+      (earliestInPeriod == null || device.manualBaselineDate < earliestInPeriod);
     if (usedManualBaseline) {
       sequence = [
         { collectedAt: device.manualBaselineDate!, pageCount: device.manualBaselinePageCount },

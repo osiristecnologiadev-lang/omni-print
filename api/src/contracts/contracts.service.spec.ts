@@ -191,6 +191,7 @@ describe('ContractsService.resolveBilling', () => {
       expect(result.perDevice[0].counterReset).toBe(true);
     }
   });
+
   it('a manual baseline fills the gap when monitoring started after the period began', async () => {
     prisma.contract.findFirst.mockResolvedValue({
       pricingModel: 'PER_PAGE',
@@ -271,6 +272,50 @@ describe('ContractsService.resolveBilling', () => {
     if (result.hasContract) {
       expect(result.totalPages).toBe(500); // 1000 -> 1500, real data only
       expect(result.perDevice[0].usedManualBaseline).toBe(false);
+    }
+  });
+
+  it('does not double-count a prior period once real data covers the next period too - the exact "next month" scenario', async () => {
+    // Same device/contract as the fill-the-gap test above, one month later.
+    // By October, real polling has been running the whole time - there's
+    // now a real reading before periodStart (Sept 30), so the September 7
+    // manual entry must NOT be re-applied. If it were, October would walk
+    // the delta all the way from the Sept manual baseline again, re-billing
+    // every page September's own (already-generated) invoice already
+    // charged for.
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.10',
+      pricePerPageColor: '0.10',
+      minimumPagesMono: 0,
+      minimumPagesColor: 0,
+    });
+    const octoberStart = new Date('2026-10-01T00:00:00Z');
+    const octoberEnd = new Date('2026-10-31T23:59:59.999Z');
+    prisma.metric.findFirst.mockResolvedValue({
+      collectedAt: new Date('2026-09-30T00:00:00Z'),
+      pageCount: BigInt(205000), // where September's real data left off
+      monoPageCount: null,
+      colorPageCount: null,
+    });
+    prisma.metric.findMany.mockResolvedValue([
+      { collectedAt: octoberEnd, pageCount: BigInt(206200), monoPageCount: null, colorPageCount: null },
+    ]);
+    prisma.device.findMany.mockResolvedValue([
+      makeDevice({
+        manualBaselineDate: new Date('2026-09-07T00:00:00Z'),
+        manualBaselinePageCount: BigInt(200000),
+      }),
+    ]);
+
+    const result = await service.resolveBilling('t1', 'c1', octoberStart, octoberEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      expect(result.totalPages).toBe(1200); // 205000 -> 206200, October's real usage only
+      expect(result.perDevice[0].usedManualBaseline).toBe(false);
+      expect(result.perDevice[0].startReading).toBe(205000); // not the old manual 200000
     }
   });
 });
