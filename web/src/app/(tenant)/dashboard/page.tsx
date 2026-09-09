@@ -9,8 +9,8 @@ import {
   getSession,
 } from '@/lib/api';
 import { deriveHealth } from '@/lib/health';
-import { StatusBadge } from '@/components/StatusBadge';
 import { Badge, type BadgeTone } from '@/components/Badge';
+import { DeviceFleetTable } from '@/components/DeviceFleetTable';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { EmptyState } from '@/components/EmptyState';
@@ -42,21 +42,6 @@ function formatUtcDate(iso: string): string {
 
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(iso));
-}
-
-function formatPageCount(value: string | null): string {
-  if (value == null) return '—';
-  return new Intl.NumberFormat('pt-BR').format(Number(value));
-}
-
-function formatRelativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.round(diffMs / 60000);
-  if (minutes < 1) return 'agora mesmo';
-  if (minutes < 60) return `há ${minutes} min`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `há ${hours} h`;
-  return `há ${Math.round(hours / 24)} d`;
 }
 
 function StatTile({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'warning' | 'critical' }) {
@@ -215,50 +200,10 @@ export default async function DashboardPage() {
           hint="Configure o agente (agent/config.yaml) e aguarde o primeiro ciclo de coleta."
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-line bg-surface">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-surface-2 text-xs uppercase tracking-wide text-ink-muted">
-              <tr>
-                <th className="px-4 py-3 font-medium">Dispositivo</th>
-                {isTenantWide && <th className="px-4 py-3 font-medium">Cliente</th>}
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Páginas</th>
-                <th className="px-4 py-3 font-medium">Atualizado</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {devices.map((device) => {
-                const health = deriveHealth(device.latestMetric);
-                return (
-                  <tr key={device.id} className="transition-colors hover:bg-surface-2">
-                    <td className="px-4 py-3">
-                      <Link href={`/devices/${device.id}`} className="block">
-                        <div className="font-medium text-ink">
-                          {device.customLabel ?? device.printerName ?? device.name ?? device.host}
-                        </div>
-                        <div className="text-xs text-ink-faint">{device.host}</div>
-                      </Link>
-                    </td>
-                    {isTenantWide && (
-                      <td className="px-4 py-3 text-ink-muted">
-                        {device.customer?.name ?? <span className="text-ink-faint">—</span>}
-                      </td>
-                    )}
-                    <td className="px-4 py-3">
-                      <StatusBadge health={health} />
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-ink-muted">
-                      {formatPageCount(device.latestMetric?.page_count ?? null)}
-                    </td>
-                    <td className="px-4 py-3 text-ink-muted">
-                      {device.latestMetric ? formatRelativeTime(device.latestMetric.collected_at) : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DeviceFleetTable
+          devices={devices.map((d) => ({ ...d, health: deriveHealth(d.latestMetric) }))}
+          isTenantWide={isTenantWide}
+        />
       )}
     </main>
   );
