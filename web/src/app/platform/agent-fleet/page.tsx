@@ -1,7 +1,9 @@
 import { getAgentFleet, getAgentReleases } from '@/lib/platform-api';
+import { getViewerTimeZone } from '@/lib/api';
 
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+// Server Components render on Railway (UTC) - see getViewerTimeZone.
+function formatDateTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }
 
 // "Stale" here just means "hasn't checked in within roughly 2 update-check
@@ -11,7 +13,7 @@ function formatDateTime(iso: string): string {
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export default async function AgentFleetPage() {
-  const [fleet, releases] = await Promise.all([getAgentFleet(), getAgentReleases()]);
+  const [fleet, releases, tz] = await Promise.all([getAgentFleet(), getAgentReleases(), getViewerTimeZone()]);
 
   const latestByPlatform = new Map<string, string>();
   for (const r of releases) {
@@ -67,7 +69,7 @@ export default async function AgentFleetPage() {
                     </td>
                     <td className="px-4 py-2">
                       <span className={stale ? 'text-red-400' : 'text-gray-400'}>
-                        {entry.lastCheckinAt ? formatDateTime(entry.lastCheckinAt) : 'nunca'}
+                        {entry.lastCheckinAt ? formatDateTime(entry.lastCheckinAt, tz) : 'nunca'}
                       </span>
                     </td>
                   </tr>

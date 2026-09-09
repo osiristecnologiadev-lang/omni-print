@@ -1,5 +1,5 @@
 import { forbidden } from 'next/navigation';
-import { getCustomer, getInvoices, getSession, type Invoice } from '@/lib/api';
+import { getCustomer, getInvoices, getSession, getViewerTimeZone, type Invoice } from '@/lib/api';
 import { generateInvoiceAction, markPaidAction, cancelInvoiceAction } from './actions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
@@ -11,8 +11,13 @@ import { EmptyState } from '@/components/EmptyState';
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(iso));
+// periodStart/periodEnd/dueDate are calendar dates - timeZone: 'UTC' is
+// deliberate there (see dashboard/page.tsx's formatDate). paidAt is a real
+// instant (whenever the "marcar como paga" button was actually clicked),
+// so it takes the viewer's own timezone instead - pass it explicitly per
+// call site rather than defaulting either way.
+function formatDate(iso: string, timeZone: string | undefined = 'UTC'): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone }).format(new Date(iso));
 }
 
 const STATUS_LABEL: Record<string, string> = { PENDING: 'Pendente', PAID: 'Paga', CANCELLED: 'Cancelada' };
@@ -31,7 +36,7 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
     forbidden();
   }
 
-  const [customer, invoices] = await Promise.all([getCustomer(id), getInvoices(id)]);
+  const [customer, invoices, tz] = await Promise.all([getCustomer(id), getInvoices(id), getViewerTimeZone()]);
 
   const now = new Date();
   const monthOptions = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -104,7 +109,7 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
                   </div>
                   <p className="mt-1 text-xs text-ink-faint">
                     Vencimento {formatDate(invoice.dueDate)}
-                    {invoice.paidAt ? ` · pago em ${formatDate(invoice.paidAt)}` : ''}
+                    {invoice.paidAt ? ` · pago em ${formatDate(invoice.paidAt, tz)}` : ''}
                   </p>
                 </div>
 

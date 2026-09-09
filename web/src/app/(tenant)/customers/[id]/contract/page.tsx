@@ -20,8 +20,12 @@ import { Badge, type BadgeTone } from '@/components/Badge';
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const integer = new Intl.NumberFormat('pt-BR');
 
+// Contract.startDate/endDate are calendar dates (picked via <input
+// type="date">, stored as UTC midnight) - timeZone: 'UTC' here is
+// deliberate, not a bug, same reasoning as dashboard's formatUtcDate:
+// converting to the viewer's own timezone could shift the displayed day.
 function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(iso));
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(new Date(iso));
 }
 
 const STATUS_LABEL: Record<string, string> = {

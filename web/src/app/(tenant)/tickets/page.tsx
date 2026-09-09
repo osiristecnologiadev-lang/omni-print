@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getSession, getAllTickets, getCustomerTickets, type Ticket, type TicketStatus } from '@/lib/api';
+import { getSession, getAllTickets, getCustomerTickets, getViewerTimeZone, type Ticket, type TicketStatus } from '@/lib/api';
 import { isTicketSlaBreached } from '@/lib/sla';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
@@ -24,8 +24,9 @@ const PRIORITY_TONE: Record<string, BadgeTone> = { LOW: 'neutral', MEDIUM: 'info
 
 const STATUS_OPTIONS: TicketStatus[] = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+// Server Components render on Railway (UTC) - see getViewerTimeZone.
+function formatDateTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }
 
 const selectClass = 'rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent';
@@ -40,9 +41,10 @@ export default async function TicketsPage(props: PageProps<'/tickets'>) {
     ? (searchParams?.status as TicketStatus)
     : undefined;
 
-  const tickets: Ticket[] = isTenantWide
-    ? await getAllTickets(statusFilter)
-    : await getCustomerTickets(session.customerId as string, statusFilter);
+  const [tickets, tz]: [Ticket[], string | undefined] = await Promise.all([
+    isTenantWide ? getAllTickets(statusFilter) : getCustomerTickets(session.customerId as string, statusFilter),
+    getViewerTimeZone(),
+  ]);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -83,7 +85,7 @@ export default async function TicketsPage(props: PageProps<'/tickets'>) {
                       <p className="truncate font-medium text-ink">{t.subject}</p>
                       <p className="mt-0.5 text-xs text-ink-faint">
                         {isTenantWide && `${t.customer.name} · `}
-                        Aberto por {t.createdByUser.name ?? t.createdByUser.email} em {formatDateTime(t.createdAt)}
+                        Aberto por {t.createdByUser.name ?? t.createdByUser.email} em {formatDateTime(t.createdAt, tz)}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">

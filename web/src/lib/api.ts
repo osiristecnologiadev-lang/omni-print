@@ -182,6 +182,25 @@ export async function getSessionToken(): Promise<string | undefined> {
   return store.get(SESSION_COOKIE)?.value;
 }
 
+const TIMEZONE_COOKIE = 'omniprint_tz';
+
+// The viewer's own IANA timezone (e.g. "America/Sao_Paulo"), captured
+// client-side once (see layout.tsx's tz-sync script) and sent back on every
+// request as a cookie - Server Components render on Railway (UTC), so
+// without this every date/time shown would be in UTC regardless of where
+// the actual viewer is. Undefined on the very first request ever (before
+// the cookie exists) - Intl.DateTimeFormat's own timeZone default (the
+// server's) applies for just that one render, every later request has it.
+// Pass the result into any Intl.DateTimeFormat call formatting a real
+// instant (createdAt, collectedAt, dueDate...) - NOT a calendar-only
+// UTC-midnight-anchored value like Invoice.periodStart, which already has
+// its own deliberate timeZone: 'UTC' handling (see formatUtcDate in
+// dashboard/page.tsx and customers/[id]/page.tsx) for a different reason.
+export async function getViewerTimeZone(): Promise<string | undefined> {
+  const store = await cookies();
+  return store.get(TIMEZONE_COOKIE)?.value || undefined;
+}
+
 export interface Session {
   userId: string;
   tenantId: string;

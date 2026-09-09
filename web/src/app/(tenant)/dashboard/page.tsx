@@ -40,8 +40,11 @@ function formatUtcDate(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(d);
 }
 
+// Both call sites are calendar dates (invoice due date, contract end date)
+// - timeZone: 'UTC' is deliberate here, same reasoning as formatUtcDate
+// above.
 function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(iso));
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(new Date(iso));
 }
 
 function formatPageCount(value: number | string | null | undefined): string {

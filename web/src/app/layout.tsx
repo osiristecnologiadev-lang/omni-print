@@ -43,6 +43,26 @@ try {
 } catch (e) {}
 `;
 
+// Every date/time on this app renders server-side (Railway, UTC) - without
+// knowing the viewer's actual timezone there's no way to show it correctly
+// there. A cookie is the only way a Server Component can know it (there's
+// no HTTP header for it) - this sets one to the browser's own resolved IANA
+// zone so it's already correct on every SUBSEQUENT request (see
+// getViewerTimeZone). Doesn't need beforeInteractive like the theme script
+// above - this doesn't change anything on the page currently being viewed,
+// only what the *next* request renders, so there's no flash to prevent.
+// Only writes when the value actually changed (a fresh cookie write on every
+// single page load would be wasteful and pointless).
+const TIMEZONE_SYNC_SCRIPT = `
+try {
+  var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  var existing = document.cookie.replace(/(?:(?:^|.*;\\s*)omniprint_tz\\s*=\\s*([^;]*).*$)|^.*$/, '$1');
+  if (tz && tz !== existing) {
+    document.cookie = 'omniprint_tz=' + tz + '; path=/; max-age=31536000; SameSite=Lax';
+  }
+} catch (e) {}
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
@@ -58,6 +78,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="min-h-full flex flex-col">
         <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <Script id="tz-sync" strategy="afterInteractive" dangerouslySetInnerHTML={{ __html: TIMEZONE_SYNC_SCRIPT }} />
         {children}
       </body>
     </html>

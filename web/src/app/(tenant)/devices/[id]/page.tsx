@@ -8,6 +8,7 @@ import {
   getDeviceSupplyForecast,
   getCustomers,
   getSession,
+  getViewerTimeZone,
 } from '@/lib/api';
 import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
 import { deriveHealth } from '@/lib/health';
@@ -29,8 +30,11 @@ function formatShortDate(dateStr: string): string {
   return `${day}/${month}`;
 }
 
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(iso));
+// Server Components render on Railway (UTC) - without an explicit
+// timeZone this would always show UTC regardless of who's actually
+// looking at the page. See getViewerTimeZone's comment.
+function formatDateTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium', timeZone }).format(new Date(iso));
 }
 
 function formatPageCount(value: number | string | null): string {
@@ -61,12 +65,13 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
     notFound();
   }
 
-  const [metrics, session, pageTrend, supplyTrend, supplyForecast] = await Promise.all([
+  const [metrics, session, pageTrend, supplyTrend, supplyForecast, tz] = await Promise.all([
     getDeviceMetrics(id, 50),
     getSession(),
     getDevicePageTrend(id, 30),
     getDeviceSupplyTrend(id, 30),
     getDeviceSupplyForecast(id, 90),
+    getViewerTimeZone(),
   ]);
   const forecastByDescription = new Map(supplyForecast.map((f) => [f.description, f]));
   const isTenantWide = session != null && !session.customerId;
@@ -278,7 +283,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
             <tbody className="divide-y divide-line">
               {metrics.map((m) => (
                 <tr key={m.id}>
-                  <td className="px-5 py-2 text-ink-muted">{formatDateTime(m.collectedAt)}</td>
+                  <td className="px-5 py-2 text-ink-muted">{formatDateTime(m.collectedAt, tz)}</td>
                   <td className="px-5 py-2">
                     <StatusBadge health={deriveHealth(m)} />
                   </td>

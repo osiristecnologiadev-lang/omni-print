@@ -1,16 +1,18 @@
 import Link from 'next/link';
 import { getTenants } from '@/lib/platform-api';
+import { getViewerTimeZone } from '@/lib/api';
 import { createTenantAction } from './actions';
 import { PlainSubmitButton } from '@/components/SubmitButton';
 import { PlatformBanner } from '@/components/Banner';
 
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(iso));
+// Server Components render on Railway (UTC) - see getViewerTimeZone.
+function formatDateTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone }).format(new Date(iso));
 }
 
 export default async function PlatformDashboard(props: PageProps<'/platform'>) {
   const searchParams = await props.searchParams;
-  const tenants = await getTenants();
+  const [tenants, tz] = await Promise.all([getTenants(), getViewerTimeZone()]);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -51,7 +53,7 @@ export default async function PlatformDashboard(props: PageProps<'/platform'>) {
                 <Link href={`/platform/tenants/${t.id}`} className="font-medium text-gray-100 hover:text-amber-400">
                   {t.name}
                 </Link>
-                <div className="text-xs text-gray-500">desde {formatDateTime(t.createdAt)}</div>
+                <div className="text-xs text-gray-500">desde {formatDateTime(t.createdAt, tz)}</div>
               </div>
               <div className="text-sm text-gray-400">
                 {t._count?.customers ?? 0} cliente{(t._count?.customers ?? 0) === 1 ? '' : 's'} ·{' '}

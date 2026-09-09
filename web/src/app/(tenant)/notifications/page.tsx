@@ -1,5 +1,5 @@
 import { forbidden } from 'next/navigation';
-import { getSession, getNotifications, markAllNotificationsRead, type Notification } from '@/lib/api';
+import { getSession, getNotifications, markAllNotificationsRead, getViewerTimeZone, type Notification } from '@/lib/api';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { Badge, type BadgeTone } from '@/components/Badge';
@@ -8,8 +8,9 @@ import { syncNowAction, resolveNotificationAction } from './actions';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
 
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+// Server Components render on Railway (UTC) - see getViewerTimeZone.
+function formatDateTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }
 
 const TYPE_LABEL: Record<Notification['type'], string> = {
@@ -36,7 +37,7 @@ export default async function NotificationsPage(props: PageProps<'/notifications
     forbidden();
   }
 
-  const notifications = await getNotifications();
+  const [notifications, tz] = await Promise.all([getNotifications(), getViewerTimeZone()]);
 
   // Opening this screen is what clears the bell's badge - a deliberate side
   // effect of a page visit (same pattern as most notification centers), not
@@ -91,7 +92,7 @@ export default async function NotificationsPage(props: PageProps<'/notifications
                         <Badge tone={TYPE_TONE[n.type]}>{TYPE_LABEL[n.type]}</Badge>
                         <span className="font-medium text-ink">{n.title}</span>
                       </div>
-                      <span className="shrink-0 text-xs text-ink-faint">{formatDateTime(n.updatedAt)}</span>
+                      <span className="shrink-0 text-xs text-ink-faint">{formatDateTime(n.updatedAt, tz)}</span>
                     </div>
                     <p className="text-sm text-ink-muted">{n.body}</p>
                     <form action={boundResolve} className="mt-3">
@@ -117,7 +118,7 @@ export default async function NotificationsPage(props: PageProps<'/notifications
                         <span className="font-medium text-ink">{n.title}</span>
                       </div>
                       <span className="shrink-0 text-xs text-ink-faint">
-                        resolvida em {formatDateTime(n.resolvedAt as string)}
+                        resolvida em {formatDateTime(n.resolvedAt as string, tz)}
                       </span>
                     </div>
                     <p className="text-sm text-ink-muted">{n.body}</p>

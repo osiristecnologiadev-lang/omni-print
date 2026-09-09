@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getSession, getTicket, getAnyTicket, getUsers, type TicketStatus, type TicketPriority } from '@/lib/api';
+import { getSession, getTicket, getAnyTicket, getUsers, getViewerTimeZone, type TicketStatus, type TicketPriority } from '@/lib/api';
 import { isTicketSlaBreached } from '@/lib/sla';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
@@ -23,8 +23,9 @@ const STATUS_TONE: Record<TicketStatus, BadgeTone> = {
 const PRIORITY_LABEL: Record<TicketPriority, string> = { LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', URGENT: 'Urgente' };
 const PRIORITY_TONE: Record<TicketPriority, BadgeTone> = { LOW: 'neutral', MEDIUM: 'info', HIGH: 'warning', URGENT: 'critical' };
 
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+// Server Components render on Railway (UTC) - see getViewerTimeZone.
+function formatDateTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }
 
 const inputClass =
@@ -44,6 +45,7 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
   }
 
   const staff = isTenantWide ? (await getUsers()).filter((u) => !u.customerId && !u.revokedAt) : [];
+  const tz = await getViewerTimeZone();
   const breached = ticket.status !== 'RESOLVED' && ticket.status !== 'CLOSED' && isTicketSlaBreached(ticket);
 
   const boundComment = addTicketCommentAction.bind(null, ticket.customerId, ticket.id);
@@ -62,13 +64,13 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
         <Badge tone={STATUS_TONE[ticket.status]}>{STATUS_LABEL[ticket.status]}</Badge>
         <Badge tone={PRIORITY_TONE[ticket.priority]}>{PRIORITY_LABEL[ticket.priority]}</Badge>
         {breached && <Badge tone="critical">SLA estourado</Badge>}
-        <span className="text-xs text-ink-faint">Prazo: {formatDateTime(ticket.slaDueAt)}</span>
+        <span className="text-xs text-ink-faint">Prazo: {formatDateTime(ticket.slaDueAt, tz)}</span>
       </div>
 
       <Panel className="mb-6">
         <p className="mb-3 whitespace-pre-line text-sm text-ink">{ticket.description}</p>
         <p className="text-xs text-ink-faint">
-          Aberto por {ticket.createdByUser.name ?? ticket.createdByUser.email} em {formatDateTime(ticket.createdAt)}
+          Aberto por {ticket.createdByUser.name ?? ticket.createdByUser.email} em {formatDateTime(ticket.createdAt, tz)}
           {ticket.device &&
             ` · Impressora: ${ticket.device.customLabel ? `${ticket.device.customLabel} — ` : ''}${
               ticket.device.printerName ?? ticket.device.name ?? 'Sem nome capturado'
@@ -133,7 +135,7 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
               <div key={c.id} className="rounded-lg bg-surface-2 p-3">
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="text-xs font-medium text-ink">{c.authorUser.name ?? c.authorUser.email}</span>
-                  <span className="text-xs text-ink-faint">{formatDateTime(c.createdAt)}</span>
+                  <span className="text-xs text-ink-faint">{formatDateTime(c.createdAt, tz)}</span>
                 </div>
                 <p className="whitespace-pre-line text-sm text-ink-muted">{c.body}</p>
               </div>

@@ -8,6 +8,7 @@ import {
   getLowSupplyForecast,
   getSession,
   getUsers,
+  getViewerTimeZone,
   type AgentTokenSummary,
 } from '@/lib/api';
 import { CreateTokenForm } from './CreateTokenForm';
@@ -32,8 +33,9 @@ const fieldClass =
   'w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
 const inputClass = `mt-1 ${fieldClass}`;
 
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+// Server Components render on Railway (UTC) - see getViewerTimeZone.
+function formatDateTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }
 
 // A token is only meaningfully "active" if an agent has actually checked in
@@ -73,12 +75,13 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
     notFound();
   }
 
-  const [devices, tokens, users, lowSupplies, currentPeriod] = await Promise.all([
+  const [devices, tokens, users, lowSupplies, currentPeriod, tz] = await Promise.all([
     getDevices(),
     getCustomerTokens(id),
     getUsers(),
     getLowSupplyForecast(14, 90),
     getCurrentPeriodBilling(id),
+    getViewerTimeZone(),
   ]);
   const customerDevices = devices.filter((d) => d.customerId === id);
   const customerUsers = users.filter((u) => u.customerId === id);
@@ -320,11 +323,11 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
                     {tokenStatusBadge(t)}
                   </div>
                   <div className="text-xs text-ink-faint">
-                    criado em {formatDateTime(t.createdAt)}
+                    criado em {formatDateTime(t.createdAt, tz)}
                     {t.lastCheckinAt && (
                       <>
                         {' '}
-                        · última atividade em {formatDateTime(t.lastCheckinAt)}
+                        · última atividade em {formatDateTime(t.lastCheckinAt, tz)}
                         {t.lastSeenVersion && ` (v${t.lastSeenVersion})`}
                       </>
                     )}

@@ -1,10 +1,12 @@
 import { getAgentReleases } from '@/lib/platform-api';
+import { getViewerTimeZone } from '@/lib/api';
 import { publishAgentReleaseAction, deleteAgentReleaseAction } from './actions';
 import { PlainSubmitButton } from '@/components/SubmitButton';
 import { PlatformBanner } from '@/components/Banner';
 
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+// Server Components render on Railway (UTC) - see getViewerTimeZone.
+function formatDateTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }
 
 function formatBytes(bytes: number): string {
@@ -14,7 +16,7 @@ function formatBytes(bytes: number): string {
 
 export default async function AgentReleasesPage(props: PageProps<'/platform/agent-releases'>) {
   const searchParams = await props.searchParams;
-  const releases = await getAgentReleases();
+  const [releases, tz] = await Promise.all([getAgentReleases(), getViewerTimeZone()]);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -132,7 +134,7 @@ export default async function AgentReleasesPage(props: PageProps<'/platform/agen
                 </div>
                 {r.releaseNotes && <p className="mt-1 text-sm text-gray-400">{r.releaseNotes}</p>}
                 <div className="mt-1 text-xs text-gray-500">
-                  {formatBytes(r.fileSizeBytes)} · publicada em {formatDateTime(r.createdAt)} · sha256{' '}
+                  {formatBytes(r.fileSizeBytes)} · publicada em {formatDateTime(r.createdAt, tz)} · sha256{' '}
                   {r.sha256.slice(0, 12)}…
                   {r.installerFileSizeBytes != null && ` · instalador: ${formatBytes(r.installerFileSizeBytes)}`}
                 </div>

@@ -1,18 +1,20 @@
 import Link from 'next/link';
 import { getTenant, getTenantUsers } from '@/lib/platform-api';
+import { getViewerTimeZone } from '@/lib/api';
 import { createTenantUserAction } from './actions';
 import { PlainSubmitButton } from '@/components/SubmitButton';
 import { PlatformBanner } from '@/components/Banner';
 
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+// Server Components render on Railway (UTC) - see getViewerTimeZone.
+function formatDateTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }
 
 export default async function TenantDetailPage(props: PageProps<'/platform/tenants/[id]'>) {
   const { id } = await props.params;
   const searchParams = await props.searchParams;
 
-  const [tenant, users] = await Promise.all([getTenant(id), getTenantUsers(id)]);
+  const [tenant, users, tz] = await Promise.all([getTenant(id), getTenantUsers(id), getViewerTimeZone()]);
   const boundCreateUser = createTenantUserAction.bind(null, id);
 
   return (
@@ -80,7 +82,7 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
                   </span>
                   <div className="text-xs text-gray-500">
                     {u.email} · {u.customer ? u.customer.name : 'Equipe'} · criado em{' '}
-                    {formatDateTime(u.createdAt)}
+                    {formatDateTime(u.createdAt, tz)}
                   </div>
                 </div>
               </li>
