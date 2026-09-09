@@ -5,14 +5,15 @@ import Link from 'next/link';
 import { StatusBadge } from './StatusBadge';
 import type { Health } from '@/lib/health';
 import type { Device } from '@/lib/api';
+import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
 
 export interface DeviceRow extends Device {
   health: Health;
 }
 
-function formatPageCount(value: string | null | undefined): string {
+function formatPageCount(value: number | null): string {
   if (value == null) return '—';
-  return new Intl.NumberFormat('pt-BR').format(Number(value));
+  return new Intl.NumberFormat('pt-BR').format(value);
 }
 
 function formatRelativeTime(iso: string): string {
@@ -86,36 +87,44 @@ export function DeviceFleetTable({ devices, isTenantWide }: { devices: DeviceRow
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {filtered.map((device) => (
-              <tr key={device.id} className="transition-colors hover:bg-surface-2">
-                <td className="px-4 py-3">
-                  <Link href={`/devices/${device.id}`} className="block">
-                    <div className="font-medium text-ink">
-                      {device.customLabel ?? device.printerName ?? device.name ?? device.host}
-                    </div>
-                    {device.customLabel && (device.printerName ?? device.name) && (
-                      <div className="text-xs text-ink-faint">{device.printerName ?? device.name}</div>
-                    )}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 font-mono text-xs text-ink-muted">{device.host}</td>
-                <td className="px-4 py-3 font-mono text-xs text-ink-muted">{device.serialNumber ?? '—'}</td>
-                {isTenantWide && (
-                  <td className="px-4 py-3 text-ink-muted">
-                    {device.customer?.name ?? <span className="text-ink-faint">—</span>}
+            {filtered.map((device) => {
+              const pages = displayPageCount(device.latestMetric);
+              const enginePages = engineDisplayPageCount(device.latestMetric);
+              const hasSplit = enginePages != null && pages !== enginePages;
+              return (
+                <tr key={device.id} className="transition-colors hover:bg-surface-2">
+                  <td className="px-4 py-3">
+                    <Link href={`/devices/${device.id}`} className="block">
+                      <div className="font-medium text-ink">
+                        {device.customLabel ?? device.printerName ?? device.name ?? device.host}
+                      </div>
+                      {device.customLabel && (device.printerName ?? device.name) && (
+                        <div className="text-xs text-ink-faint">{device.printerName ?? device.name}</div>
+                      )}
+                    </Link>
                   </td>
-                )}
-                <td className="px-4 py-3">
-                  <StatusBadge health={device.health} />
-                </td>
-                <td className="px-4 py-3 tabular-nums text-ink-muted">
-                  {formatPageCount(device.latestMetric?.page_count ?? null)}
-                </td>
-                <td className="px-4 py-3 text-ink-muted">
-                  {device.latestMetric ? formatRelativeTime(device.latestMetric.collected_at) : '—'}
-                </td>
-              </tr>
-            ))}
+                  <td className="px-4 py-3 font-mono text-xs text-ink-muted">{device.host}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-ink-muted">{device.serialNumber ?? '—'}</td>
+                  {isTenantWide && (
+                    <td className="px-4 py-3 text-ink-muted">
+                      {device.customer?.name ?? <span className="text-ink-faint">—</span>}
+                    </td>
+                  )}
+                  <td className="px-4 py-3">
+                    <StatusBadge health={device.health} />
+                  </td>
+                  <td className="px-4 py-3 tabular-nums text-ink-muted">
+                    {formatPageCount(pages)}
+                    {hasSplit && (
+                      <div className="text-xs text-ink-faint">mecanismo: {formatPageCount(enginePages)}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-ink-muted">
+                    {device.latestMetric ? formatRelativeTime(device.latestMetric.collected_at) : '—'}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

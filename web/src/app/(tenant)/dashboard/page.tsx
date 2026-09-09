@@ -44,7 +44,7 @@ function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(iso));
 }
 
-function formatPageCount(value: string | null | undefined): string {
+function formatPageCount(value: number | string | null | undefined): string {
   if (value == null) return '—';
   return new Intl.NumberFormat('pt-BR').format(Number(value));
 }
@@ -175,7 +175,12 @@ export default async function DashboardPage() {
                     <td className="px-4 py-2.5">
                       <Badge tone={SEVERITY_TONE[a.severity] ?? 'neutral'}>{SEVERITY_LABEL[a.severity] ?? a.severity}</Badge>
                     </td>
-                    <td className="px-4 py-2.5 tabular-nums text-ink-muted">{formatPageCount(a.pageCount)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-ink-muted">
+                      {formatPageCount(a.pageCount)}
+                      {a.enginePageCount != null && a.pageCount !== Number(a.enginePageCount) && (
+                        <div className="text-xs text-ink-faint">mecanismo: {formatPageCount(a.enginePageCount)}</div>
+                      )}
+                    </td>
                     <td className="max-w-[320px] truncate px-4 py-2.5 text-xs text-ink-faint">{a.description ?? '—'}</td>
                   </tr>
                 ))}

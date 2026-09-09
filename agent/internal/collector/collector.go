@@ -275,7 +275,7 @@ func (c *Collector) pollDevice(d config.Device) Metric {
 	m.PrinterStatus = printerStatusLabel(m.PrinterStatusCode)
 	m.PageCount = c.walkPageCount(g)
 	m.PowerOnCount = getInt(vars, oidPowerOnCount)
-	m.MonoPageCount, m.ColorPageCount = c.collectMarkerSplit(g, m.PageCount)
+	m.MonoPageCount, m.ColorPageCount = c.collectMarkerSplit(g)
 
 	if p, ok := vars["."+oidHrPrinterErrorState]; ok {
 		if b, ok := p.Value.([]byte); ok {
@@ -313,54 +313,33 @@ func (c *Collector) walkPageCount(g *gosnmp.GoSNMP) int64 {
 	return total
 }
 
-// markerSplitTolerancePages allows for a page or two ticking over between
-// walkPageCount's GET and this one within the same poll (a customer
-// actively printing at that exact instant) - not a license to accept a
-// systematically wrong split, see collectMarkerSplit's reconciliation check.
-const markerSplitTolerancePages = 5
-
 // collectMarkerSplit reads HP's private mono/color total-page-count scalars
 // (oidHPTotalMonoPageCount/oidHPTotalColorPageCount). RFC 3805's
 // prtMarkerTable doesn't reserve marker indices for "mono" vs "color" - a
 // color device's whole engine is typically one marker with one combined
 // lifetime count - so a real split needs a vendor-specific OID, not
-// guesswork: reporting a wrong split would silently corrupt a customer's
-// bill (see ContractsService.resolveBilling on the backend for how this
-// value is used).
+// guesswork.
 //
-// Both OID labels are independently confirmed by a third-party monitoring
-// vendor's own published OID table for HP LaserJet Color MFPs ("Total
-// Black/white printed Page Count" / "Total Color printed Page Count"), and
-// on a real HP Color LaserJet MFP M180nw (2026-09-03) the two summed to
-// exactly the same total walkPageCount already reports (2365 + 15836 =
-// 18201).
-//
-// **But that agreement doesn't hold on every HP device**: probing 3 other
-// real HP mono LaserJet units the same session, mono+color came back
-// noticeably short of the true total (e.g. one read mono=48101 against a
-// true total of 54241 - color read 0, so ~6,140 pages simply unaccounted
-// for). The OID's own vendor label says "printed Page Count" - the working
-// theory is it counts only host-originated print jobs, excluding walk-up
-// copies/faxes that the standard prtMarkerLifeCount marker counter (which
-// physically counts engine impressions regardless of source) still
-// includes - but that's unconfirmed, and doesn't matter for correctness
-// either way: whatever the cause, silently trusting an undercounting split
-// would erase real pages from a customer's bill, the exact undercounting
-// failure mode this project already hit once with the counter-reset logic
-// (see counter.util.ts). So this reconciles mono+color against the poll's
-// own already-trusted total (walkPageCount) before ever returning a split;
-// anything off by more than markerSplitTolerancePages is treated as "this
-// device's split isn't trustworthy" and returns (nil, nil) - same as a
-// device that doesn't support the OID at all. This is why the mono-LaserJet
-// units correctly stay nil (not a wrong split) despite the OIDs resolving.
+// **These OIDs measure a genuinely different thing than walkPageCount, not
+// an approximation of the same thing** - confirmed 2026-09-09 against a
+// real device's own embedded web page, which labels them separately:
+// "Total de páginas impressas" (this OID, actual print jobs) vs "Contagem
+// total de páginas do mecanismo" (walkPageCount/prtMarkerLifeCount, every
+// physical engine cycle - cleaning, calibration, internal test pages, walk-
+// up copies/faxes, included). On that device they read 6,119 vs 75,222 -
+// an earlier version of this function required the two to reconcile within
+// a few pages and discarded the split otherwise, which was built on the
+// wrong assumption that they measure the same total; that requirement is
+// gone now; a resolved value is trusted on its own, not cross-checked
+// against a different metric.
 //
 // HP-only: these OIDs live under HP's enterprise number (1.3.6.1.4.1.11)
 // and simply don't exist on other vendors' devices. SNMPv2c returns
 // noSuchObject/noSuchInstance in-band for an unsupported OID rather than
 // failing the whole GET, so this safely returns (nil, nil) on every non-HP
-// device too, and billing correctly falls back to treating every page as
-// mono, same as before this existed.
-func (c *Collector) collectMarkerSplit(g *gosnmp.GoSNMP, totalPageCount int64) (mono *int64, color *int64) {
+// device, and the backend falls back to prtMarkerLifeCount for those (see
+// ContractsService.pagesInPeriod).
+func (c *Collector) collectMarkerSplit(g *gosnmp.GoSNMP) (mono *int64, color *int64) {
 	result, err := g.Get([]string{oidHPTotalMonoPageCount, oidHPTotalColorPageCount})
 	if err != nil {
 		return nil, nil
@@ -368,25 +347,10 @@ func (c *Collector) collectMarkerSplit(g *gosnmp.GoSNMP, totalPageCount int64) (
 	vars := varMap(result.Variables)
 	monoVal, monoOK := getIntOK(vars, oidHPTotalMonoPageCount)
 	colorVal, colorOK := getIntOK(vars, oidHPTotalColorPageCount)
-	if !monoOK || !colorOK {
-		return nil, nil
-	}
-	if !splitReconciles(monoVal, colorVal, totalPageCount) {
+	if !monoOK || !colorOK || monoVal < 0 || colorVal < 0 {
 		return nil, nil
 	}
 	return &monoVal, &colorVal
-}
-
-// splitReconciles reports whether mono+color is close enough to the poll's
-// own already-trusted total (within markerSplitTolerancePages) to be
-// reported at all - see collectMarkerSplit's comment for why this exists
-// and isn't just an arithmetic nicety.
-func splitReconciles(mono, color, total int64) bool {
-	diff := (mono + color) - total
-	if diff < 0 {
-		diff = -diff
-	}
-	return diff <= markerSplitTolerancePages
 }
 
 func (c *Collector) walkSupplies(g *gosnmp.GoSNMP) []Supply {

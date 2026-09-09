@@ -9,6 +9,7 @@ import {
   getCustomers,
   getSession,
 } from '@/lib/api';
+import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
 import { deriveHealth } from '@/lib/health';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SupplyBar } from '@/components/SupplyBar';
@@ -32,7 +33,7 @@ function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(iso));
 }
 
-function formatPageCount(value: string | null): string {
+function formatPageCount(value: number | string | null): string {
   if (value == null) return '—';
   return new Intl.NumberFormat('pt-BR').format(Number(value));
 }
@@ -180,8 +181,14 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between gap-4">
               <dt className="text-ink-muted">Páginas impressas</dt>
-              <dd className="tabular-nums font-medium text-ink">{formatPageCount(latest?.pageCount ?? null)}</dd>
+              <dd className="tabular-nums font-medium text-ink">{formatPageCount(displayPageCount(latest ?? null))}</dd>
             </div>
+            {latest && engineDisplayPageCount(latest) != null && displayPageCount(latest) !== engineDisplayPageCount(latest) && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-ink-muted">Contador do mecanismo</dt>
+                <dd className="tabular-nums text-ink-faint">{formatPageCount(engineDisplayPageCount(latest))}</dd>
+              </div>
+            )}
             <div className="flex justify-between gap-4">
               <dt className="text-ink-muted">Tempo ligada</dt>
               <dd className="text-ink">{formatUptime(latest?.uptimeTicks ?? null)}</dd>
@@ -275,7 +282,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
                   <td className="px-5 py-2">
                     <StatusBadge health={deriveHealth(m)} />
                   </td>
-                  <td className="px-5 py-2 tabular-nums text-ink-muted">{formatPageCount(m.pageCount)}</td>
+                  <td className="px-5 py-2 tabular-nums text-ink-muted">{formatPageCount(displayPageCount(m))}</td>
                 </tr>
               ))}
             </tbody>

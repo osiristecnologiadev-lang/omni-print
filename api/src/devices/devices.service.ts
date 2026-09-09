@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { bucketDeltas } from '../common/counter.util';
+import { bucketDeltas, displayPageCount } from '../common/counter.util';
 import { lowestSupplyPercent } from '../common/supplies.util';
 import { forecastSupply, type SupplyReading } from '../common/supply-forecast.util';
 
@@ -27,6 +27,8 @@ interface LatestMetricRow {
   printer_status: string | null;
   device_status: string | null;
   page_count: bigint | null;
+  mono_page_count: bigint | null;
+  color_page_count: bigint | null;
   error_state: unknown;
   alerts: unknown;
   supplies: unknown;
@@ -54,7 +56,7 @@ export class DevicesService {
     const latest = await this.prisma.$queryRaw<LatestMetricRow[]>`
       SELECT DISTINCT ON (device_id)
         id, device_id, collected_at, online, printer_status, device_status,
-        page_count, error_state, alerts, supplies
+        page_count, mono_page_count, color_page_count, error_state, alerts, supplies
       FROM metrics
       WHERE device_id = ANY(${deviceIds})
       ORDER BY device_id, collected_at DESC
@@ -268,7 +270,8 @@ export class DevicesService {
       serialNumber: string | null;
       customerId: string | null;
       customerName: string | null;
-      pageCount: bigint | null;
+      pageCount: number | null;
+      enginePageCount: bigint | null;
       severity: string;
       code?: number;
       description?: string;
@@ -283,7 +286,14 @@ export class DevicesService {
           serialNumber: device.serialNumber,
           customerId: device.customerId,
           customerName: device.customer?.name ?? null,
-          pageCount: device.latestMetric?.page_count ?? null,
+          pageCount: device.latestMetric
+            ? displayPageCount({
+                pageCount: device.latestMetric.page_count,
+                monoPageCount: device.latestMetric.mono_page_count,
+                colorPageCount: device.latestMetric.color_page_count,
+              })
+            : null,
+          enginePageCount: device.latestMetric?.page_count ?? null,
           severity: alert.severity,
           code: alert.code,
           description: alert.description,

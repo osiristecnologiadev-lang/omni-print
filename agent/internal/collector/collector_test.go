@@ -6,34 +6,6 @@ import (
 	"github.com/gosnmp/gosnmp"
 )
 
-// Real numbers from probing actual devices on 2026-09-03 (see collector.go's
-// collectMarkerSplit comment) - this is the regression lock for the mono/
-// color billing-safety check, not just a shape test.
-func TestSplitReconciles(t *testing.T) {
-	tests := []struct {
-		name               string
-		mono, color, total int64
-		want               bool
-	}{
-		{"real HP Color LaserJet MFP M180nw - exact match", 2365, 15836, 18201, true},
-		{"real HPF359FC mono LaserJet - color 0, exact match", 41685, 0, 41685, true},
-		{"real HPF3792A mono LaserJet - ~6140 pages unaccounted for", 48101, 0, 54241, false},
-		{"real HPE0D2EA mono LaserJet - huge gap", 7937, 0, 51171, false},
-		{"within tolerance - a page ticked over mid-poll", 100, 50, 152, true},
-		{"exactly at tolerance boundary", 100, 50, 155, true},
-		{"one page past tolerance boundary", 100, 50, 156, false},
-		{"split reports more than total - still rejected", 200, 200, 100, false},
-		{"zero everywhere", 0, 0, 0, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := splitReconciles(tt.mono, tt.color, tt.total); got != tt.want {
-				t.Errorf("splitReconciles(%d, %d, %d) = %v, want %v", tt.mono, tt.color, tt.total, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestCleanString(t *testing.T) {
 	tests := []struct {
 		name string

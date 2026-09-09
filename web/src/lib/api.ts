@@ -118,6 +118,13 @@ export interface LatestMetric {
   printer_status: string | null;
   device_status: string | null;
   page_count: string | null; // BigInt, serialized as a string - see api/src/main.ts
+  // The device's own "pages actually printed" counter, when it reports one -
+  // see Collector.collectMarkerSplit's comment. Prefer displayPageCount()
+  // over reading page_count directly wherever a single "how many pages"
+  // figure is shown - it can differ a lot from page_count on the same
+  // device (page_count also counts non-print engine cycles).
+  mono_page_count: string | null;
+  color_page_count: string | null;
   error_state: Record<string, boolean> | null;
   alerts: Alert[] | null;
   supplies: Supply[] | null;
@@ -160,6 +167,8 @@ export interface Metric {
   deviceStatus: string | null;
   errorState: Record<string, boolean> | null;
   pageCount: string | null;
+  monoPageCount: string | null;
+  colorPageCount: string | null;
   powerOnCount: string | null;
   supplies: Supply[] | null;
   inputTrays: unknown[] | null;
@@ -271,7 +280,11 @@ export interface ActiveAlert {
   serialNumber: string | null;
   customerId: string | null;
   customerName: string | null;
-  pageCount: string | null;
+  // "Pages actually printed" when available, engine/mechanism count
+  // otherwise - see displayPageCount(). Already resolved server-side here
+  // since ActiveAlert isn't a full LatestMetric.
+  pageCount: number | null;
+  enginePageCount: string | null; // BigInt, serialized as a string
   severity: string;
   code?: number;
   description?: string;
@@ -529,6 +542,10 @@ export interface DevicePages {
   endReading: number | null;
   counterReset: boolean;
   usedManualBaseline: boolean;
+  usedFallbackForReset: boolean;
+  enginePages: number;
+  engineStartReading: number | null;
+  engineEndReading: number | null;
 }
 
 export type BillingResult =
@@ -609,6 +626,11 @@ export interface InvoicePerDevice {
   startReading: number | null;
   endReading: number | null;
   counterReset: boolean;
+  usedManualBaseline?: boolean;
+  usedFallbackForReset?: boolean;
+  enginePages?: number;
+  engineStartReading?: number | null;
+  engineEndReading?: number | null;
 }
 
 export interface Invoice {
@@ -757,6 +779,11 @@ export function lowestSupplyPercent(metric: LatestMetric | Metric | null): numbe
     .map((s) => (s.level / s.max_level) * 100);
   return percents.length > 0 ? Math.min(...percents) : null;
 }
+
+// displayPageCount/engineDisplayPageCount moved to lib/pages.ts - that
+// module has no next/headers import, so client components (DeviceFleetTable's
+// search UI) can use them without pulling this whole server-only module into
+// the client bundle.
 
 export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 export type TicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';

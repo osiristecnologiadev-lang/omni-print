@@ -1,4 +1,28 @@
-import { filterTransientDropouts, sumWithResetHandling, bucketDeltas } from './counter.util';
+import {
+  filterTransientDropouts,
+  sumWithResetHandling,
+  sumWithFallbackOnReset,
+  bucketDeltas,
+  displayPageCount,
+} from './counter.util';
+
+describe('displayPageCount', () => {
+  it('prefers mono+color when both are present', () => {
+    expect(displayPageCount({ pageCount: BigInt(75222), monoPageCount: BigInt(6119), colorPageCount: BigInt(0) })).toBe(6119);
+  });
+
+  it('falls back to pageCount when mono/color are missing (non-HP device)', () => {
+    expect(displayPageCount({ pageCount: BigInt(1339), monoPageCount: null, colorPageCount: null })).toBe(1339);
+  });
+
+  it('falls back to pageCount when only one of mono/color is present', () => {
+    expect(displayPageCount({ pageCount: BigInt(500), monoPageCount: BigInt(200), colorPageCount: null })).toBe(500);
+  });
+
+  it('returns null when there is no data at all', () => {
+    expect(displayPageCount({ pageCount: null, monoPageCount: null, colorPageCount: null })).toBeNull();
+  });
+});
 
 describe('sumWithResetHandling', () => {
   it('sums a normal non-decreasing sequence as plain deltas', () => {
@@ -20,6 +44,59 @@ describe('sumWithResetHandling', () => {
     const { total } = sumWithResetHandling([500, 10]);
     expect(total).toBeGreaterThanOrEqual(0);
     expect(total).toBe(10);
+  });
+});
+
+describe('sumWithFallbackOnReset', () => {
+  it('sums plain primary deltas when nothing ever drops', () => {
+    const { total, usedFallback, reset } = sumWithFallbackOnReset([
+      { primary: 6000, reference: 74000 },
+      { primary: 6050, reference: 74100 },
+      { primary: 6119, reference: 75222 },
+    ]);
+    expect(total).toBe(119); // 6119 - 6000, primary only
+    expect(usedFallback).toBe(false);
+    expect(reset).toBe(false);
+  });
+
+  it('falls back to the reference counter for the one hop where the primary counter reset', () => {
+    // Real shape from the printer that prompted this: "pages printed"
+    // (primary) resets from a service action while "engine count"
+    // (reference) keeps climbing normally through the same hop.
+    const { total, usedFallback, reset } = sumWithFallbackOnReset([
+      { primary: 6119, reference: 75222 },
+      { primary: 12, reference: 75230 }, // primary reset (service reset the job counter), reference didn't
+      { primary: 40, reference: 75260 },
+    ]);
+    // hop 1: primary dropped -> use reference's delta instead (75230-75222=8)
+    // hop 2: primary normal -> 40-12=28
+    expect(total).toBe(36);
+    expect(usedFallback).toBe(true);
+    expect(reset).toBe(false);
+  });
+
+  it('treats a drop in BOTH counters at once as a genuine whole-device reset, not a fallback case', () => {
+    const { total, usedFallback, reset } = sumWithFallbackOnReset([
+      { primary: 6119, reference: 75222 },
+      { primary: 20, reference: 100 }, // both dropped - a real factory reset/board swap
+    ]);
+    expect(total).toBe(20); // trusts the post-reset primary reading directly, like sumWithResetHandling
+    expect(usedFallback).toBe(false);
+    expect(reset).toBe(true);
+  });
+
+  it('never used as a fallback when the reference counter is the one that dropped alone', () => {
+    // Reference dropping while primary keeps climbing normally shouldn't
+    // happen for a real lifetime engine counter, but if it did, primary's
+    // own delta is still trustworthy and used as normal - no special case
+    // needed since only a primary drop triggers a look at reference at all.
+    const { total, usedFallback, reset } = sumWithFallbackOnReset([
+      { primary: 100, reference: 5000 },
+      { primary: 150, reference: 10 },
+    ]);
+    expect(total).toBe(50);
+    expect(usedFallback).toBe(false);
+    expect(reset).toBe(false);
   });
 });
 

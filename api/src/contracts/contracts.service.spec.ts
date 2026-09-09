@@ -365,6 +365,145 @@ describe('ContractsService.resolveBilling', () => {
       expect(result.perDevice[0].startReading).toBe(205000); // not the old manual 200000
     }
   });
+
+  it('bills off the "pages printed" counter instead of the engine counter when both are available and never diverge by a reset - the real HPBF7A28 scenario', async () => {
+    // Real device found 2026-09-09: engine (mechanism) counter reads 75,222
+    // while the vendor's own "pages actually printed" counter reads 6,119 -
+    // not a reset, just two genuinely different metrics (see
+    // Collector.collectMarkerSplit's comment). Billing should follow the
+    // smaller, more accurate "printed" number, while still reporting the
+    // engine number as supplementary info.
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.10',
+      pricePerPageColor: '0.10',
+      minimumPagesMono: 0,
+      minimumPagesColor: 0,
+    });
+    prisma.device.findMany.mockResolvedValue([makeDevice()]);
+    prisma.metric.findFirst.mockResolvedValue({
+      collectedAt: new Date('2026-08-31T00:00:00Z'),
+      pageCount: BigInt(75000),
+      monoPageCount: BigInt(6000),
+      colorPageCount: BigInt(0),
+    });
+    prisma.metric.findMany.mockResolvedValue([
+      { collectedAt: periodEnd, pageCount: BigInt(75222), monoPageCount: BigInt(6119), colorPageCount: BigInt(0) },
+    ]);
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      expect(result.totalPages).toBe(119); // 6119 - 6000, the "printed" delta
+      expect(result.usageCost).toBeCloseTo(11.9, 5);
+      const d = result.perDevice[0];
+      expect(d.counterReset).toBe(false);
+      expect(d.usedFallbackForReset).toBe(false);
+      expect(d.enginePages).toBe(222); // 75222 - 75000, the engine delta, shown as extra info only
+      expect(d.engineStartReading).toBe(75000);
+      expect(d.engineEndReading).toBe(75222);
+    }
+  });
+
+  it('falls back to the engine counter for just the one hop where the printed-pages counter got reset', async () => {
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.10',
+      pricePerPageColor: '0.10',
+      minimumPagesMono: 0,
+      minimumPagesColor: 0,
+    });
+    prisma.device.findMany.mockResolvedValue([makeDevice()]);
+    prisma.metric.findFirst.mockResolvedValue({
+      collectedAt: new Date('2026-08-31T00:00:00Z'),
+      pageCount: BigInt(75000),
+      monoPageCount: BigInt(6000),
+      colorPageCount: BigInt(0),
+    });
+    prisma.metric.findMany.mockResolvedValue([
+      // A technician reset the "printed" counter mid-month (6000 -> 12);
+      // the engine counter kept climbing normally through the same hop.
+      { collectedAt: new Date('2026-09-15T00:00:00Z'), pageCount: BigInt(75050), monoPageCount: BigInt(12), colorPageCount: BigInt(0) },
+      { collectedAt: periodEnd, pageCount: BigInt(75090), monoPageCount: BigInt(52), colorPageCount: BigInt(0) },
+    ]);
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      // hop 1 (reset, use engine's delta): 75050-75000 = 50
+      // hop 2 (normal): 52-12 = 40
+      expect(result.totalPages).toBe(90);
+      const d = result.perDevice[0];
+      expect(d.counterReset).toBe(true);
+      expect(d.usedFallbackForReset).toBe(true);
+      expect(d.enginePages).toBe(90); // 75090 - 75000, happens to match here but computed independently
+    }
+  });
+
+  it('treats a simultaneous drop in both counters as a genuine device reset, not a fallback case', async () => {
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.10',
+      pricePerPageColor: '0.10',
+      minimumPagesMono: 0,
+      minimumPagesColor: 0,
+    });
+    prisma.device.findMany.mockResolvedValue([makeDevice()]);
+    prisma.metric.findFirst.mockResolvedValue({
+      collectedAt: new Date('2026-08-31T00:00:00Z'),
+      pageCount: BigInt(75000),
+      monoPageCount: BigInt(6000),
+      colorPageCount: BigInt(0),
+    });
+    prisma.metric.findMany.mockResolvedValue([
+      // Board swap / factory reset - both counters restart together.
+      { collectedAt: periodEnd, pageCount: BigInt(30), monoPageCount: BigInt(20), colorPageCount: BigInt(0) },
+    ]);
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      expect(result.totalPages).toBe(20); // trusts the post-reset "printed" reading directly
+      const d = result.perDevice[0];
+      expect(d.counterReset).toBe(true);
+      expect(d.usedFallbackForReset).toBe(false);
+    }
+  });
+
+  it('falls back to the engine counter for the whole period when no split data exists at all (non-HP device)', async () => {
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.10',
+      pricePerPageColor: '0.10',
+      minimumPagesMono: 0,
+      minimumPagesColor: 0,
+    });
+    prisma.device.findMany.mockResolvedValue([makeDevice()]);
+    prisma.metric.findFirst.mockResolvedValue({
+      collectedAt: new Date('2026-08-31T00:00:00Z'),
+      pageCount: BigInt(1000),
+      monoPageCount: null,
+      colorPageCount: null,
+    });
+    prisma.metric.findMany.mockResolvedValue([
+      { collectedAt: periodEnd, pageCount: BigInt(1339), monoPageCount: null, colorPageCount: null },
+    ]);
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      expect(result.totalPages).toBe(339);
+      expect(result.perDevice[0].enginePages).toBe(339); // same source, both fields agree
+    }
+  });
 });
 
 describe('ContractsService.currentPeriodPreview', () => {

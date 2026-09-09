@@ -260,7 +260,11 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
                       {d.deviceName}
                       {d.counterReset && (
                         <span
-                          title="Contador reiniciado durante o período - páginas já recalculadas corretamente."
+                          title={
+                            d.usedFallbackForReset
+                              ? 'O contador de páginas impressas reiniciou durante o período - esse trecho foi calculado pelo contador do mecanismo.'
+                              : 'Contador reiniciado durante o período - páginas já recalculadas corretamente.'
+                          }
                           className="ml-1 text-amber-600 dark:text-amber-400"
                         >
                           *
@@ -275,7 +279,12 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
                         </span>
                       )}
                     </span>
-                    <span className="tabular-nums text-ink-faint">{integer.format(d.pages)} pág.</span>
+                    <span className="text-right">
+                      <span className="tabular-nums text-ink-faint">{integer.format(d.pages)} pág.</span>
+                      {d.enginePages !== d.pages && (
+                        <span className="block text-xs text-ink-faint">mecanismo: {integer.format(d.enginePages)}</span>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>

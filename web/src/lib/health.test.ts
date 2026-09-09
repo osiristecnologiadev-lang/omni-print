@@ -11,6 +11,8 @@ function metric(overrides: Partial<LatestMetric>): LatestMetric {
     printer_status: 'idle',
     device_status: 'running',
     page_count: '100',
+    mono_page_count: null,
+    color_page_count: null,
     error_state: null,
     alerts: null,
     supplies: null,
