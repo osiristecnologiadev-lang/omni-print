@@ -219,7 +219,13 @@ async function apiFetch<T>(path: string): Promise<T> {
   if (!res.ok) {
     throw new Error(`API request to ${path} failed: ${res.status} ${res.statusText}`);
   }
-  return res.json();
+  // A controller returning `null` (e.g. "no active contract") produces a
+  // genuinely empty 200 body (Content-Length: 0), not the string "null" -
+  // res.json() throws (SyntaxError: Unexpected end of JSON input) on an
+  // empty body instead of parsing it as null. See getAgentLatestRelease's
+  // comment for where this was first confirmed.
+  const text = await res.text();
+  return text ? JSON.parse(text) : (null as T);
 }
 
 async function apiMutate<T>(path: string, method: 'POST' | 'PATCH', body: unknown): Promise<T> {
