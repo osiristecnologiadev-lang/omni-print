@@ -275,6 +275,53 @@ describe('ContractsService.resolveBilling', () => {
     }
   });
 
+  it('splits a print run spanning midnight with no gap or double-count between the two months', async () => {
+    // Real device history, unbroken: ...July 31 (1000) -> Aug 31 23:50
+    // (1980) -> Sep 1 00:15 (2030, the poll that happened to land just
+    // after midnight) -> Sep 15 (2200). The 50-page hop straddling
+    // midnight (1980 -> 2030) is attributed entirely to September (the
+    // reading that captured it has a September timestamp) - not lost, not
+    // billed to both months, because August's own delta walk stops at the
+    // same 1980 reading that September's walk starts from.
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.10',
+      pricePerPageColor: '0.10',
+      minimumPagesMono: 0,
+      minimumPagesColor: 0,
+    });
+    prisma.device.findMany.mockResolvedValue([makeDevice()]);
+
+    const augustStart = new Date('2026-08-01T00:00:00Z');
+    const augustEnd = new Date('2026-08-31T23:59:59.999Z');
+    const boundaryReading = { collectedAt: new Date('2026-08-31T23:50:00Z'), pageCount: BigInt(1980), monoPageCount: null, colorPageCount: null };
+
+    prisma.metric.findFirst.mockResolvedValueOnce({
+      collectedAt: new Date('2026-07-31T00:00:00Z'),
+      pageCount: BigInt(1000),
+      monoPageCount: null,
+      colorPageCount: null,
+    });
+    prisma.metric.findMany.mockResolvedValueOnce([boundaryReading]);
+    const august = await service.resolveBilling('t1', 'c1', augustStart, augustEnd);
+
+    prisma.metric.findFirst.mockResolvedValueOnce(boundaryReading); // same reading, now used as September's baseline
+    prisma.metric.findMany.mockResolvedValueOnce([
+      { collectedAt: new Date('2026-09-01T00:15:00Z'), pageCount: BigInt(2030), monoPageCount: null, colorPageCount: null },
+      { collectedAt: periodEnd, pageCount: BigInt(2200), monoPageCount: null, colorPageCount: null },
+    ]);
+    const september = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(august.hasContract).toBe(true);
+    expect(september.hasContract).toBe(true);
+    if (august.hasContract && september.hasContract) {
+      expect(august.totalPages).toBe(980); // 1000 -> 1980
+      expect(september.totalPages).toBe(220); // 1980 -> 2030 -> 2200, includes the midnight-spanning hop
+      expect(august.totalPages + september.totalPages).toBe(1200); // = 2200 - 1000, the real total, exactly once
+    }
+  });
+
   it('does not double-count a prior period once real data covers the next period too - the exact "next month" scenario', async () => {
     // Same device/contract as the fill-the-gap test above, one month later.
     // By October, real polling has been running the whole time - there's
