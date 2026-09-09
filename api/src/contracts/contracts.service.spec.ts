@@ -193,6 +193,49 @@ describe('ContractsService.resolveBilling', () => {
     }
   });
 
+  it('a manual "pages printed" baseline anchors the split pipeline, not the unrelated engine counter - real HPBF7A28 bug', async () => {
+    // Real bug reported by the user: entered a manual baseline of 6,064
+    // (their own "pages actually printed" figure from an old report) on a
+    // device that also reports the vendor's mono/color split. Since the
+    // baseline was spliced into the plain engine-counter sequence, the
+    // engine pipeline computed 75,227 (real engine total) - 6,064 (a
+    // *printed*-pages figure, not an engine one) = an "impossible"
+    // 69,163-page month, while the actually-billed `pages` (driven by the
+    // real split data alone, which the baseline never reached) silently
+    // ignored the baseline and showed a near-zero delta instead.
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.10',
+      pricePerPageColor: '0.10',
+      minimumPagesMono: 0,
+      minimumPagesColor: 0,
+    });
+    prisma.device.findMany.mockResolvedValue([
+      makeDevice({
+        manualBaselineDate: new Date('2026-08-31T00:00:00Z'),
+        manualBaselinePageCount: BigInt(6064),
+      }),
+    ]);
+    // No real metric at all before periodStart (monitoring started mid-month).
+    prisma.metric.findFirst.mockResolvedValue(null);
+    prisma.metric.findMany.mockResolvedValue([
+      { collectedAt: new Date('2026-09-08T00:00:00Z'), pageCount: BigInt(75170), monoPageCount: BigInt(6119), colorPageCount: BigInt(0) },
+      { collectedAt: periodEnd, pageCount: BigInt(75227), monoPageCount: BigInt(6124), colorPageCount: BigInt(0) },
+    ]);
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      const d = result.perDevice[0];
+      expect(d.pages).toBe(60); // (6119-6064) + (6124-6119) = 60, the baseline correctly anchors the PRINTED pipeline
+      expect(d.usedManualBaseline).toBe(true);
+      expect(d.enginePages).toBe(57); // 75227 - 75170, real engine data only - NOT 69,163
+      expect(result.usageCost).toBeCloseTo(6, 5); // 60 * 0.10
+    }
+  });
+
   it('a manual baseline fills the gap when monitoring started after the period began', async () => {
     prisma.contract.findFirst.mockResolvedValue({
       pricingModel: 'PER_PAGE',
