@@ -167,7 +167,10 @@ export class DevicesService {
   // common/counter.util.ts), just bucketed by day instead of by billing
   // period, and without a fixed calendar boundary. The last reading of each
   // day is the day's representative value; bucketDeltas turns that sequence
-  // into "how many pages happened on this specific day."
+  // into "how many pages happened on this specific day." Also prefers the
+  // printed-pages counter over the engine counter when available, same as
+  // DevicePagesService.pagesInPeriod - see deviceDailyPageDeltas's comment
+  // for why that choice is made once for the whole range, not per reading.
   async pageTrend(tenantId: string, customerId: string | null, deviceId: string, days: number): Promise<DailyPoint[]> {
     const device = await this.prisma.device.findFirst({
       where: { id: deviceId, tenantId, ...(customerId ? { customerId } : {}) },
@@ -224,26 +227,46 @@ export class DevicesService {
     const end = new Date();
     const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
 
+    const select = { collectedAt: true, pageCount: true, monoPageCount: true, colorPageCount: true } as const;
     const [baseline, inRange] = await Promise.all([
       this.prisma.metric.findFirst({
         where: { deviceId, collectedAt: { lte: start } },
         orderBy: { collectedAt: 'desc' },
-        select: { collectedAt: true, pageCount: true },
+        select,
       }),
       this.prisma.metric.findMany({
         where: { deviceId, collectedAt: { gt: start, lte: end } },
         orderBy: { collectedAt: 'asc' },
-        select: { collectedAt: true, pageCount: true },
+        select,
       }),
     ]);
 
-    const sequence = [...(baseline ? [baseline] : []), ...inRange].filter((m) => m.pageCount != null);
+    const sequence = [...(baseline ? [baseline] : []), ...inRange];
 
-    // Keep only the last reading of each day (sequence is ascending, so a
+    // Same printed-vs-engine preference as DevicePagesService.pagesInPeriod
+    // (see its comment for why they can differ a lot on the same device) -
+    // decided once for the whole queried range rather than per reading, so
+    // the chart doesn't register a fake multi-thousand-page "drop" the
+    // moment a device starts reporting its printed-pages split (which reads
+    // far lower than the engine total it replaces) - the same failure mode
+    // as the manual-baseline bug in
+    // [[project-omniprint-printed-pages-billing-20260909]], just in the
+    // trend chart instead of the monthly total.
+    const splitReadings = sequence
+      .filter((m) => m.monoPageCount != null && m.colorPageCount != null)
+      .map((m) => ({ collectedAt: m.collectedAt, value: Number(m.monoPageCount) + Number(m.colorPageCount) }));
+    const useSplit = splitReadings.length >= 2;
+    const source = useSplit
+      ? splitReadings
+      : sequence
+          .filter((m) => m.pageCount != null)
+          .map((m) => ({ collectedAt: m.collectedAt, value: Number(m.pageCount) }));
+
+    // Keep only the last reading of each day (source is ascending, so a
     // later Map.set for the same day key overwrites the earlier one).
     const byDay = new Map<string, number>();
-    for (const m of sequence) {
-      byDay.set(m.collectedAt.toISOString().slice(0, 10), Number(m.pageCount));
+    for (const m of source) {
+      byDay.set(m.collectedAt.toISOString().slice(0, 10), m.value);
     }
     const daily = [...byDay.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
