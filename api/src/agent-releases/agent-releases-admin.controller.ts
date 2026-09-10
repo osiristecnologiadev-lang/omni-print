@@ -6,12 +6,14 @@ import {
   Get,
   Param,
   Post,
+  Req,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { PlatformAuthGuard } from '../platform/platform-auth.guard';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { AgentReleasesService } from './agent-releases.service';
 import { CreateAgentReleaseDto } from './dto/create-agent-release.dto';
 
@@ -22,7 +24,10 @@ import { CreateAgentReleaseDto } from './dto/create-agent-release.dto';
 @UseGuards(PlatformAuthGuard)
 @Controller('v1/platform/agent-releases')
 export class AgentReleasesAdminController {
-  constructor(private readonly releases: AgentReleasesService) {}
+  constructor(
+    private readonly releases: AgentReleasesService,
+    private readonly auditLog: AuditLogService,
+  ) {}
 
   @Get()
   list() {
@@ -35,6 +40,7 @@ export class AgentReleasesAdminController {
   @Post()
   @UseInterceptors(FileFieldsInterceptor([{ name: 'file', maxCount: 1 }, { name: 'installer', maxCount: 1 }]))
   async create(
+    @Req() req: any,
     @Body() dto: CreateAgentReleaseDto,
     @UploadedFiles() files: { file?: Express.Multer.File[]; installer?: Express.Multer.File[] },
   ) {
@@ -42,11 +48,35 @@ export class AgentReleasesAdminController {
     if (!file) {
       throw new BadRequestException('file is required');
     }
-    return this.releases.create(dto, file, files.installer?.[0]);
+    const release = await this.releases.create(dto, file, files.installer?.[0]);
+    await this.auditLog.log({
+      tenantId: null,
+      actorType: 'PLATFORM_ADMIN',
+      actorId: req.platformAdminId,
+      actorLabel: req.platformAdminEmail,
+      action: 'agent_release.publish',
+      targetType: 'AgentRelease',
+      targetId: release.id,
+      targetLabel: `${release.platform} ${release.version}`,
+      metadata: { mandatory: release.mandatory },
+    });
+    return release;
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.releases.remove(id);
+  async remove(@Req() req: any, @Param('id') id: string) {
+    const release = await this.releases.get(id);
+    await this.releases.remove(id);
+    await this.auditLog.log({
+      tenantId: null,
+      actorType: 'PLATFORM_ADMIN',
+      actorId: req.platformAdminId,
+      actorLabel: req.platformAdminEmail,
+      action: 'agent_release.delete',
+      targetType: 'AgentRelease',
+      targetId: release.id,
+      targetLabel: `${release.platform} ${release.version}`,
+    });
+    return { ok: true };
   }
 }

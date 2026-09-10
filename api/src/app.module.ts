@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
 import { AuthModule } from './auth/auth.module';
 import { IngestModule } from './ingest/ingest.module';
 import { DevicesModule } from './devices/devices.module';
@@ -31,6 +32,7 @@ import { HealthController } from './health/health.controller';
     // ingest.controller.ts.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     PrismaModule,
+    AuditLogModule,
     AuthModule,
     IngestModule,
     DevicesModule,

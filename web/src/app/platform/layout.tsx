@@ -30,6 +30,9 @@ export default async function PlatformLayout({ children }: { children: React.Rea
               <Link href="/platform/agent-fleet" className="transition-colors hover:text-[#e8eaf0]">
                 Frota
               </Link>
+              <Link href="/platform/audit-log" className="transition-colors hover:text-[#e8eaf0]">
+                Log de auditoria
+              </Link>
               <PlatformLogoutButton />
             </nav>
           </div>

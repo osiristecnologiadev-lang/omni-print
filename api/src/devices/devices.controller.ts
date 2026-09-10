@@ -1,12 +1,16 @@
 import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { DevicesService } from './devices.service';
 import { UpdateDeviceDto } from './dto/update-device.dto';
 
 @UseGuards(UserAuthGuard)
 @Controller('v1')
 export class DevicesController {
-  constructor(private readonly devicesService: DevicesService) {}
+  constructor(
+    private readonly devicesService: DevicesService,
+    private readonly auditLog: AuditLogService,
+  ) {}
 
   @Get('devices')
   async list(@Req() req: any) {
@@ -79,7 +83,55 @@ export class DevicesController {
   @Patch('devices/:id')
   async update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateDeviceDto) {
     this.devicesService.assertTenantWide(req.customerId);
-    return this.devicesService.update(req.tenantId, id, dto);
+    const device = await this.devicesService.update(req.tenantId, id, dto);
+    const targetLabel = device.customLabel ?? device.printerName ?? device.name ?? device.host;
+
+    // One PATCH here bundles up to 3 conceptually distinct admin actions
+    // (see UpdateDeviceDto's own comment on why each field is independent)
+    // - log one entry per field actually present, not one generic
+    // "device.update", so "quem reatribuiu esse dispositivo" is a precise
+    // question the log can answer directly.
+    if (dto.customerId !== undefined) {
+      await this.auditLog.log({
+        tenantId: req.tenantId,
+        actorType: 'USER',
+        actorId: req.userId,
+        actorLabel: req.userEmail,
+        action: 'device.reassign_customer',
+        targetType: 'Device',
+        targetId: device.id,
+        targetLabel,
+        metadata: { customerId: dto.customerId },
+      });
+    }
+    if (dto.customLabel !== undefined) {
+      await this.auditLog.log({
+        tenantId: req.tenantId,
+        actorType: 'USER',
+        actorId: req.userId,
+        actorLabel: req.userEmail,
+        action: 'device.set_label',
+        targetType: 'Device',
+        targetId: device.id,
+        targetLabel,
+        metadata: { customLabel: dto.customLabel },
+      });
+    }
+    if (dto.manualBaselineDate !== undefined || dto.manualBaselinePageCount !== undefined) {
+      await this.auditLog.log({
+        tenantId: req.tenantId,
+        actorType: 'USER',
+        actorId: req.userId,
+        actorLabel: req.userEmail,
+        action: 'device.set_manual_baseline',
+        targetType: 'Device',
+        targetId: device.id,
+        targetLabel,
+        metadata: { manualBaselineDate: dto.manualBaselineDate, manualBaselinePageCount: dto.manualBaselinePageCount },
+      });
+    }
+
+    return device;
   }
 }
 

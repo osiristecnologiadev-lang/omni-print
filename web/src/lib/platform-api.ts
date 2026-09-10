@@ -160,6 +160,29 @@ export function deleteAgentRelease(id: string): Promise<void> {
   return apiDelete(`/v1/platform/agent-releases/${id}`);
 }
 
+export interface AuditLogEntry {
+  id: string;
+  actorType: 'USER' | 'PLATFORM_ADMIN';
+  actorLabel: string | null;
+  action: string;
+  targetType: string | null;
+  targetLabel: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AuditLogPage {
+  entries: AuditLogEntry[];
+  nextCursor: string | null;
+}
+
+// Platform-admin-actor entries only (tenant creation, agent release
+// publish/delete) - not a cross-tenant view of every USER-actor entry too,
+// see api/src/audit-log/audit-log.service.ts's listForPlatformAdmins.
+export function getPlatformAuditLog(cursor?: string): Promise<AuditLogPage> {
+  return apiFetch<AuditLogPage>(`/v1/platform/audit-log${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
+}
+
 export function getAgentFleet(): Promise<AgentFleetEntry[]> {
   return apiFetch<AgentFleetEntry[]>('/v1/platform/agent-fleet');
 }

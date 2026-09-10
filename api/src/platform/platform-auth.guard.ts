@@ -46,6 +46,10 @@ export class PlatformAuthGuard implements CanActivate {
     }
 
     req.platformAdminId = payload.sub;
+    // Free (the row is already fetched above for the revokedAt check) -
+    // lets controllers denormalize an actor label into AuditLogEntry
+    // without a second query, same reasoning as UserAuthGuard's userEmail.
+    req.platformAdminEmail = admin.email;
     return true;
   }
 }

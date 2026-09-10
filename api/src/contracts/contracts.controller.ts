@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { ContractsService } from './contracts.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
@@ -22,7 +23,10 @@ import { UpdateContractDto } from './dto/update-contract.dto';
 @UseGuards(UserAuthGuard)
 @Controller('v1/customers/:customerId/contracts')
 export class ContractsController {
-  constructor(private readonly contractsService: ContractsService) {}
+  constructor(
+    private readonly contractsService: ContractsService,
+    private readonly auditLog: AuditLogService,
+  ) {}
 
   @Get()
   list(@Req() req: any, @Param('customerId') customerId: string) {
@@ -37,26 +41,62 @@ export class ContractsController {
   }
 
   @Post()
-  create(@Req() req: any, @Param('customerId') customerId: string, @Body() dto: CreateContractDto) {
+  async create(@Req() req: any, @Param('customerId') customerId: string, @Body() dto: CreateContractDto) {
     this.assertTenantWide(req.customerId);
-    return this.contractsService.create(req.tenantId, customerId, dto);
+    const contract = await this.contractsService.create(req.tenantId, customerId, dto);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'contract.create',
+      targetType: 'Contract',
+      targetId: contract.id,
+      targetLabel: `Contrato ${contract.pricingModel}`,
+      metadata: { customerId },
+    });
+    return contract;
   }
 
   @Patch(':contractId')
-  update(
+  async update(
     @Req() req: any,
     @Param('customerId') customerId: string,
     @Param('contractId') contractId: string,
     @Body() dto: UpdateContractDto,
   ) {
     this.assertTenantWide(req.customerId);
-    return this.contractsService.update(req.tenantId, customerId, contractId, dto);
+    const contract = await this.contractsService.update(req.tenantId, customerId, contractId, dto);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'contract.update',
+      targetType: 'Contract',
+      targetId: contract.id,
+      targetLabel: `Contrato ${contract.pricingModel}`,
+      metadata: { customerId },
+    });
+    return contract;
   }
 
   @Post(':contractId/cancel')
-  cancel(@Req() req: any, @Param('customerId') customerId: string, @Param('contractId') contractId: string) {
+  async cancel(@Req() req: any, @Param('customerId') customerId: string, @Param('contractId') contractId: string) {
     this.assertTenantWide(req.customerId);
-    return this.contractsService.cancel(req.tenantId, customerId, contractId);
+    const contract = await this.contractsService.cancel(req.tenantId, customerId, contractId);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'contract.cancel',
+      targetType: 'Contract',
+      targetId: contract.id,
+      targetLabel: `Contrato ${contract.pricingModel}`,
+      metadata: { customerId },
+    });
+    return contract;
   }
 
   @Get('billing')

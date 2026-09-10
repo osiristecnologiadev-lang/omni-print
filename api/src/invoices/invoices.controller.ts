@@ -1,6 +1,7 @@
 import { Body, Controller, ForbiddenException, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvoicesService } from './invoices.service';
 import { InvoicePdfService } from './invoice-pdf.service';
@@ -17,6 +18,7 @@ export class InvoicesController {
     private readonly invoicesService: InvoicesService,
     private readonly pdfService: InvoicePdfService,
     private readonly prisma: PrismaService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   @Get()
@@ -36,26 +38,62 @@ export class InvoicesController {
   // real invoice. The nightly cron calls the same service method, so both
   // paths share the same idempotency guarantee.
   @Post('generate')
-  generate(@Req() req: any, @Param('customerId') customerId: string, @Body() dto: GenerateInvoiceDto) {
+  async generate(@Req() req: any, @Param('customerId') customerId: string, @Body() dto: GenerateInvoiceDto) {
     this.assertTenantWide(req.customerId);
-    return this.invoicesService.generate(req.tenantId, customerId, dto.year, dto.month);
+    const invoice = await this.invoicesService.generate(req.tenantId, customerId, dto.year, dto.month);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'invoice.generate',
+      targetType: 'Invoice',
+      targetId: invoice.id,
+      targetLabel: `Nº ${String(invoice.number).padStart(6, '0')}`,
+      metadata: { customerId, year: dto.year, month: dto.month },
+    });
+    return invoice;
   }
 
   @Post(':invoiceId/pay')
-  markPaid(
+  async markPaid(
     @Req() req: any,
     @Param('customerId') customerId: string,
     @Param('invoiceId') invoiceId: string,
     @Body() dto: MarkPaidDto,
   ) {
     this.assertTenantWide(req.customerId);
-    return this.invoicesService.markPaid(req.tenantId, customerId, invoiceId, dto.paidAmount);
+    const invoice = await this.invoicesService.markPaid(req.tenantId, customerId, invoiceId, dto.paidAmount);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'invoice.mark_paid',
+      targetType: 'Invoice',
+      targetId: invoice.id,
+      targetLabel: `Nº ${String(invoice.number).padStart(6, '0')}`,
+      metadata: { customerId, paidAmount: dto.paidAmount },
+    });
+    return invoice;
   }
 
   @Post(':invoiceId/cancel')
-  cancel(@Req() req: any, @Param('customerId') customerId: string, @Param('invoiceId') invoiceId: string) {
+  async cancel(@Req() req: any, @Param('customerId') customerId: string, @Param('invoiceId') invoiceId: string) {
     this.assertTenantWide(req.customerId);
-    return this.invoicesService.cancel(req.tenantId, customerId, invoiceId);
+    const invoice = await this.invoicesService.cancel(req.tenantId, customerId, invoiceId);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'invoice.cancel',
+      targetType: 'Invoice',
+      targetId: invoice.id,
+      targetLabel: `Nº ${String(invoice.number).padStart(6, '0')}`,
+      metadata: { customerId },
+    });
+    return invoice;
   }
 
   @Get(':invoiceId/pdf')

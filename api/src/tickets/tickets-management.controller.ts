@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from '@nestjs/common';
 import { TicketStatus } from '@prisma/client';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { TicketsService } from './tickets.service';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 
@@ -10,7 +11,10 @@ import { UpdateTicketDto } from './dto/update-ticket.dto';
 @UseGuards(UserAuthGuard)
 @Controller('v1/tickets')
 export class TicketsManagementController {
-  constructor(private readonly ticketsService: TicketsService) {}
+  constructor(
+    private readonly ticketsService: TicketsService,
+    private readonly auditLog: AuditLogService,
+  ) {}
 
   @Get()
   list(@Req() req: any, @Query('status') status?: TicketStatus) {
@@ -29,8 +33,20 @@ export class TicketsManagementController {
   }
 
   @Patch(':id')
-  update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateTicketDto) {
+  async update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateTicketDto) {
     this.ticketsService.assertTenantWide(req.customerId);
-    return this.ticketsService.update(req.tenantId, id, dto);
+    const ticket = await this.ticketsService.update(req.tenantId, id, dto);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'ticket.update',
+      targetType: 'Ticket',
+      targetId: ticket.id,
+      targetLabel: ticket.subject,
+      metadata: dto as Record<string, unknown>,
+    });
+    return ticket;
   }
 }

@@ -46,6 +46,15 @@ function BuildingIcon() {
   );
 }
 
+function AuditLogIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="4.5" y="2.5" width="11" height="15" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M7 6.5h6M7 9.5h6M7 12.5h3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ReportsIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -107,6 +116,7 @@ export default async function TenantLayout({ children }: { children: React.React
           {!session.customerId && (
             <>
               <SidebarLink href="/users" icon={<UsersIcon />} label="Usuários" />
+              <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />
               <SidebarLink href="/settings" icon={<BuildingIcon />} label="Empresa" />
               <NotificationBell className={NAV_ROW} />
             </>

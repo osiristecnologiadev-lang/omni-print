@@ -1,5 +1,6 @@
 import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CreateTokenDto } from './dto/create-token.dto';
@@ -11,7 +12,10 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 @UseGuards(UserAuthGuard)
 @Controller('v1/customers')
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly auditLog: AuditLogService,
+  ) {}
 
   @Get()
   list(@Req() req: any) {
@@ -20,9 +24,20 @@ export class CustomersController {
   }
 
   @Post()
-  create(@Req() req: any, @Body() dto: CreateCustomerDto) {
+  async create(@Req() req: any, @Body() dto: CreateCustomerDto) {
     this.assertTenantWide(req.customerId);
-    return this.customersService.create(req.tenantId, dto.name);
+    const customer = await this.customersService.create(req.tenantId, dto.name);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'customer.create',
+      targetType: 'Customer',
+      targetId: customer.id,
+      targetLabel: customer.name,
+    });
+    return customer;
   }
 
   @Get(':id')
@@ -32,9 +47,21 @@ export class CustomersController {
   }
 
   @Patch(':id')
-  update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateCustomerDto) {
+  async update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateCustomerDto) {
     this.assertTenantWide(req.customerId);
-    return this.customersService.update(req.tenantId, id, dto);
+    const customer = await this.customersService.update(req.tenantId, id, dto);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'customer.update',
+      targetType: 'Customer',
+      targetId: customer.id,
+      targetLabel: customer.name,
+      metadata: dto as Record<string, unknown>,
+    });
+    return customer;
   }
 
   @Get(':id/agent-tokens')
@@ -44,15 +71,39 @@ export class CustomersController {
   }
 
   @Post(':id/agent-tokens')
-  createToken(@Req() req: any, @Param('id') id: string, @Body() dto: CreateTokenDto) {
+  async createToken(@Req() req: any, @Param('id') id: string, @Body() dto: CreateTokenDto) {
     this.assertTenantWide(req.customerId);
-    return this.customersService.createToken(req.tenantId, id, dto.label);
+    const token = await this.customersService.createToken(req.tenantId, id, dto.label);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'agent_token.create',
+      targetType: 'AgentToken',
+      targetId: token.id,
+      targetLabel: token.label ?? 'Sem rótulo',
+      metadata: { customerId: id },
+    });
+    return token;
   }
 
   @Post(':id/agent-tokens/:tokenId/revoke')
-  revokeToken(@Req() req: any, @Param('id') id: string, @Param('tokenId') tokenId: string) {
+  async revokeToken(@Req() req: any, @Param('id') id: string, @Param('tokenId') tokenId: string) {
     this.assertTenantWide(req.customerId);
-    return this.customersService.revokeToken(req.tenantId, id, tokenId);
+    const token = await this.customersService.revokeToken(req.tenantId, id, tokenId);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'agent_token.revoke',
+      targetType: 'AgentToken',
+      targetId: token.id,
+      targetLabel: token.label ?? 'Sem rótulo',
+      metadata: { customerId: id },
+    });
+    return token;
   }
 
   @Get(':id/agent-enrollment-codes')
@@ -62,15 +113,39 @@ export class CustomersController {
   }
 
   @Post(':id/agent-enrollment-codes')
-  createEnrollmentCode(@Req() req: any, @Param('id') id: string, @Body() dto: CreateEnrollmentCodeDto) {
+  async createEnrollmentCode(@Req() req: any, @Param('id') id: string, @Body() dto: CreateEnrollmentCodeDto) {
     this.assertTenantWide(req.customerId);
-    return this.customersService.createEnrollmentCode(req.tenantId, id, dto.label);
+    const code = await this.customersService.createEnrollmentCode(req.tenantId, id, dto.label);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'enrollment_code.create',
+      targetType: 'AgentEnrollmentCode',
+      targetId: code.id,
+      targetLabel: code.label ?? 'Sem rótulo',
+      metadata: { customerId: id },
+    });
+    return code;
   }
 
   @Post(':id/agent-enrollment-codes/:codeId/revoke')
-  revokeEnrollmentCode(@Req() req: any, @Param('id') id: string, @Param('codeId') codeId: string) {
+  async revokeEnrollmentCode(@Req() req: any, @Param('id') id: string, @Param('codeId') codeId: string) {
     this.assertTenantWide(req.customerId);
-    return this.customersService.revokeEnrollmentCode(req.tenantId, id, codeId);
+    const code = await this.customersService.revokeEnrollmentCode(req.tenantId, id, codeId);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'enrollment_code.revoke',
+      targetType: 'AgentEnrollmentCode',
+      targetId: code.id,
+      targetLabel: code.label ?? 'Sem rótulo',
+      metadata: { customerId: id },
+    });
+    return code;
   }
 
   private assertTenantWide(customerId: string | null) {

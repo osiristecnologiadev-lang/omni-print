@@ -1,5 +1,6 @@
 import { Body, Controller, ForbiddenException, Get, Patch, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { TenantService } from './tenant.service';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
@@ -11,7 +12,10 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 @UseGuards(UserAuthGuard)
 @Controller('v1/tenant')
 export class TenantController {
-  constructor(private readonly tenantService: TenantService) {}
+  constructor(
+    private readonly tenantService: TenantService,
+    private readonly auditLog: AuditLogService,
+  ) {}
 
   @Get()
   get(@Req() req: any) {
@@ -19,10 +23,21 @@ export class TenantController {
   }
 
   @Patch()
-  update(@Req() req: any, @Body() dto: UpdateTenantDto) {
+  async update(@Req() req: any, @Body() dto: UpdateTenantDto) {
     if (req.customerId) {
       throw new ForbiddenException('only tenant-wide users can do this');
     }
-    return this.tenantService.update(req.tenantId, dto);
+    const tenant = await this.tenantService.update(req.tenantId, dto);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'tenant.update',
+      targetType: 'Tenant',
+      targetId: tenant.id,
+      targetLabel: tenant.name,
+    });
+    return tenant;
   }
 }

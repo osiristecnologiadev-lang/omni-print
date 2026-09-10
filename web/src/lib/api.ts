@@ -108,6 +108,26 @@ export function resolveNotification(id: string): Promise<Notification> {
   return apiMutate<Notification>(`/v1/notifications/${id}/resolve`, 'POST', {});
 }
 
+export interface AuditLogEntry {
+  id: string;
+  actorType: 'USER' | 'PLATFORM_ADMIN';
+  actorLabel: string | null;
+  action: string;
+  targetType: string | null;
+  targetLabel: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AuditLogPage {
+  entries: AuditLogEntry[];
+  nextCursor: string | null;
+}
+
+export function getAuditLog(cursor?: string): Promise<AuditLogPage> {
+  return apiFetch<AuditLogPage>(`/v1/audit-log${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
+}
+
 // Snake_case: this shape comes from the backend's raw SQL "latest metric per
 // device" query, which bypasses Prisma's camelCase field mapping.
 export interface LatestMetric {

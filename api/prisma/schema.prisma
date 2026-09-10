@@ -96,8 +96,56 @@ model Tenant {
   invoices             Invoice[]
   notifications        Notification[]
   tickets              Ticket[]
+  auditLogEntries      AuditLogEntry[]
 
   @@map("tenants")
+}
+
+enum AuditActorType {
+  USER
+  PLATFORM_ADMIN
+}
+
+// A record of "who did what, when" for administrative actions - token
+// revocation, device reassignment, contract changes, etc. Deliberately
+// separate from Notification (system-detected alerts) and the ingest
+// pipeline (machine-driven, high-frequency) - this only covers actions a
+// human deliberately took through the dashboard or platform admin area.
+// See AuditLogService.log's callers (one per instrumented controller
+// route) for the full list of what's covered.
+model AuditLogEntry {
+  id String @id @default(uuid())
+
+  // Null only for actions with no tenant context at all (a platform admin
+  // creating a brand new tenant, publishing an agent release) - every
+  // tenant-user-initiated action always has one.
+  tenantId String? @map("tenant_id")
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  actorType  AuditActorType @map("actor_type")
+  // User.id or PlatformAdmin.id depending on actorType - nullable in
+  // principle for a future system/cron actor, unused today (cron paths
+  // are deliberately excluded, see AuditLogService's module comment).
+  actorId    String?        @map("actor_id")
+  // Denormalized (the actor's email at the time) - same reasoning as
+  // AgentEnrollmentCode's link to the AgentToken it minted: this row must
+  // stay meaningful even after the actor is later revoked or deleted.
+  actorLabel String?        @map("actor_label")
+
+  // Short dotted verb, e.g. "device.reassign_customer", "agent_token.revoke" -
+  // translated to Portuguese only at display time (see the frontend's
+  // ACTION_LABEL map), not stored translated.
+  action String
+
+  targetType  String? @map("target_type") // e.g. "Device", "Contract"
+  targetId    String? @map("target_id")
+  targetLabel String? @map("target_label") // human-readable label of the target, at the time
+
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@map("audit_log_entries")
 }
 
 // Customer is one of the tenant's own clients - the outsourcing/MSP tenant

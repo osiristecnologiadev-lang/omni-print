@@ -1,5 +1,6 @@
 import { Controller, ForbiddenException, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
 
@@ -9,6 +10,7 @@ export class NotificationsController {
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly prisma: PrismaService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   // Tenant-wide only - re-checks everything (overdue invoices, expiring
@@ -33,7 +35,18 @@ export class NotificationsController {
     if (req.customerId) {
       throw new ForbiddenException('only tenant-wide users can do this');
     }
-    return this.notificationsService.resolve(req.tenantId, id);
+    const notification = await this.notificationsService.resolve(req.tenantId, id);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'notification.resolve',
+      targetType: 'Notification',
+      targetId: notification.id,
+      targetLabel: notification.title,
+    });
+    return notification;
   }
 
   // How many notifications the tenant hasn't opened yet - powers the nav
