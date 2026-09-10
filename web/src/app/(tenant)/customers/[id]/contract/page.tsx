@@ -19,6 +19,15 @@ import { Badge, type BadgeTone } from '@/components/Badge';
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const integer = new Intl.NumberFormat('pt-BR');
+// Per-page prices/rates, unlike totals, are commonly negotiated down to
+// fractions of a cent in this market (e.g. R$0,042/página at real print
+// volumes) - currency's fixed 2-decimal formatting silently rounds those
+// to R$0,04 for display (the stored value and the actual billing math are
+// unaffected either way, both use the full Decimal(12,4) precision - this
+// was purely a display bug, reported directly by a real contract). Only
+// pads to 2 decimals when the rate doesn't need more (R$0,08 still shows
+// as "R$ 0,08", not "R$ 0,0800").
+const rate = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 });
 
 // Contract.startDate/endDate are calendar dates (picked via <input
 // type="date">, stored as UTC midnight) - timeZone: 'UTC' here is
@@ -77,7 +86,7 @@ function ContractTerms({ contract }: { contract: Contract }) {
           </div>
           <div>
             <dt className="text-xs text-ink-faint">Excedente P&B</dt>
-            <dd className="tabular-nums text-ink-muted">{currency.format(Number(contract.overagePriceMono ?? 0))}/pág.</dd>
+            <dd className="tabular-nums text-ink-muted">{rate.format(Number(contract.overagePriceMono ?? 0))}/pág.</dd>
           </div>
         </>
       )}
@@ -86,7 +95,7 @@ function ContractTerms({ contract }: { contract: Contract }) {
         <>
           <div>
             <dt className="text-xs text-ink-faint">Preço por página P&B</dt>
-            <dd className="tabular-nums text-ink-muted">{currency.format(Number(contract.pricePerPageMono ?? 0))}</dd>
+            <dd className="tabular-nums text-ink-muted">{rate.format(Number(contract.pricePerPageMono ?? 0))}</dd>
           </div>
           <div>
             <dt className="text-xs text-ink-faint">Mínimo garantido P&B</dt>
