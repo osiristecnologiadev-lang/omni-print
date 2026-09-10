@@ -2,7 +2,15 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { createCustomerToken, createUser, revokeCustomerToken, revokeUser, updateCustomer } from '@/lib/api';
+import {
+  createCustomerToken,
+  createCustomerEnrollmentCode,
+  createUser,
+  revokeCustomerToken,
+  revokeCustomerEnrollmentCode,
+  revokeUser,
+  updateCustomer,
+} from '@/lib/api';
 
 interface CreateTokenState {
   token: string | null;
@@ -33,6 +41,37 @@ export async function revokeTokenAction(customerId: string, tokenId: string) {
   }
   revalidatePath(`/customers/${customerId}`);
   redirect(`/customers/${customerId}?tokenRevoked=1`);
+}
+
+interface CreateEnrollmentCodeState {
+  code: string | null;
+  label: string | null;
+  error: string | null;
+}
+
+export async function createEnrollmentCodeAction(
+  customerId: string,
+  _prevState: CreateEnrollmentCodeState,
+  formData: FormData,
+): Promise<CreateEnrollmentCodeState> {
+  const label = String(formData.get('label') ?? '').trim() || undefined;
+  try {
+    const result = await createCustomerEnrollmentCode(customerId, label);
+    revalidatePath(`/customers/${customerId}`);
+    return { code: result.code, label: result.label, error: null };
+  } catch {
+    return { code: null, label: null, error: 'Não foi possível gerar o código. Tente novamente.' };
+  }
+}
+
+export async function revokeEnrollmentCodeAction(customerId: string, codeId: string) {
+  try {
+    await revokeCustomerEnrollmentCode(customerId, codeId);
+  } catch {
+    redirect(`/customers/${customerId}?enrollmentCodeError=1`);
+  }
+  revalidatePath(`/customers/${customerId}`);
+  redirect(`/customers/${customerId}?enrollmentCodeRevoked=1`);
 }
 
 // Creates a view-only dashboard login already scoped to this customer - the

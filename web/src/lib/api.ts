@@ -515,6 +515,40 @@ export function revokeCustomerToken(customerId: string, tokenId: string): Promis
   return apiMutate<AgentTokenSummary>(`/v1/customers/${customerId}/agent-tokens/${tokenId}/revoke`, 'POST', {});
 }
 
+export interface AgentEnrollmentCodeSummary {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+  revokedAt: string | null;
+  agentTokenId: string | null;
+}
+
+export interface CreatedAgentEnrollmentCode {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  expiresAt: string;
+  code: string; // raw value - only ever present in this one response
+}
+
+export function getCustomerEnrollmentCodes(customerId: string): Promise<AgentEnrollmentCodeSummary[]> {
+  return apiFetch<AgentEnrollmentCodeSummary[]>(`/v1/customers/${customerId}/agent-enrollment-codes`);
+}
+
+export function createCustomerEnrollmentCode(customerId: string, label?: string): Promise<CreatedAgentEnrollmentCode> {
+  return apiMutate<CreatedAgentEnrollmentCode>(`/v1/customers/${customerId}/agent-enrollment-codes`, 'POST', { label });
+}
+
+export function revokeCustomerEnrollmentCode(customerId: string, codeId: string): Promise<AgentEnrollmentCodeSummary> {
+  return apiMutate<AgentEnrollmentCodeSummary>(
+    `/v1/customers/${customerId}/agent-enrollment-codes/${codeId}/revoke`,
+    'POST',
+    {},
+  );
+}
+
 export function assignDeviceCustomer(deviceId: string, customerId: string | null): Promise<Device> {
   return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', { customerId });
 }

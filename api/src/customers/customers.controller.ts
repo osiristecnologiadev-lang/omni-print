@@ -3,6 +3,7 @@ import { UserAuthGuard } from '../auth/user-auth.guard';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CreateTokenDto } from './dto/create-token.dto';
+import { CreateEnrollmentCodeDto } from './dto/create-enrollment-code.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 // Customer management is tenant-wide only - a customer-scoped user has no
@@ -52,6 +53,24 @@ export class CustomersController {
   revokeToken(@Req() req: any, @Param('id') id: string, @Param('tokenId') tokenId: string) {
     this.assertTenantWide(req.customerId);
     return this.customersService.revokeToken(req.tenantId, id, tokenId);
+  }
+
+  @Get(':id/agent-enrollment-codes')
+  listEnrollmentCodes(@Req() req: any, @Param('id') id: string) {
+    this.assertTenantWide(req.customerId);
+    return this.customersService.listEnrollmentCodes(req.tenantId, id);
+  }
+
+  @Post(':id/agent-enrollment-codes')
+  createEnrollmentCode(@Req() req: any, @Param('id') id: string, @Body() dto: CreateEnrollmentCodeDto) {
+    this.assertTenantWide(req.customerId);
+    return this.customersService.createEnrollmentCode(req.tenantId, id, dto.label);
+  }
+
+  @Post(':id/agent-enrollment-codes/:codeId/revoke')
+  revokeEnrollmentCode(@Req() req: any, @Param('id') id: string, @Param('codeId') codeId: string) {
+    this.assertTenantWide(req.customerId);
+    return this.customersService.revokeEnrollmentCode(req.tenantId, id, codeId);
   }
 
   private assertTenantWide(customerId: string | null) {

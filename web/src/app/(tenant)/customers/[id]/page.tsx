@@ -3,6 +3,7 @@ import { forbidden, notFound } from 'next/navigation';
 import {
   getCustomer,
   getCustomerTokens,
+  getCustomerEnrollmentCodes,
   getCurrentPeriodBilling,
   getDevices,
   getLowSupplyForecast,
@@ -10,12 +11,15 @@ import {
   getUsers,
   getViewerTimeZone,
   type AgentTokenSummary,
+  type AgentEnrollmentCodeSummary,
 } from '@/lib/api';
 import { CreateTokenForm } from './CreateTokenForm';
+import { CreateEnrollmentCodeForm } from './CreateEnrollmentCodeForm';
 import {
   createCustomerUserAction,
   revokeCustomerUserAction,
   revokeTokenAction,
+  revokeEnrollmentCodeAction,
   updateCustomerInfoAction,
   updateCustomerSlaAction,
 } from './actions';
@@ -50,6 +54,23 @@ function tokenStatusBadge(t: AgentTokenSummary) {
   return stale ? <Badge tone="warning">Inativo</Badge> : <Badge tone="ok">Ativo</Badge>;
 }
 
+function isEnrollmentCodeExpired(c: AgentEnrollmentCodeSummary): boolean {
+  return new Date(c.expiresAt).getTime() < Date.now();
+}
+
+function isEnrollmentCodePending(c: AgentEnrollmentCodeSummary): boolean {
+  return !c.usedAt && !c.revokedAt && !isEnrollmentCodeExpired(c);
+}
+
+// Precedence matters: a code used before its expiry should read "Usado",
+// not "Expirado" (both can be true at once once enough time has passed).
+function enrollmentCodeStatusBadge(c: AgentEnrollmentCodeSummary) {
+  if (c.usedAt) return <Badge tone="ok">Usado</Badge>;
+  if (c.revokedAt) return <Badge tone="neutral">Revogado</Badge>;
+  if (isEnrollmentCodeExpired(c)) return <Badge tone="neutral">Expirado</Badge>;
+  return <Badge tone="info">Pendente</Badge>;
+}
+
 // periodStart is a UTC-midnight-anchored calendar date (always the 1st of
 // a month), not a specific instant - formatting in the server's local
 // timezone shifts it back a day for any negative-offset locale (confirmed:
@@ -75,9 +96,10 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
     notFound();
   }
 
-  const [devices, tokens, users, lowSupplies, currentPeriod, tz] = await Promise.all([
+  const [devices, tokens, enrollmentCodes, users, lowSupplies, currentPeriod, tz] = await Promise.all([
     getDevices(),
     getCustomerTokens(id),
+    getCustomerEnrollmentCodes(id),
     getUsers(),
     getLowSupplyForecast(14, 90),
     getCurrentPeriodBilling(id),
@@ -87,6 +109,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
   const customerUsers = users.filter((u) => u.customerId === id);
   const customerLowSupplies = lowSupplies.filter((s) => s.customerId === id);
   const boundRevokeToken = revokeTokenAction.bind(null, id);
+  const boundRevokeEnrollmentCode = revokeEnrollmentCodeAction.bind(null, id);
   const boundCreateUser = createCustomerUserAction.bind(null, id);
   const boundRevokeUser = revokeCustomerUserAction.bind(null, id);
   const boundUpdateInfo = updateCustomerInfoAction.bind(null, id);
@@ -302,10 +325,56 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
       </Panel>
 
       <Panel className="mt-6">
-        <h2 className="mb-1 text-sm font-medium text-ink">Tokens de agente</h2>
+        <h2 className="mb-1 text-sm font-medium text-ink">Códigos de instalação do agente</h2>
         <p className="mb-4 text-xs text-ink-faint">
-          Gere um código para cada instalação do agente no site deste cliente. Toda impressora que aquele agente
-          encontrar já chega marcada como &ldquo;{customer.name}&rdquo; automaticamente.
+          Gere um código curto para cada instalação do agente no site deste cliente e envie para quem for
+          instalar — o assistente do instalador pede só esse código e troca ele pelos dados reais sozinho.
+          Vale por 24 horas e só funciona uma vez.
+        </p>
+
+        {searchParams?.enrollmentCodeRevoked === '1' && <Banner tone="success">Código revogado.</Banner>}
+        {searchParams?.enrollmentCodeError === '1' && (
+          <Banner tone="error">Não foi possível revogar o código. Tente novamente.</Banner>
+        )}
+
+        <CreateEnrollmentCodeForm customerId={id} />
+
+        {enrollmentCodes.length > 0 && (
+          <ul className="mt-4 divide-y divide-line border-t border-line">
+            {enrollmentCodes.map((c) => {
+              const pending = isEnrollmentCodePending(c);
+              return (
+                <li key={c.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-ink">{c.label || 'Sem rótulo'}</span>
+                      {enrollmentCodeStatusBadge(c)}
+                    </div>
+                    <div className="text-xs text-ink-faint">
+                      criado em {formatDateTime(c.createdAt, tz)} · expira em {formatDateTime(c.expiresAt, tz)}
+                    </div>
+                  </div>
+                  {pending && (
+                    <form action={boundRevokeEnrollmentCode.bind(null, c.id)}>
+                      <SubmitButton variant="danger" pendingLabel="Revogando...">
+                        Revogar
+                      </SubmitButton>
+                    </form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Panel>
+
+      <Panel className="mt-6">
+        <h2 className="mb-1 text-sm font-medium text-ink">Tokens de agente (avançado)</h2>
+        <p className="mb-4 text-xs text-ink-faint">
+          Tenant ID e token de agente crus, para instalação manual — use apenas se o instalador não conseguir
+          trocar um código de instalação automaticamente (ex: máquina sem acesso à internet no momento da
+          instalação). Toda impressora que aquele agente encontrar já chega marcada como &ldquo;{customer.name}
+          &rdquo; automaticamente.
         </p>
 
         {searchParams?.tokenRevoked === '1' && <Banner tone="success">Token revogado.</Banner>}

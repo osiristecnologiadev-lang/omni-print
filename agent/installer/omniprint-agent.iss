@@ -14,6 +14,13 @@
 #define MyAppName "OmniPrint Agent"
 #define MyAppPublisher "OmniPrint"
 #define MyAppExeName "omniprint-agent.exe"
+; Real production API domain - the custom domain (api.omniprint.app.br) is
+; being set up separately and isn't live/verified yet, so this points at
+; the Railway default for now. Change this one line (nothing else) once
+; that domain is confirmed working - it's used everywhere cloud_url is
+; needed: the enrollment HTTP call, ManualPage's prefilled URL field, and
+; the non-manual branch of CurStepChanged's config.yaml Content.
+#define CloudURL "https://api-production-090fc.up.railway.app"
 
 [Setup]
 ; Fixed GUID - identifies this as the same app across versions so Inno's
@@ -63,31 +70,209 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "-config ""{app}\config.yaml"" un
 
 [Code]
 var
-  ConnectionPage: TInputQueryWizardPage;
+  CodePage: TInputQueryWizardPage;
+  ManualPage: TInputQueryWizardPage;
+  ResolvedTenantID, ResolvedAgentToken: String;
+  ManualMode: Boolean;
 
 procedure InitializeWizard;
 begin
-  ConnectionPage := CreateInputQueryPage(wpSelectDir,
-    'Conexão com o OmniPrint', 'Dados fornecidos pela sua conta OmniPrint',
-    'Informe o Tenant ID e o token de agente exibidos ao criar este agente ' +
-    'no painel do OmniPrint. Se você não tiver esses dados em mãos, cancele ' +
-    'a instalação e gere um token de agente primeiro.');
+  ManualMode := False;
 
-  ConnectionPage.Add('Tenant ID:', False);
-  ConnectionPage.Add('Token do agente:', False);
-  ConnectionPage.Add('URL da API (cloud_url):', False);
+  CodePage := CreateInputQueryPage(wpSelectDir,
+    'Conexao com o OmniPrint', 'Codigo de instalacao',
+    'Informe o codigo de instalacao (8 caracteres) gerado no painel do OmniPrint, na ' +
+    'pagina do cliente onde este agente sera instalado. O codigo vale por 24 horas e ' +
+    'so pode ser usado uma vez.');
+  CodePage.Add('Codigo de instalacao:', False);
 
-  ConnectionPage.Values[2] := 'https://api.omniprint.io';
+  // Escape hatch, only ever shown if the automatic exchange fails and the
+  // user chooses to continue manually - see NextButtonClick/ShouldSkipPage.
+  // Kept as a real second page (not an always-visible toggle) to minimize
+  // new always-on Pascal Script UI surface, matching this file's own
+  // compile-error history: less new code path shown by default, less to
+  // get subtly wrong.
+  ManualPage := CreateInputQueryPage(CodePage.ID,
+    'Instalacao manual', 'Dados fornecidos pela sua conta OmniPrint',
+    'Informe o Tenant ID e o token de agente exibidos ao criar um token para este ' +
+    'cliente no painel do OmniPrint.');
+  ManualPage.Add('Tenant ID:', False);
+  ManualPage.Add('Token do agente:', False);
+  ManualPage.Add('URL da API (cloud_url):', False);
+  ManualPage.Values[2] := '{#CloudURL}';
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := (PageID = ManualPage.ID) and (not ManualMode);
+end;
+
+// Defensive even though the code alphabet
+// (23456789ABCDEFGHJKMNPQRSTUVWXYZ) never contains a character that needs
+// JSON escaping - cheap insurance against this function ever being reused
+// for something less constrained later.
+function JsonEscapeCode(const S: String): String;
+var
+  Escaped: String;
+begin
+  Escaped := S;
+  StringChange(Escaped, '\', '\\');
+  StringChange(Escaped, '"', '\"');
+  Result := Escaped;
+end;
+
+// Pulls one string field's value out of a FLAT, server-controlled JSON
+// object like {"tenant_id":"...","agent_token":"..."}. This is NOT a
+// general JSON parser - it assumes (correctly, since we control the API)
+// that the value never itself contains a '"' or '\', so it can stop at
+// the very next quote. Works regardless of key order or whitespace around
+// ':'. Returns False (leaving Value empty) on anything unexpected.
+function ExtractJsonField(const Json, FieldName: String; var Value: String): Boolean;
+var
+  Key: String;
+  KeyPos, ColonOffset, ColonPos, QuoteStart, QuoteEnd, I: Integer;
+begin
+  Result := False;
+  Value := '';
+
+  Key := '"' + FieldName + '"';
+  KeyPos := Pos(Key, Json);
+  if KeyPos = 0 then Exit;
+
+  ColonOffset := Pos(':', Copy(Json, KeyPos + Length(Key), Length(Json)));
+  if ColonOffset = 0 then Exit;
+  ColonPos := KeyPos + Length(Key) + ColonOffset - 1;
+
+  QuoteStart := 0;
+  I := ColonPos + 1;
+  while I <= Length(Json) do
+  begin
+    if Json[I] = '"' then
+    begin
+      QuoteStart := I;
+      Break;
+    end
+    else if (Json[I] <> ' ') and (Json[I] <> #9) then
+    begin
+      // Whatever's right after ':' isn't whitespace or a quote - not the
+      // string-valued field we expect. Bail rather than guess.
+      Exit;
+    end;
+    I := I + 1;
+  end;
+  if QuoteStart = 0 then Exit;
+
+  QuoteEnd := 0;
+  I := QuoteStart + 1;
+  while I <= Length(Json) do
+  begin
+    if Json[I] = '"' then
+    begin
+      QuoteEnd := I;
+      Break;
+    end;
+    I := I + 1;
+  end;
+  if QuoteEnd = 0 then Exit;
+
+  Value := Copy(Json, QuoteStart + 1, QuoteEnd - QuoteStart - 1);
+  Result := Value <> '';
+end;
+
+// Synchronous by design (Open's 3rd param False) - the wizard's message
+// loop stops pumping for the duration, so the user sees a frozen wizard,
+// not a broken one. Short explicit timeouts keep a hard network failure
+// from hanging the installer for WinHTTP's much longer OS defaults.
+function ExchangeCode(const Code: String; var TenantID, AgentToken, ErrorMsg: String): Boolean;
+var
+  Http: Variant;
+  Body: String;
+begin
+  Result := False;
+  TenantID := '';
+  AgentToken := '';
+  ErrorMsg := '';
+
+  try
+    Http := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+    Http.Open('POST', '{#CloudURL}/v1/agent/enroll', False);
+    Http.SetRequestHeader('Content-Type', 'application/json; charset=utf-8');
+    // Resolve/connect/send/receive, milliseconds.
+    Http.SetTimeouts(5000, 5000, 8000, 8000);
+
+    Body := '{"code":"' + JsonEscapeCode(Code) + '"}';
+    Http.Send(Body);
+
+    if Http.Status = 200 then
+    begin
+      if ExtractJsonField(Http.ResponseText, 'tenant_id', TenantID) and
+         ExtractJsonField(Http.ResponseText, 'agent_token', AgentToken) then
+      begin
+        Result := True;
+      end
+      else
+      begin
+        ErrorMsg := 'O servidor respondeu de forma inesperada.';
+      end;
+    end
+    else
+    begin
+      ErrorMsg := 'O servidor recusou o codigo (HTTP ' + IntToStr(Http.Status) + ').';
+    end;
+  except
+    ErrorMsg := 'Nao foi possivel conectar ao servidor OmniPrint. Verifique a conexao ' +
+      'com a internet e um possivel bloqueio de firewall/antivirus.';
+  end;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Code, TenantID, AgentToken, ErrorMsg: String;
+  Answer: Integer;
 begin
   Result := True;
-  if CurPageID = ConnectionPage.ID then
+
+  if CurPageID = CodePage.ID then
   begin
-    if (Trim(ConnectionPage.Values[0]) = '') or (Trim(ConnectionPage.Values[1]) = '') then
+    Code := Trim(CodePage.Values[0]);
+    if Code = '' then
     begin
-      MsgBox('Tenant ID e Token do agente são obrigatórios.', mbError, MB_OK);
+      MsgBox('Informe o codigo de instalacao.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    WizardForm.Cursor := crHourGlass;
+    Result := ExchangeCode(Code, TenantID, AgentToken, ErrorMsg);
+    WizardForm.Cursor := crDefault;
+
+    if Result then
+    begin
+      ResolvedTenantID := TenantID;
+      ResolvedAgentToken := AgentToken;
+      ManualMode := False;
+    end
+    else
+    begin
+      Answer := MsgBox(ErrorMsg + #13#10#13#10 +
+        'Deseja instalar manualmente informando Tenant ID, token e URL da API?',
+        mbError, MB_YESNO);
+      if Answer = IDYES then
+      begin
+        ManualMode := True;
+        Result := True;
+      end
+      else
+      begin
+        Result := False;
+      end;
+    end;
+  end
+  else if CurPageID = ManualPage.ID then
+  begin
+    if (Trim(ManualPage.Values[0]) = '') or (Trim(ManualPage.Values[1]) = '') then
+    begin
+      MsgBox('Tenant ID e Token do agente sao obrigatorios.', mbError, MB_OK);
       Result := False;
     end;
   end;
@@ -163,11 +348,25 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  ConfigPath, Content: String;
+  ConfigPath, Content, TenantIdValue, AgentTokenValue, CloudUrlValue: String;
 begin
   if CurStep = ssPostInstall then
   begin
     ConfigPath := ExpandConstant('{app}\config.yaml');
+
+    if ManualMode then
+    begin
+      TenantIdValue := Trim(ManualPage.Values[0]);
+      AgentTokenValue := Trim(ManualPage.Values[1]);
+      CloudUrlValue := Trim(ManualPage.Values[2]);
+    end
+    else
+    begin
+      TenantIdValue := ResolvedTenantID;
+      AgentTokenValue := ResolvedAgentToken;
+      CloudUrlValue := '{#CloudURL}';
+    end;
+
     // Every line here starts with a string literal, never a bare #13#10 -
     // Inno Setup's preprocessor treats a line whose first non-whitespace
     // character is '#' as a directive, so a standalone "#13#10 +" line
@@ -180,10 +379,13 @@ begin
     // confirmed-in-production config.yaml the Go agent's YAML parser
     // rejected outright ("invalid trailing UTF-8 octet"), caught only by
     // an actual end-to-end install, not by compiling or unit tests.
+    // TenantIdValue/AgentTokenValue from a successful code exchange are
+    // guaranteed ASCII (UUID, digit string) by construction on the API
+    // side, so they're safe here too.
     Content :=
-      'tenant_id: ' + YamlQuote(Trim(ConnectionPage.Values[0])) + #13#10 +
-      'agent_token: ' + YamlQuote(Trim(ConnectionPage.Values[1])) + #13#10 +
-      'cloud_url: ' + YamlQuote(Trim(ConnectionPage.Values[2])) + #13#10 + #13#10 +
+      'tenant_id: ' + YamlQuote(TenantIdValue) + #13#10 +
+      'agent_token: ' + YamlQuote(AgentTokenValue) + #13#10 +
+      'cloud_url: ' + YamlQuote(CloudUrlValue) + #13#10 + #13#10 +
       'poll_interval: 30m' + #13#10 +
       'request_delay: 500ms' + #13#10 +
       'log_file: "omniprint-agent.log"' + #13#10 + #13#10 +

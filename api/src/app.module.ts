@@ -16,6 +16,7 @@ import { TenantModule } from './tenant/tenant.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { AgentReleasesModule } from './agent-releases/agent-releases.module';
+import { AgentEnrollmentModule } from './agent-enrollment/agent-enrollment.module';
 import { SignupModule } from './signup/signup.module';
 import { HealthController } from './health/health.controller';
 
@@ -42,6 +43,7 @@ import { HealthController } from './health/health.controller';
     NotificationsModule,
     TicketsModule,
     AgentReleasesModule,
+    AgentEnrollmentModule,
     SignupModule,
   ],
   controllers: [HealthController],
