@@ -16,6 +16,8 @@ function formatPageCount(value: number | null): string {
   return new Intl.NumberFormat('pt-BR').format(value);
 }
 
+const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(diffMs / 60000);
@@ -32,7 +34,22 @@ function formatRelativeTime(iso: string): string {
 // keystroke. Deliberate exception to this app's "no client JS" default
 // (same reasoning as ThemeToggle/ContractForm) - typing to search is
 // inherently an interactive action.
-export function DeviceFleetTable({ devices, isTenantWide }: { devices: DeviceRow[]; isTenantWide: boolean }) {
+export function DeviceFleetTable({
+  devices,
+  isTenantWide,
+  revenueByDeviceId,
+}: {
+  devices: DeviceRow[];
+  isTenantWide: boolean;
+  // Estimated usage-revenue for the current billing period, keyed by
+  // device id - omitted entirely (column doesn't render) rather than
+  // passed as all-zero when there's no active contract, or the contract
+  // is FLAT_RATE (whose fee isn't usage-based, so "R$0,00 por impressora"
+  // would misleadingly read as "this printer earns nothing" instead of
+  // "not applicable"). See ContractsService's allocateUsageRevenue for why
+  // this is an estimate, not a literal per-device bill.
+  revenueByDeviceId?: Map<string, number>;
+}) {
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => {
@@ -83,6 +100,7 @@ export function DeviceFleetTable({ devices, isTenantWide }: { devices: DeviceRow
               {isTenantWide && <th className="px-4 py-3 font-medium">Cliente</th>}
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Páginas</th>
+              {revenueByDeviceId && <th className="px-4 py-3 font-medium">Receita (mês)</th>}
               <th className="px-4 py-3 font-medium">Atualizado</th>
             </tr>
           </thead>
@@ -119,6 +137,11 @@ export function DeviceFleetTable({ devices, isTenantWide }: { devices: DeviceRow
                       <div className="text-xs text-ink-faint">mecanismo: {formatPageCount(enginePages)}</div>
                     )}
                   </td>
+                  {revenueByDeviceId && (
+                    <td className="px-4 py-3 tabular-nums text-ink-muted">
+                      ≈ {currency.format(revenueByDeviceId.get(device.id) ?? 0)}
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-ink-muted">
                     {device.latestMetric ? formatRelativeTime(device.latestMetric.collected_at) : '—'}
                   </td>

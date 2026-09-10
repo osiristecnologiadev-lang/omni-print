@@ -425,6 +425,14 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           <DeviceFleetTable
             devices={customerDevices.map((d) => ({ ...d, health: deriveHealth(d.latestMetric) }))}
             isTenantWide={false}
+            revenueByDeviceId={
+              // Omitted (no column) when there's no active contract, or the
+              // contract is FLAT_RATE - see DeviceFleetTable's prop comment
+              // for why an all-zero column would be misleading there.
+              currentPeriod.hasContract && currentPeriod.contract.pricingModel !== 'FLAT_RATE'
+                ? new Map(currentPeriod.perDevice.map((d) => [d.deviceId, d.usageRevenue]))
+                : undefined
+            }
           />
         )}
       </div>
