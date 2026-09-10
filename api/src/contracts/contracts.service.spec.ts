@@ -113,6 +113,71 @@ describe('ContractsService.resolveBilling', () => {
     }
   });
 
+  it('attributes per-device usage revenue proportional to each device\'s own mono/color pages, summing to usageCost', async () => {
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'ALLOWANCE_PLUS_OVERAGE',
+      fixedFee: '200',
+      includedPagesMono: 1000,
+      includedPagesColor: 500,
+      overagePriceMono: '0.10',
+      overagePriceColor: '0.30',
+    });
+    prisma.device.findMany.mockResolvedValue([
+      makeDevice({ id: 'device-a', serialNumber: 'SNA' }),
+      makeDevice({ id: 'device-b', serialNumber: 'SNB' }),
+    ]);
+    prisma.metric.findFirst.mockResolvedValue(null); // no metric before the period for either device
+    prisma.metric.findMany.mockImplementation(({ where }: { where: { deviceId: string } }) => {
+      // Device A: 600 mono, 0 color. Device B: 600 mono, 800 color.
+      // Combined: 1200 mono (200 over the 1000 allowance), 800 color (300
+      // over the 500 allowance) - same overage totals as the R$310 test
+      // above, just split across two devices instead of one.
+      const anchor = { collectedAt: new Date('2026-09-01T01:00:00Z'), pageCount: BigInt(0), monoPageCount: BigInt(0), colorPageCount: BigInt(0) };
+      if (where.deviceId === 'device-a') {
+        return Promise.resolve([
+          anchor,
+          { collectedAt: periodEnd, pageCount: BigInt(600), monoPageCount: BigInt(600), colorPageCount: BigInt(0) },
+        ]);
+      }
+      return Promise.resolve([
+        anchor,
+        { collectedAt: periodEnd, pageCount: BigInt(1400), monoPageCount: BigInt(600), colorPageCount: BigInt(800) },
+      ]);
+    });
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      expect(result.usageCost).toBeCloseTo(110, 5);
+
+      const a = result.perDevice.find((d) => d.deviceId === 'device-a')!;
+      const b = result.perDevice.find((d) => d.deviceId === 'device-b')!;
+      // A: 600/1200 mono share * (200*0.10) + 0 color share = 10
+      expect(a.usageRevenue).toBeCloseTo(10, 5);
+      // B: 600/1200 mono share * 20 + 800/800 color share * (300*0.30 = 90) = 10 + 90 = 100
+      expect(b.usageRevenue).toBeCloseTo(100, 5);
+      // Per-device revenue must reconcile exactly with the customer-level total.
+      expect(a.usageRevenue + b.usageRevenue).toBeCloseTo(result.usageCost, 5);
+    }
+  });
+
+  it('FLAT_RATE attributes zero usage revenue to every device, not an even split of the fee', async () => {
+    prisma.contract.findFirst.mockResolvedValue({ pricingModel: 'FLAT_RATE', fixedFee: '999.90' });
+    prisma.device.findMany.mockResolvedValue([makeDevice({ id: 'device-a' }), makeDevice({ id: 'device-b' })]);
+    prisma.metric.findFirst.mockResolvedValue({ pageCount: BigInt(50000), monoPageCount: null, colorPageCount: null });
+    prisma.metric.findMany.mockResolvedValue([{ collectedAt: periodEnd, pageCount: BigInt(99999), monoPageCount: null, colorPageCount: null }]);
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      for (const d of result.perDevice) {
+        expect(d.usageRevenue).toBe(0);
+      }
+    }
+  });
+
   it('PER_PAGE floors to the guaranteed minimum - real validated scenario (R$110)', async () => {
     prisma.contract.findFirst.mockResolvedValue({
       pricingModel: 'PER_PAGE',

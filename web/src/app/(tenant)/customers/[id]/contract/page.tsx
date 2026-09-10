@@ -297,10 +297,26 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
                       {d.enginePages !== d.pages && (
                         <span className="block text-xs text-ink-faint">mecanismo: {integer.format(d.enginePages)}</span>
                       )}
+                      {billing.contract.pricingModel !== 'FLAT_RATE' && (
+                        <span className="block text-xs tabular-nums text-ink-faint">
+                          ≈ {currency.format(d.usageRevenue)} de receita
+                        </span>
+                      )}
                     </span>
                   </li>
                 ))}
               </ul>
+              {billing.contract.pricingModel !== 'FLAT_RATE' && (
+                <p className="mt-2 text-xs text-ink-faint">
+                  Receita estimada: rateio proporcional pelo uso de cada impressora, não um valor cobrado por
+                  dispositivo (nenhum dos modelos de cobrança fatura por impressora individualmente).
+                </p>
+              )}
+              {billing.contract.pricingModel === 'FLAT_RATE' && (
+                <p className="mt-2 text-xs text-ink-faint">
+                  Mensalidade fixa - não é possível atribuir receita a um dispositivo específico neste modelo.
+                </p>
+              )}
             </details>
           </div>
         )}

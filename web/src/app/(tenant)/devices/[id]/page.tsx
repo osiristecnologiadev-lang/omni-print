@@ -7,6 +7,7 @@ import {
   getDeviceSupplyTrend,
   getDeviceSupplyForecast,
   getDeviceCurrentMonthPages,
+  getCurrentPeriodBilling,
   getCustomers,
   getSession,
   getViewerTimeZone,
@@ -25,6 +26,7 @@ import { assignCustomerAction, updateLabelAction, updateManualBaselineAction } f
 const fieldClass =
   'rounded-lg border border-line bg-surface px-2 py-1 text-xs text-ink outline-none transition-colors focus:border-accent';
 const integer = new Intl.NumberFormat('pt-BR');
+const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 function formatShortDate(dateStr: string): string {
   const [, month, day] = dateStr.split('-');
@@ -87,6 +89,15 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
   const forecastByDescription = new Map(supplyForecast.map((f) => [f.description, f]));
   const isTenantWide = session != null && !session.customerId;
   const customers = isTenantWide ? await getCustomers() : [];
+  // Contract/billing data is tenant-wide-admin-only (same access rule as
+  // the contract page itself) - a customer-scoped login viewing their own
+  // device never sees this. Only fetched when there's actually a customer
+  // to have a contract with; billing is the exact same "current month"
+  // call the contract page already uses, so this device's own revenue is
+  // just its entry in that response's perDevice array - no new backend
+  // endpoint needed.
+  const billing = isTenantWide && device.customerId ? await getCurrentPeriodBilling(device.customerId) : null;
+  const deviceRevenue = billing?.hasContract ? billing.perDevice.find((d) => d.deviceId === device.id) : undefined;
   const pageTrendData = pageTrend.map((p) => ({ label: formatShortDate(p.date), value: p.pages }));
   const supplyTrendData = supplyTrend
     .filter((p): p is { date: string; percent: number } => p.percent != null)
@@ -245,6 +256,25 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
                   <div className="text-xs text-ink-faint">
                     desde {formatShortReadingDate(currentMonthPages.engineStartReadingAt, tz)}
                   </div>
+                </dd>
+              </div>
+            )}
+            {isTenantWide && device.customerId && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-ink-muted">Receita estimada este mês</dt>
+                <dd className="text-right">
+                  {!billing?.hasContract ? (
+                    <span className="text-ink-faint">sem contrato ativo</span>
+                  ) : billing.contract.pricingModel === 'FLAT_RATE' ? (
+                    <span className="text-ink-faint">não aplicável (mensalidade fixa)</span>
+                  ) : (
+                    <span
+                      className="tabular-nums font-medium text-ink"
+                      title="Rateio proporcional pelo uso desta impressora, não um valor cobrado por dispositivo."
+                    >
+                      ≈ {currency.format(deviceRevenue?.usageRevenue ?? 0)}
+                    </span>
+                  )}
                 </dd>
               </div>
             )}

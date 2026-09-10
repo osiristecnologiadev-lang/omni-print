@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DevicePagesService } from '../common/device-pages.service';
+import { allocateUsageRevenue } from '../common/revenue-allocation.util';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 
@@ -286,6 +287,14 @@ export class ContractsService {
     let overagePages: number | null = null;
     let billablePages: number | null = null;
     let minimumPages: number | null = null;
+    // Per-channel revenue totals, fed to allocateUsageRevenue below to
+    // attribute usageCost across devices - see that function's comment for
+    // why this is an estimate, not a literal per-device bill. FLAT_RATE
+    // leaves both at 0 (its fee isn't usage-based at all, so there's
+    // nothing honest to attribute to any one printer - shown as "não
+    // aplicável" in the UI rather than an arbitrary even split).
+    let monoRevenueTotal = 0;
+    let colorRevenueTotal = 0;
 
     switch (contract.pricingModel) {
       case 'FLAT_RATE':
@@ -303,8 +312,9 @@ export class ContractsService {
         const overageColor = Math.max(0, colorPages - (contract.includedPagesColor ?? 0));
         includedTotal = (contract.includedPagesMono ?? 0) + (contract.includedPagesColor ?? 0);
         overagePages = overageMono + overageColor;
-        usageCost =
-          overageMono * Number(contract.overagePriceMono ?? 0) + overageColor * Number(contract.overagePriceColor ?? 0);
+        monoRevenueTotal = overageMono * Number(contract.overagePriceMono ?? 0);
+        colorRevenueTotal = overageColor * Number(contract.overagePriceColor ?? 0);
+        usageCost = monoRevenueTotal + colorRevenueTotal;
         break;
       }
 
@@ -313,18 +323,22 @@ export class ContractsService {
         const billableColor = Math.max(contract.minimumPagesColor ?? 0, colorPages);
         minimumPages = (contract.minimumPagesMono ?? 0) + (contract.minimumPagesColor ?? 0);
         billablePages = billableMono + billableColor;
-        usageCost =
-          billableMono * Number(contract.pricePerPageMono ?? 0) + billableColor * Number(contract.pricePerPageColor ?? 0);
+        monoRevenueTotal = billableMono * Number(contract.pricePerPageMono ?? 0);
+        colorRevenueTotal = billableColor * Number(contract.pricePerPageColor ?? 0);
+        usageCost = monoRevenueTotal + colorRevenueTotal;
         break;
       }
     }
+
+    const revenueByDevice = allocateUsageRevenue(perDevice, monoRevenueTotal, colorRevenueTotal);
+    const perDeviceWithRevenue = perDevice.map((d) => ({ ...d, usageRevenue: revenueByDevice.get(d.deviceId) ?? 0 }));
 
     return {
       hasContract: true as const,
       periodStart,
       periodEnd,
       contract,
-      perDevice,
+      perDevice: perDeviceWithRevenue,
       totalPages,
       monoPages,
       colorPages,

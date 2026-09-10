@@ -642,6 +642,12 @@ export interface DevicePages {
   enginePages: number;
   engineStartReading: number | null;
   engineEndReading: number | null;
+  // Estimated share of the contract's usage revenue this device is
+  // responsible for, proportional to its own mono/color page share - not a
+  // literal per-device bill (none of the pricing models actually bill per
+  // printer). Always 0 under FLAT_RATE, since that fee isn't usage-based at
+  // all. See api's allocateUsageRevenue for the full reasoning.
+  usageRevenue: number;
 }
 
 export type BillingResult =
