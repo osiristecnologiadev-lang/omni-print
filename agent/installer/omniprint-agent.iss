@@ -14,13 +14,11 @@
 #define MyAppName "OmniPrint Agent"
 #define MyAppPublisher "OmniPrint"
 #define MyAppExeName "omniprint-agent.exe"
-; Real production API domain - the custom domain (api.omniprint.app.br) is
-; being set up separately and isn't live/verified yet, so this points at
-; the Railway default for now. Change this one line (nothing else) once
-; that domain is confirmed working - it's used everywhere cloud_url is
+; Real production API domain - api.omniprint.app.br is live and verified
+; (custom domain cert valid since 2026-09-11). Used everywhere cloud_url is
 ; needed: the enrollment HTTP call, ManualPage's prefilled URL field, and
 ; the non-manual branch of CurStepChanged's config.yaml Content.
-#define CloudURL "https://api-production-090fc.up.railway.app"
+#define CloudURL "https://api.omniprint.app.br"
 
 [Setup]
 ; Fixed GUID - identifies this as the same app across versions so Inno's
