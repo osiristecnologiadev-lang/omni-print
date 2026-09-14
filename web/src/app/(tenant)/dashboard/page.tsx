@@ -101,7 +101,7 @@ export default async function DashboardPage() {
         subtitle={`${devices.length} dispositivo${devices.length === 1 ? '' : 's'} monitorado${devices.length === 1 ? '' : 's'}`}
       />
 
-      {subscription.status === 'TRIALING' && (
+      {!subscription.isComped && subscription.status === 'TRIALING' && (
         <div className="mb-8 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/20">
           <p className="text-sm text-amber-900 dark:text-amber-200">
             {trialDaysLeft > 0

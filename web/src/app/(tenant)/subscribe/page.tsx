@@ -51,17 +51,26 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
       <Panel>
         <div className="mb-4 flex items-center justify-between">
           <span className="text-sm font-medium text-ink">Status</span>
-          <Badge tone={STATUS_TONE[subscription.status]}>{STATUS_LABEL[subscription.status]}</Badge>
+          {subscription.isComped ? (
+            <Badge tone="ok">Cortesia</Badge>
+          ) : (
+            <Badge tone={STATUS_TONE[subscription.status]}>{STATUS_LABEL[subscription.status]}</Badge>
+          )}
         </div>
 
-        {subscription.status === 'TRIALING' && (
+        {subscription.isComped && (
+          <p className="mb-4 text-sm text-ink-muted">
+            Sua empresa tem acesso liberado sem cobrança por enquanto, combinado diretamente com a OmniPrint.
+          </p>
+        )}
+        {!subscription.isComped && subscription.status === 'TRIALING' && (
           <p className="mb-4 text-sm text-ink-muted">
             {trialDaysLeft > 0
               ? `Seu período de teste gratuito acaba em ${trialDaysLeft} dia${trialDaysLeft === 1 ? '' : 's'} (${formatDate(subscription.trialEndsAt)}).`
               : 'Seu período de teste gratuito acabou. Assine para continuar usando o OmniPrint.'}
           </p>
         )}
-        {subscription.isBlocked && (
+        {!subscription.isComped && subscription.isBlocked && (
           <p className="mb-4 text-sm font-medium text-red-600 dark:text-red-400">
             O acesso está bloqueado para toda a sua empresa até a assinatura ser regularizada.
           </p>
@@ -86,7 +95,7 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
           </p>
         </div>
 
-        {subscription.status !== 'ACTIVE' && (
+        {!subscription.isComped && subscription.status !== 'ACTIVE' && (
           <form action={createCheckoutSessionAction}>
             <SubmitButton variant="primary" pendingLabel="Redirecionando...">
               Assinar agora

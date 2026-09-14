@@ -70,6 +70,13 @@ export class SubscriptionService {
       pricePerDeviceCents,
       estimatedMonthlyCents: deviceCount * pricePerDeviceCents,
       isBlocked: isTenantBlocked(tenant),
+      // A negotiated rate of exactly 0 is "comp this tenant" - see
+      // isTenantBlocked's comment. A dedicated field rather than making the
+      // frontend infer it from pricePerDeviceCents === 0, since that's
+      // computed via effectivePricePerDeviceCents and would conflate "no
+      // override, standard rate" with "explicitly comped" if the standard
+      // rate itself were ever set to 0.
+      isComped: tenant.pricePerDeviceCentsOverride === 0,
     };
   }
 

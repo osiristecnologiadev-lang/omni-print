@@ -85,11 +85,17 @@ export default async function PlatformDashboard(props: PageProps<'/platform'>) {
                     <span className="ml-1 tabular-nums text-gray-500">· {currency.format(t.mrrCents / 100)}/mês</span>
                   )}
                 </div>
-                <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${STATUS_CLASSES[t.subscriptionStatus]}`}
-                >
-                  {STATUS_LABEL[t.subscriptionStatus]}
-                </span>
+                {t.pricePerDeviceCentsOverride === 0 ? (
+                  <span className="inline-flex items-center rounded-full bg-emerald-900/40 px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-emerald-300">
+                    Cortesia
+                  </span>
+                ) : (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${STATUS_CLASSES[t.subscriptionStatus]}`}
+                  >
+                    {STATUS_LABEL[t.subscriptionStatus]}
+                  </span>
+                )}
               </div>
             </li>
           ))}

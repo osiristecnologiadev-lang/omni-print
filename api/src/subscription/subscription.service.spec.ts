@@ -82,6 +82,27 @@ describe('SubscriptionService', () => {
       expect(status.pricePerDeviceCents).toBe(150);
       expect(status.estimatedMonthlyCents).toBe(4 * 150);
     });
+
+    // "Comp this tenant" (2026-09-14) - a rate of exactly 0 must never
+    // block, even with an already-expired trial, and must be surfaced as
+    // isComped so the frontend can show something clearer than a
+    // negative-days trial countdown.
+    it('reports isComped and isBlocked=false for a rate-0 tenant even past its trial', async () => {
+      const past = new Date(Date.now() - 60_000);
+      prisma.tenant.findUnique.mockResolvedValue({
+        subscriptionStatus: 'TRIALING',
+        trialEndsAt: past,
+        pricePerDeviceCentsOverride: 0,
+      });
+      prisma.device.count.mockResolvedValue(10);
+
+      const status = await service.getStatus('t1');
+
+      expect(status.pricePerDeviceCents).toBe(0);
+      expect(status.estimatedMonthlyCents).toBe(0);
+      expect(status.isBlocked).toBe(false);
+      expect(status.isComped).toBe(true);
+    });
   });
 
   describe('createCheckoutSession', () => {

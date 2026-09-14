@@ -89,6 +89,10 @@ export interface SubscriptionStatus {
   pricePerDeviceCents: number;
   estimatedMonthlyCents: number;
   isBlocked: boolean;
+  // A platform admin set a negotiated rate of exactly R$0 - "comp this
+  // tenant", never blocked regardless of trial/subscription status. See
+  // api's isTenantBlocked.
+  isComped: boolean;
 }
 
 // Ungated by SubscriptionGuard (see api's SubscriptionController) - this

@@ -43,11 +43,17 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
 
       <div className="mt-4 mb-1 flex items-center gap-3">
         <h1 className="text-2xl font-semibold text-gray-100">{tenant.name}</h1>
-        <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${STATUS_CLASSES[tenant.subscriptionStatus]}`}
-        >
-          {STATUS_LABEL[tenant.subscriptionStatus]}
-        </span>
+        {tenant.pricePerDeviceCentsOverride === 0 ? (
+          <span className="inline-flex items-center rounded-full bg-emerald-900/40 px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-emerald-300">
+            Cortesia
+          </span>
+        ) : (
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${STATUS_CLASSES[tenant.subscriptionStatus]}`}
+          >
+            {STATUS_LABEL[tenant.subscriptionStatus]}
+          </span>
+        )}
       </div>
       <p className="mb-8 text-sm text-gray-400">
         {tenant._count?.customers ?? 0} cliente{(tenant._count?.customers ?? 0) === 1 ? '' : 's'} ·{' '}
