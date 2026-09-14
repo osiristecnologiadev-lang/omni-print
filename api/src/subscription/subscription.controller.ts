@@ -34,7 +34,18 @@ export class SubscriptionController {
     if (!signature || !Buffer.isBuffer(req.body)) {
       throw new BadRequestException('missing stripe-signature header or body');
     }
-    const event = this.subscriptionService.constructEvent(req.body, signature);
+    // constructEvent throws Stripe's own StripeSignatureVerificationError on
+    // a bad/forged signature - that's a malformed REQUEST, not a server
+    // fault, so it must surface as 400, not an uncaught 500 (confirmed this
+    // was actually happening against the real production endpoint before
+    // this fix). A 400 also tells Stripe not to retry the exact same
+    // payload, unlike a 500 which reads as "try again later."
+    let event;
+    try {
+      event = this.subscriptionService.constructEvent(req.body, signature);
+    } catch {
+      throw new BadRequestException('invalid stripe-signature');
+    }
     await this.subscriptionService.handleWebhookEvent(event);
     return { received: true };
   }
