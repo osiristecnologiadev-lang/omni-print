@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getSession } from "@/lib/api";
+import { getSession, getViewerAccess } from "@/lib/api";
+import { hasPermission } from "@/lib/permissions";
 import { LogoutButton } from "@/components/LogoutButton";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -94,6 +95,8 @@ export default async function TenantLayout({ children }: { children: React.React
     return <>{children}</>;
   }
 
+  const access = await getViewerAccess();
+
   return (
     <div className="flex">
       <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-surface px-3 py-4">
@@ -102,25 +105,29 @@ export default async function TenantLayout({ children }: { children: React.React
         </Link>
 
         <nav className="flex flex-1 flex-col gap-1">
-          {!session.customerId && (
-            <>
-              <SidebarLink href="/customers" icon={<CustomersIcon />} label="Clientes" />
-              <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
-              <SidebarLink href="/agent-download" icon={<DownloadIcon />} label="Baixar Agente" />
-            </>
+          {hasPermission(access, 'customers') && (
+            <SidebarLink href="/customers" icon={<CustomersIcon />} label="Clientes" />
+          )}
+          {hasPermission(access, 'reports') && (
+            <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
+          )}
+          {hasPermission(access, 'agent') && (
+            <SidebarLink href="/agent-download" icon={<DownloadIcon />} label="Baixar Agente" />
           )}
           {/* Chamados is the one nav item both session types get - a
               customer-scoped user opens/tracks their own tickets here, a
               tenant-wide user sees the full cross-customer queue. */}
           <SidebarLink href="/tickets" icon={<TicketsIcon />} label="Chamados" />
-          {!session.customerId && (
-            <>
-              <SidebarLink href="/users" icon={<UsersIcon />} label="Usuários" />
-              <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />
-              <SidebarLink href="/settings" icon={<BuildingIcon />} label="Empresa" />
-              <NotificationBell className={NAV_ROW} />
-            </>
+          {hasPermission(access, 'users') && (
+            <SidebarLink href="/users" icon={<UsersIcon />} label="Usuários" />
           )}
+          {hasPermission(access, 'audit_log') && (
+            <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />
+          )}
+          {hasPermission(access, 'settings') && (
+            <SidebarLink href="/settings" icon={<BuildingIcon />} label="Empresa" />
+          )}
+          {hasPermission(access, 'notifications') && <NotificationBell className={NAV_ROW} />}
         </nav>
 
         <div className="flex flex-col gap-3 border-t border-line pt-3">

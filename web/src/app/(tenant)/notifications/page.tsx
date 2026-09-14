@@ -1,5 +1,6 @@
 import { forbidden } from 'next/navigation';
-import { getSession, getNotifications, markAllNotificationsRead, getViewerTimeZone, type Notification } from '@/lib/api';
+import { getViewerAccess, getNotifications, markAllNotificationsRead, getViewerTimeZone, type Notification } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { Badge, type BadgeTone } from '@/components/Badge';
@@ -32,8 +33,8 @@ const TYPE_TONE: Record<Notification['type'], BadgeTone> = {
 export default async function NotificationsPage(props: PageProps<'/notifications'>) {
   const searchParams = await props.searchParams;
 
-  const session = await getSession();
-  if (session?.customerId) {
+  const access = await getViewerAccess();
+  if (!hasPermission(access, 'notifications')) {
     forbidden();
   }
 

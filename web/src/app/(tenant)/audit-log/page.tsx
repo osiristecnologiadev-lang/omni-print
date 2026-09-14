@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { forbidden } from 'next/navigation';
-import { getSession, getAuditLog, getViewerTimeZone } from '@/lib/api';
+import { getViewerAccess, getAuditLog, getViewerTimeZone } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { EmptyState } from '@/components/EmptyState';
@@ -23,6 +24,7 @@ const ACTION_LABEL: Record<string, string> = {
   'enrollment_code.revoke': 'Código de instalação revogado',
   'user.create': 'Usuário criado',
   'user.revoke': 'Usuário revogado',
+  'user.update_permissions': 'Permissões do usuário alteradas',
   'device.reassign_customer': 'Dispositivo reatribuído a outro cliente',
   'device.set_label': 'Apelido do dispositivo alterado',
   'device.set_manual_baseline': 'Leitura inicial manual definida',
@@ -46,8 +48,8 @@ export default async function AuditLogPage(props: PageProps<'/audit-log'>) {
   const searchParams = await props.searchParams;
   const cursor = typeof searchParams?.cursor === 'string' ? searchParams.cursor : undefined;
 
-  const session = await getSession();
-  if (session?.customerId) {
+  const access = await getViewerAccess();
+  if (!hasPermission(access, 'audit_log')) {
     forbidden();
   }
 

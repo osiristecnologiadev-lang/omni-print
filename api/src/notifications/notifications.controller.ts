@@ -1,5 +1,6 @@
-import { Controller, ForbiddenException, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
@@ -20,9 +21,7 @@ export class NotificationsController {
   // that keeps this from re-surfacing something already resolved.
   @Post('sync')
   async sync(@Req() req: any) {
-    if (req.customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
+    assertPermission(req, 'notifications');
     return this.notificationsService.syncNotifications(req.tenantId);
   }
 
@@ -32,9 +31,7 @@ export class NotificationsController {
   // for). This is the "Resolver" button on the frontend.
   @Post(':id/resolve')
   async resolve(@Req() req: any, @Param('id') id: string) {
-    if (req.customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
+    assertPermission(req, 'notifications');
     const notification = await this.notificationsService.resolve(req.tenantId, id);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -54,9 +51,7 @@ export class NotificationsController {
   // full list) since this is called on every page load via the layout.
   @Get('unread-count')
   async unreadCount(@Req() req: any) {
-    if (req.customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
+    assertPermission(req, 'notifications');
     const count = await this.prisma.notification.count({ where: { tenantId: req.tenantId, readAt: null } });
     return { count };
   }
@@ -66,9 +61,7 @@ export class NotificationsController {
   // hiding history entirely.
   @Get()
   async list(@Req() req: any) {
-    if (req.customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
+    assertPermission(req, 'notifications');
     return this.prisma.notification.findMany({
       where: { tenantId: req.tenantId },
       orderBy: [{ resolvedAt: { sort: 'asc', nulls: 'first' } }, { updatedAt: 'desc' }],
@@ -81,9 +74,7 @@ export class NotificationsController {
   // frontend page), not as a per-item action.
   @Post('mark-all-read')
   async markAllRead(@Req() req: any) {
-    if (req.customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
+    assertPermission(req, 'notifications');
     await this.prisma.notification.updateMany({
       where: { tenantId: req.tenantId, readAt: null },
       data: { readAt: new Date() },

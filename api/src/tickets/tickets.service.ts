@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { TicketStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { computeSlaDueAt } from '../common/sla.util';
@@ -161,11 +161,5 @@ export class TicketsService {
     }
 
     return this.prisma.ticket.update({ where: { id: ticketId }, data, include: TICKET_INCLUDE });
-  }
-
-  assertTenantWide(customerId: string | null) {
-    if (customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
   }
 }

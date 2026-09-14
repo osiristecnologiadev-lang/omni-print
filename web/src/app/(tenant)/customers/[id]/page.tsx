@@ -7,12 +7,13 @@ import {
   getCurrentPeriodBilling,
   getDevices,
   getLowSupplyForecast,
-  getSession,
+  getViewerAccess,
   getUsers,
   getViewerTimeZone,
   type AgentTokenSummary,
   type AgentEnrollmentCodeSummary,
 } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { CreateTokenForm } from './CreateTokenForm';
 import { CreateEnrollmentCodeForm } from './CreateEnrollmentCodeForm';
 import {
@@ -86,10 +87,12 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
   const { id } = await props.params;
   const searchParams = await props.searchParams;
 
-  const session = await getSession();
-  if (session?.customerId) {
+  const access = await getViewerAccess();
+  if (!hasPermission(access, 'customers')) {
     forbidden();
   }
+  const canSeeAgent = hasPermission(access, 'agent');
+  const canSeeUsers = hasPermission(access, 'users');
 
   const customer = await getCustomer(id).catch(() => undefined);
   if (!customer) {
@@ -98,9 +101,9 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
 
   const [devices, tokens, enrollmentCodes, users, lowSupplies, currentPeriod, tz] = await Promise.all([
     getDevices(),
-    getCustomerTokens(id),
-    getCustomerEnrollmentCodes(id),
-    getUsers(),
+    canSeeAgent ? getCustomerTokens(id) : Promise.resolve([]),
+    canSeeAgent ? getCustomerEnrollmentCodes(id) : Promise.resolve([]),
+    canSeeUsers ? getUsers() : Promise.resolve([]),
     getLowSupplyForecast(14, 90),
     getCurrentPeriodBilling(id),
     getViewerTimeZone(),
@@ -277,6 +280,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
         </form>
       </Panel>
 
+      {canSeeUsers && (
       <Panel>
         <h2 className="mb-1 text-sm font-medium text-ink">Acesso do cliente</h2>
         <p className="mb-4 text-xs text-ink-faint">
@@ -296,6 +300,10 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           <input name="name" placeholder="Nome" className={fieldClass} />
           <input name="email" type="email" placeholder="E-mail" required className={fieldClass} />
           <input name="password" type="password" placeholder="Senha (mín. 8)" required minLength={8} className={fieldClass} />
+          <label className="flex items-center gap-2 text-sm text-ink sm:col-span-3">
+            <input type="checkbox" name="permissions" value="invoices_view" className="h-4 w-4" />
+            Permitir ver faturas e boletos
+          </label>
           <SubmitButton variant="primary" className="sm:col-span-3" pendingLabel="Criando...">
             Criar acesso
           </SubmitButton>
@@ -323,7 +331,10 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           </ul>
         )}
       </Panel>
+      )}
 
+      {canSeeAgent && (
+      <>
       <Panel className="mt-6">
         <h2 className="mb-1 text-sm font-medium text-ink">Códigos de instalação do agente</h2>
         <p className="mb-4 text-xs text-ink-faint">
@@ -414,6 +425,8 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           </ul>
         )}
       </Panel>
+      </>
+      )}
 
       <div className="mt-6">
         <h2 className="mb-3 text-sm font-medium text-ink">Dispositivos</h2>

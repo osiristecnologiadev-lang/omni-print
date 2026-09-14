@@ -1,5 +1,6 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -9,6 +10,10 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 // Customer management is tenant-wide only - a customer-scoped user has no
 // business seeing or creating sibling customers, or minting agent tokens.
+// Two different permission keys on this one controller: CRUD routes need
+// 'customers', agent-token/enrollment-code routes need 'agent' (same key
+// AgentDownloadController uses) - they're a conceptually separate module
+// even though they happen to live under the same :id path today.
 @UseGuards(UserAuthGuard)
 @Controller('v1/customers')
 export class CustomersController {
@@ -19,13 +24,13 @@ export class CustomersController {
 
   @Get()
   list(@Req() req: any) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'customers');
     return this.customersService.list(req.tenantId);
   }
 
   @Post()
   async create(@Req() req: any, @Body() dto: CreateCustomerDto) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'customers');
     const customer = await this.customersService.create(req.tenantId, dto.name);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -42,13 +47,13 @@ export class CustomersController {
 
   @Get(':id')
   get(@Req() req: any, @Param('id') id: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'customers');
     return this.customersService.get(req.tenantId, id);
   }
 
   @Patch(':id')
   async update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateCustomerDto) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'customers');
     const customer = await this.customersService.update(req.tenantId, id, dto);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -66,13 +71,13 @@ export class CustomersController {
 
   @Get(':id/agent-tokens')
   listTokens(@Req() req: any, @Param('id') id: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'agent');
     return this.customersService.listTokens(req.tenantId, id);
   }
 
   @Post(':id/agent-tokens')
   async createToken(@Req() req: any, @Param('id') id: string, @Body() dto: CreateTokenDto) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'agent');
     const token = await this.customersService.createToken(req.tenantId, id, dto.label);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -90,7 +95,7 @@ export class CustomersController {
 
   @Post(':id/agent-tokens/:tokenId/revoke')
   async revokeToken(@Req() req: any, @Param('id') id: string, @Param('tokenId') tokenId: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'agent');
     const token = await this.customersService.revokeToken(req.tenantId, id, tokenId);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -108,13 +113,13 @@ export class CustomersController {
 
   @Get(':id/agent-enrollment-codes')
   listEnrollmentCodes(@Req() req: any, @Param('id') id: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'agent');
     return this.customersService.listEnrollmentCodes(req.tenantId, id);
   }
 
   @Post(':id/agent-enrollment-codes')
   async createEnrollmentCode(@Req() req: any, @Param('id') id: string, @Body() dto: CreateEnrollmentCodeDto) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'agent');
     const code = await this.customersService.createEnrollmentCode(req.tenantId, id, dto.label);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -132,7 +137,7 @@ export class CustomersController {
 
   @Post(':id/agent-enrollment-codes/:codeId/revoke')
   async revokeEnrollmentCode(@Req() req: any, @Param('id') id: string, @Param('codeId') codeId: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'agent');
     const code = await this.customersService.revokeEnrollmentCode(req.tenantId, id, codeId);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -146,11 +151,5 @@ export class CustomersController {
       metadata: { customerId: id },
     });
     return code;
-  }
-
-  private assertTenantWide(customerId: string | null) {
-    if (customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
   }
 }

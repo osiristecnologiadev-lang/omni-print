@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { forbidden } from 'next/navigation';
-import { getCustomers, getSession } from '@/lib/api';
+import { getCustomers, getViewerAccess } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { createCustomerAction } from './actions';
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
@@ -10,8 +11,8 @@ import { Banner } from '@/components/Banner';
 export default async function CustomersPage(props: PageProps<'/customers'>) {
   const searchParams = await props.searchParams;
 
-  const session = await getSession();
-  if (session?.customerId) {
+  const access = await getViewerAccess();
+  if (!hasPermission(access, 'customers')) {
     forbidden();
   }
 

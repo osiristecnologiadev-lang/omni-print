@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { DevicesService } from './devices.service';
 import { UpdateDeviceDto } from './dto/update-device.dto';
@@ -82,7 +83,7 @@ export class DevicesController {
 
   @Patch('devices/:id')
   async update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateDeviceDto) {
-    this.devicesService.assertTenantWide(req.customerId);
+    assertPermission(req, 'devices');
     const device = await this.devicesService.update(req.tenantId, id, dto);
     const targetLabel = device.customLabel ?? device.printerName ?? device.name ?? device.host;
 

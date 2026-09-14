@@ -9,6 +9,7 @@ import { PrismaClient } from '@prisma/client';
 import { randomBytes, createHash } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { generateAgentTokenDigits, formatAgentTokenDigits } from '../src/auth/agent-token.util';
+import { defaultPermissionsFor } from '../src/auth/permissions.util';
 
 const prisma = new PrismaClient();
 
@@ -18,6 +19,7 @@ async function upsertUser(opts: {
   email: string;
   password: string;
   name: string;
+  permissions?: string[];
 }) {
   const existing = await prisma.user.findUnique({ where: { email: opts.email } });
   if (existing) return existing;
@@ -29,6 +31,7 @@ async function upsertUser(opts: {
       email: opts.email,
       passwordHash,
       name: opts.name,
+      permissions: opts.permissions ?? defaultPermissionsFor(opts.customerId),
     },
   });
 }
@@ -107,6 +110,10 @@ async function main() {
     email: 'cliente@empresa-teste.dev',
     password: customerPassword,
     name: 'Usuario Empresa Teste',
+    // Granted out of the box (rather than the empty-array default) so local
+    // manual verification of the invoices_view capability doesn't require
+    // editing permissions by hand first.
+    permissions: ['invoices_view'],
   });
 
   // Give the scoped login something real to see, if there are unassigned

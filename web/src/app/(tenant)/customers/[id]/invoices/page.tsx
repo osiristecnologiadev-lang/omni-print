@@ -1,5 +1,6 @@
 import { forbidden } from 'next/navigation';
-import { getCustomer, getInvoices, getSession, getViewerTimeZone, type Invoice } from '@/lib/api';
+import { getCustomer, getInvoices, getViewerAccess, getViewerTimeZone, type Invoice } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { generateInvoiceAction, markPaidAction, cancelInvoiceAction } from './actions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
@@ -31,12 +32,22 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
   const { id } = await props.params;
   const searchParams = await props.searchParams;
 
-  const session = await getSession();
-  if (session?.customerId) {
+  const access = await getViewerAccess();
+  const canManage = hasPermission(access, 'invoices');
+  const canViewOwn = hasPermission(access, 'invoices_view') && access.customerId === id;
+  if (!canManage && !canViewOwn) {
     forbidden();
   }
 
-  const [customer, invoices, tz] = await Promise.all([getCustomer(id), getInvoices(id), getViewerTimeZone()]);
+  // getCustomer is gated to the 'customers' permission (tenant-wide) - a
+  // customer-scoped invoices_view session (which can't see /customers/:id
+  // at all) would 403 on it, same reasoning as tickets/new/page.tsx's own
+  // isTenantWide-conditional getCustomer call.
+  const [customer, invoices, tz] = await Promise.all([
+    canManage ? getCustomer(id) : Promise.resolve(null),
+    getInvoices(id),
+    getViewerTimeZone(),
+  ]);
 
   const now = new Date();
   const monthOptions = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -50,7 +61,7 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
       <PageHeader
         title="Faturas"
         subtitle="Histórico de cobrança gerado a partir do contrato - cada fatura fica registrada com os valores exatos daquele mês, mesmo que o contrato mude depois."
-        back={{ href: `/customers/${id}`, label: customer.name }}
+        back={customer ? { href: `/customers/${id}`, label: customer.name } : undefined}
       />
 
       {searchParams?.generated === '1' && <Banner tone="success">Fatura gerada.</Banner>}
@@ -62,6 +73,7 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
       {searchParams?.cancelled === '1' && <Banner tone="success">Fatura cancelada.</Banner>}
       {searchParams?.cancelError === '1' && <Banner tone="error">Não foi possível cancelar a fatura. Tente novamente.</Banner>}
 
+      {canManage && (
       <Panel className="mb-6">
         <h2 className="mb-1 text-sm font-medium text-ink">Gerar fatura</h2>
         <p className="mb-4 text-xs text-ink-faint">
@@ -88,6 +100,7 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
           </SubmitButton>
         </form>
       </Panel>
+      )}
 
       {invoices.length === 0 ? (
         <EmptyState title="Nenhuma fatura gerada ainda" />
@@ -123,7 +136,7 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
                   >
                     PDF
                   </a>
-                  {invoice.status === 'PENDING' && (
+                  {canManage && invoice.status === 'PENDING' && (
                     <>
                       <form action={boundMarkPaid}>
                         <PlainSubmitButton

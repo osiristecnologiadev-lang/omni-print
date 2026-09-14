@@ -19,15 +19,15 @@ describe('AuditLogController', () => {
   });
 
   it('scopes the query to the caller\'s own tenant and forwards limit/cursor', () => {
-    controller.list({ tenantId: 't1', customerId: null }, '10', 'e5');
+    controller.list({ tenantId: 't1', customerId: null, permissions: ['audit_log'] }, '10', 'e5');
     expect(auditLog.listForTenant).toHaveBeenCalledWith('t1', { limit: 10, cursor: 'e5' });
   });
 
   it('defaults and caps limit', () => {
-    controller.list({ tenantId: 't1', customerId: null }, undefined, undefined);
+    controller.list({ tenantId: 't1', customerId: null, permissions: ['audit_log'] }, undefined, undefined);
     expect(auditLog.listForTenant).toHaveBeenCalledWith('t1', { limit: 50, cursor: undefined });
 
-    controller.list({ tenantId: 't1', customerId: null }, '9999', undefined);
+    controller.list({ tenantId: 't1', customerId: null, permissions: ['audit_log'] }, '9999', undefined);
     expect(auditLog.listForTenant).toHaveBeenLastCalledWith('t1', { limit: 100, cursor: undefined });
   });
 });

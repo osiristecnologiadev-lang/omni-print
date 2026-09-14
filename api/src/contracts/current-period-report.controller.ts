@@ -1,5 +1,6 @@
-import { Controller, ForbiddenException, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { ContractsService } from './contracts.service';
 
 // Tenant-wide portfolio view of "how much is guaranteed so far this month"
@@ -13,9 +14,7 @@ export class CurrentPeriodReportController {
 
   @Get()
   get(@Req() req: any) {
-    if (req.customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
+    assertPermission(req, 'reports');
     return this.contractsService.portfolioCurrentPeriodPreview(req.tenantId);
   }
 }

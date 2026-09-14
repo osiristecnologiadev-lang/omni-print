@@ -8,7 +8,9 @@ import {
   getLowSupplyForecast,
   getPortfolioCurrentPeriod,
   getSession,
+  getViewerAccess,
 } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { deriveHealth } from '@/lib/health';
 import { Badge, type BadgeTone } from '@/components/Badge';
 import { DeviceFleetTable } from '@/components/DeviceFleetTable';
@@ -65,14 +67,20 @@ function StatTile({ label, value, tone = 'default' }: { label: string; value: nu
 }
 
 export default async function DashboardPage() {
-  const [devices, session] = await Promise.all([getDevices(), getSession()]);
+  const [devices, session, access] = await Promise.all([getDevices(), getSession(), getViewerAccess()]);
   const isTenantWide = session != null && !session.customerId;
+  // Gated by the reports permission, not isTenantWide alone - a restricted
+  // tenant-wide user (e.g. a technician with only devices/tickets) has no
+  // 'reports' permission either, and without this check these two calls
+  // would 403 and take down the whole dashboard, the page every session
+  // lands on right after login.
+  const canSeeReports = hasPermission(access, 'reports');
   const [alerts, activeAlerts, pageTrend, lowSupplies, currentPeriod, currentMonthPages] = await Promise.all([
-    isTenantWide ? getBillingAlerts() : Promise.resolve(null),
+    canSeeReports ? getBillingAlerts() : Promise.resolve(null),
     getActiveAlerts(),
     getFleetPageTrend(30),
     getLowSupplyForecast(14, 90),
-    isTenantWide ? getPortfolioCurrentPeriod() : Promise.resolve(null),
+    canSeeReports ? getPortfolioCurrentPeriod() : Promise.resolve(null),
     getFleetCurrentMonthPages(),
   ]);
   const hasAlerts = !!alerts && (alerts.expiringContracts.length > 0 || alerts.overdueInvoices.length > 0);
@@ -100,7 +108,7 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {isTenantWide && currentPeriod && currentPeriod.byCustomer.length > 0 && (
+      {canSeeReports && currentPeriod && currentPeriod.byCustomer.length > 0 && (
         <Panel className="mb-8">
           <div className="mb-1 flex items-baseline justify-between gap-3">
             <h2 className="text-sm font-medium text-ink">Receita garantida este mês (até agora)</h2>

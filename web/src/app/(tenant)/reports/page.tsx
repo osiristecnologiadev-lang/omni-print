@@ -1,5 +1,6 @@
 import { forbidden } from 'next/navigation';
-import { getSession, getUsageRevenueReport } from '@/lib/api';
+import { getViewerAccess, getUsageRevenueReport } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { EmptyState } from '@/components/EmptyState';
@@ -28,8 +29,8 @@ const MONTH_OPTIONS = [3, 6, 12, 24];
 export default async function ReportsPage(props: PageProps<'/reports'>) {
   const searchParams = await props.searchParams;
 
-  const session = await getSession();
-  if (session?.customerId) {
+  const access = await getViewerAccess();
+  if (!hasPermission(access, 'reports')) {
     forbidden();
   }
 

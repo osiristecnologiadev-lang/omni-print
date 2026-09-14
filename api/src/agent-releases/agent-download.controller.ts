@@ -1,8 +1,9 @@
 import { createReadStream } from 'fs';
-import { Controller, ForbiddenException, Get, NotFoundException, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { AgentPlatform } from '@prisma/client';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { AgentReleasesService } from './agent-releases.service';
 
 // Tenant-facing side of release distribution - a logged-in outsourcing-
@@ -19,7 +20,7 @@ export class AgentDownloadController {
 
   @Get('latest')
   async latest(@Req() req: any, @Query('platform') platform: AgentPlatform) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'agent');
     const release = await this.releases.getLatest(platform);
     if (!release) {
       return null;
@@ -35,7 +36,7 @@ export class AgentDownloadController {
 
   @Get(':id/installer')
   async downloadInstaller(@Req() req: any, @Param('id') id: string, @Res() res: Response) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'agent');
     const release = await this.releases.get(id);
     if (!release.installerFilePath) {
       throw new NotFoundException('no installer uploaded for this release');
@@ -53,11 +54,5 @@ export class AgentDownloadController {
       }
     });
     stream.pipe(res);
-  }
-
-  private assertTenantWide(customerId: string | null) {
-    if (customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
   }
 }

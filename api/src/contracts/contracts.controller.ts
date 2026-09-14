@@ -1,17 +1,6 @@
-import {
-  Body,
-  Controller,
-  ForbiddenException,
-  Get,
-  Param,
-  ParseIntPipe,
-  Patch,
-  Post,
-  Query,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ContractsService } from './contracts.service';
 import { CreateContractDto } from './dto/create-contract.dto';
@@ -30,19 +19,19 @@ export class ContractsController {
 
   @Get()
   list(@Req() req: any, @Param('customerId') customerId: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'contracts');
     return this.contractsService.list(req.tenantId, customerId);
   }
 
   @Get('active')
   getActive(@Req() req: any, @Param('customerId') customerId: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'contracts');
     return this.contractsService.getActive(req.tenantId, customerId);
   }
 
   @Post()
   async create(@Req() req: any, @Param('customerId') customerId: string, @Body() dto: CreateContractDto) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'contracts');
     const contract = await this.contractsService.create(req.tenantId, customerId, dto);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -65,7 +54,7 @@ export class ContractsController {
     @Param('contractId') contractId: string,
     @Body() dto: UpdateContractDto,
   ) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'contracts');
     const contract = await this.contractsService.update(req.tenantId, customerId, contractId, dto);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -83,7 +72,7 @@ export class ContractsController {
 
   @Post(':contractId/cancel')
   async cancel(@Req() req: any, @Param('customerId') customerId: string, @Param('contractId') contractId: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'contracts');
     const contract = await this.contractsService.cancel(req.tenantId, customerId, contractId);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -106,7 +95,7 @@ export class ContractsController {
     @Query('year', ParseIntPipe) year: number,
     @Query('month', ParseIntPipe) month: number,
   ) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'contracts');
     return this.contractsService.calculateBilling(req.tenantId, customerId, year, month);
   }
 
@@ -116,13 +105,7 @@ export class ContractsController {
   // ambiguity with the other routes on this controller.
   @Get('billing/current')
   currentBilling(@Req() req: any, @Param('customerId') customerId: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'contracts');
     return this.contractsService.currentPeriodPreview(req.tenantId, customerId);
-  }
-
-  private assertTenantWide(customerId: string | null) {
-    if (customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
   }
 }

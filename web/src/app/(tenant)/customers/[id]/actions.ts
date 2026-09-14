@@ -82,9 +82,10 @@ export async function createCustomerUserAction(customerId: string, formData: For
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
   const name = String(formData.get('name') ?? '').trim() || undefined;
+  const permissions = formData.getAll('permissions').map(String);
 
   try {
-    await createUser({ email, password, name, customerId });
+    await createUser({ email, password, name, customerId, permissions });
   } catch (err) {
     const message = err instanceof Error ? err.message : '';
     redirect(`/customers/${customerId}?userError=${message.includes('already in use') ? 'email_in_use' : '1'}`);

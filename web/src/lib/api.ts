@@ -245,6 +245,21 @@ export async function getSession(): Promise<Session | null> {
   }
 }
 
+export interface ViewerAccess {
+  customerId: string | null;
+  permissions: string[];
+}
+
+// Unlike getSession() above, this is a real request to GET /v1/users/me,
+// not a local JWT decode - permissions are deliberately NOT embedded in the
+// token (see UserAuthGuard's comment on why: they're read live from the DB
+// on every backend request so editing a user's permissions takes effect
+// immediately). Call this wherever a nav or page decision depends on module
+// access, not session.customerId alone.
+export async function getViewerAccess(): Promise<ViewerAccess> {
+  return apiFetch<ViewerAccess>('/v1/users/me');
+}
+
 async function authHeaders(): Promise<HeadersInit> {
   const token = await getSessionToken();
   if (!token) {
@@ -506,6 +521,7 @@ export interface DashboardUser {
   name: string | null;
   customerId: string | null;
   customer: { id: string; name: string } | null;
+  permissions: string[];
   createdAt: string;
   revokedAt: string | null;
 }
@@ -519,12 +535,17 @@ export function createUser(input: {
   password: string;
   name?: string;
   customerId?: string | null;
+  permissions?: string[];
 }): Promise<DashboardUser> {
   return apiMutate<DashboardUser>('/v1/users', 'POST', input);
 }
 
 export function revokeUser(userId: string): Promise<DashboardUser> {
   return apiMutate<DashboardUser>(`/v1/users/${userId}/revoke`, 'POST', {});
+}
+
+export function updateUserPermissions(userId: string, permissions: string[]): Promise<DashboardUser> {
+  return apiMutate<DashboardUser>(`/v1/users/${userId}/permissions`, 'PATCH', { permissions });
 }
 
 export function createCustomerToken(customerId: string, label?: string): Promise<CreatedAgentToken> {

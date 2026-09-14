@@ -27,7 +27,7 @@ describe('CustomersController audit logging', () => {
   });
 
   it('logs agent_token.revoke with the real actor and token identity', async () => {
-    const req = { tenantId: 't1', customerId: null, userId: 'u1', userEmail: 'admin@example.com' };
+    const req = { tenantId: 't1', customerId: null, userId: 'u1', userEmail: 'admin@example.com', permissions: ['agent'] };
     customersService.revokeToken.mockResolvedValue({ id: 'tok1', label: 'Matriz', revokedAt: new Date() });
 
     await controller.revokeToken(req, 'c1', 'tok1');
@@ -47,7 +47,7 @@ describe('CustomersController audit logging', () => {
   });
 
   it('falls back to a generic label when the token has none', async () => {
-    const req = { tenantId: 't1', customerId: null, userId: 'u1', userEmail: 'admin@example.com' };
+    const req = { tenantId: 't1', customerId: null, userId: 'u1', userEmail: 'admin@example.com', permissions: ['agent'] };
     customersService.revokeToken.mockResolvedValue({ id: 'tok2', label: null, revokedAt: new Date() });
 
     await controller.revokeToken(req, 'c1', 'tok2');

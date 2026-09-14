@@ -1,5 +1,6 @@
-import { Controller, ForbiddenException, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { InvoicesService } from './invoices.service';
 
 // Tenant-wide dashboard signal (unlike InvoicesController, this isn't scoped
@@ -11,9 +12,7 @@ export class BillingAlertsController {
 
   @Get()
   get(@Req() req: any) {
-    if (req.customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
+    assertPermission(req, 'reports');
     return this.invoicesService.alerts(req.tenantId);
   }
 }

@@ -1,6 +1,7 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission, assertInvoiceReadAccess } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvoicesService } from './invoices.service';
@@ -8,9 +9,13 @@ import { InvoicePdfService } from './invoice-pdf.service';
 import { GenerateInvoiceDto } from './dto/generate-invoice.dto';
 import { MarkPaidDto } from './dto/mark-paid.dto';
 
-// Same access rule as contracts: this is the outsourcing tenant's own
-// billing paperwork for its client, not something that client's read-only
-// login should see - see ContractsController's comment for the full reason.
+// Writes (generate/pay/cancel) are tenant-wide only, same as contracts -
+// see ContractsController's comment. Reads (list/get/pdf) are the one
+// place a customer-scoped login can be granted access beyond the always-
+// open device/ticket routes: a customer with the invoices_view permission
+// can see and download their OWN invoices only (assertInvoiceReadAccess
+// enforces the customerId match) - they can't generate, mark paid, or
+// cancel anything.
 @UseGuards(UserAuthGuard)
 @Controller('v1/customers/:customerId/invoices')
 export class InvoicesController {
@@ -23,13 +28,13 @@ export class InvoicesController {
 
   @Get()
   list(@Req() req: any, @Param('customerId') customerId: string) {
-    this.assertTenantWide(req.customerId);
+    assertInvoiceReadAccess(req, customerId);
     return this.invoicesService.list(req.tenantId, customerId);
   }
 
   @Get(':invoiceId')
   get(@Req() req: any, @Param('customerId') customerId: string, @Param('invoiceId') invoiceId: string) {
-    this.assertTenantWide(req.customerId);
+    assertInvoiceReadAccess(req, customerId);
     return this.invoicesService.get(req.tenantId, customerId, invoiceId);
   }
 
@@ -39,7 +44,7 @@ export class InvoicesController {
   // paths share the same idempotency guarantee.
   @Post('generate')
   async generate(@Req() req: any, @Param('customerId') customerId: string, @Body() dto: GenerateInvoiceDto) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'invoices');
     const invoice = await this.invoicesService.generate(req.tenantId, customerId, dto.year, dto.month);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -62,7 +67,7 @@ export class InvoicesController {
     @Param('invoiceId') invoiceId: string,
     @Body() dto: MarkPaidDto,
   ) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'invoices');
     const invoice = await this.invoicesService.markPaid(req.tenantId, customerId, invoiceId, dto.paidAmount);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -80,7 +85,7 @@ export class InvoicesController {
 
   @Post(':invoiceId/cancel')
   async cancel(@Req() req: any, @Param('customerId') customerId: string, @Param('invoiceId') invoiceId: string) {
-    this.assertTenantWide(req.customerId);
+    assertPermission(req, 'invoices');
     const invoice = await this.invoicesService.cancel(req.tenantId, customerId, invoiceId);
     await this.auditLog.log({
       tenantId: req.tenantId,
@@ -103,7 +108,7 @@ export class InvoicesController {
     @Param('invoiceId') invoiceId: string,
     @Res() res: Response,
   ) {
-    this.assertTenantWide(req.customerId);
+    assertInvoiceReadAccess(req, customerId);
     const invoice = await this.invoicesService.get(req.tenantId, customerId, invoiceId);
     const [tenant, customer] = await Promise.all([
       this.prisma.tenant.findUniqueOrThrow({ where: { id: req.tenantId } }),
@@ -125,11 +130,5 @@ export class InvoicesController {
     });
     doc.pipe(res);
     doc.end();
-  }
-
-  private assertTenantWide(customerId: string | null) {
-    if (customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
   }
 }

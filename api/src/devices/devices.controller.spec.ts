@@ -12,14 +12,14 @@ import type { AuditLogService } from '../audit-log/audit-log.service';
 // customers.controller.spec.ts's comment for why.
 describe('DevicesController audit logging', () => {
   let controller: DevicesController;
-  let devicesService: { update: jest.Mock; assertTenantWide: jest.Mock };
+  let devicesService: { update: jest.Mock };
   let auditLog: { log: jest.Mock };
 
-  const req = { tenantId: 't1', customerId: null, userId: 'u1', userEmail: 'admin@example.com' };
+  const req = { tenantId: 't1', customerId: null, userId: 'u1', userEmail: 'admin@example.com', permissions: ['devices'] };
   const device = { id: 'd1', customLabel: 'Recepção', printerName: 'HP LaserJet', name: null, host: '10.0.0.5' };
 
   beforeEach(() => {
-    devicesService = { update: jest.fn().mockResolvedValue(device), assertTenantWide: jest.fn() };
+    devicesService = { update: jest.fn().mockResolvedValue(device) };
     auditLog = { log: jest.fn() };
     controller = new DevicesController(
       devicesService as unknown as DevicesService,

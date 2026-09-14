@@ -10,17 +10,24 @@ export interface JwtPayload {
 
 // Authenticates a dashboard user (as opposed to AgentAuthGuard, which
 // authenticates an on-prem agent install). Attaches req.tenantId,
-// req.customerId, req.userId and req.userEmail from the JWT/DB row -
-// req.customerId is the visibility scope: null means tenant-wide (see User
-// model comment in prisma/schema.prisma), set means restricted to that one
-// customer. req.userEmail (the row is already fetched below for the
-// revokedAt check, so this is free) exists purely so controllers can
-// denormalize an actor label into AuditLogEntry without a second query.
+// req.customerId, req.userId, req.userEmail and req.permissions from the
+// JWT/DB row - req.customerId is the visibility scope: null means
+// tenant-wide (see User model comment in prisma/schema.prisma), set means
+// restricted to that one customer. req.userEmail (the row is already
+// fetched below for the revokedAt check, so this is free) exists purely so
+// controllers can denormalize an actor label into AuditLogEntry without a
+// second query.
 //
 // Re-checks the user row on every request (not just the JWT's own
 // signature/expiry): a JWT is valid for 7 days after issue, so without this
 // a revoked user (see UsersService.revoke) would keep working with an
 // already-issued token until it happened to expire on its own.
+//
+// req.permissions is deliberately NOT part of the JWT payload, unlike
+// customerId - it's read fresh from the DB on every request (same query as
+// the revokedAt check, so no extra cost), specifically so that editing a
+// user's permissions (see UsersController.updatePermissions) takes effect
+// immediately instead of waiting up to 7 days for their token to expire.
 @Injectable()
 export class UserAuthGuard implements CanActivate {
   constructor(
@@ -52,6 +59,7 @@ export class UserAuthGuard implements CanActivate {
     req.customerId = payload.customerId ?? null;
     req.userId = payload.sub;
     req.userEmail = user.email;
+    req.permissions = user.permissions;
     return true;
   }
 }

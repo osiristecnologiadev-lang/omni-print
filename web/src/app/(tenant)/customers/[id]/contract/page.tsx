@@ -5,9 +5,10 @@ import {
   getBilling,
   getContracts,
   getCustomer,
-  getSession,
+  getViewerAccess,
   type Contract,
 } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { createContractAction, cancelContractAction } from './actions';
 import { ContractForm } from './ContractForm';
 import { PageHeader } from '@/components/PageHeader';
@@ -141,8 +142,8 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
   const { id } = await props.params;
   const searchParams = await props.searchParams;
 
-  const session = await getSession();
-  if (session?.customerId) {
+  const access = await getViewerAccess();
+  if (!hasPermission(access, 'contracts')) {
     forbidden();
   }
 

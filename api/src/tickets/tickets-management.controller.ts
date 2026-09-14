@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from '@nestjs/common';
 import { TicketStatus } from '@prisma/client';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { TicketsService } from './tickets.service';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
@@ -18,7 +19,7 @@ export class TicketsManagementController {
 
   @Get()
   list(@Req() req: any, @Query('status') status?: TicketStatus) {
-    this.ticketsService.assertTenantWide(req.customerId);
+    assertPermission(req, 'tickets');
     return this.ticketsService.list(req.tenantId, null, status);
   }
 
@@ -28,13 +29,13 @@ export class TicketsManagementController {
   // customer of this tenant," same as list() above.
   @Get(':id')
   get(@Req() req: any, @Param('id') id: string) {
-    this.ticketsService.assertTenantWide(req.customerId);
+    assertPermission(req, 'tickets');
     return this.ticketsService.get(req.tenantId, null, id);
   }
 
   @Patch(':id')
   async update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateTicketDto) {
-    this.ticketsService.assertTenantWide(req.customerId);
+    assertPermission(req, 'tickets');
     const ticket = await this.ticketsService.update(req.tenantId, id, dto);
     await this.auditLog.log({
       tenantId: req.tenantId,

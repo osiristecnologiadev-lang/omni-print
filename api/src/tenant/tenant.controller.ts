@@ -1,5 +1,6 @@
-import { Body, Controller, ForbiddenException, Get, Patch, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { TenantService } from './tenant.service';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -24,9 +25,7 @@ export class TenantController {
 
   @Patch()
   async update(@Req() req: any, @Body() dto: UpdateTenantDto) {
-    if (req.customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
+    assertPermission(req, 'settings');
     const tenant = await this.tenantService.update(req.tenantId, dto);
     await this.auditLog.log({
       tenantId: req.tenantId,

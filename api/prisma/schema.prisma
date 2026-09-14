@@ -366,6 +366,14 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at")
   revokedAt    DateTime? @map("revoked_at")
 
+  // Module-level access, on top of the customerId scope above - see
+  // api/src/auth/permissions.util.ts for the fixed key list and which keys
+  // are valid for a tenant-wide vs customer-scoped user. Plain string array
+  // (not a Prisma enum), same posture as AuditLogEntry.action: validated at
+  // the DTO layer, not the schema, so adding a key later is just a code
+  // change, not a migration.
+  permissions String[] @default([])
+
   createdTickets  Ticket[]        @relation("TicketCreatedBy")
   assignedTickets Ticket[]        @relation("TicketAssignedTo")
   ticketComments  TicketComment[]

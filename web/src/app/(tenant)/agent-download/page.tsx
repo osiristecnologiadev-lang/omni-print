@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { forbidden } from 'next/navigation';
-import { getSession, getAgentLatestRelease } from '@/lib/api';
+import { getViewerAccess, getAgentLatestRelease } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { EmptyState } from '@/components/EmptyState';
@@ -15,8 +16,8 @@ function formatBytes(bytes: number): string {
 // access rule as customer/contract management (see AgentDownloadController's
 // assertTenantWide on the API side).
 export default async function AgentDownloadPage() {
-  const session = await getSession();
-  if (session?.customerId) {
+  const access = await getViewerAccess();
+  if (!hasPermission(access, 'agent')) {
     forbidden();
   }
 

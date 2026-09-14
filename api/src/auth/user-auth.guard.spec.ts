@@ -61,7 +61,7 @@ describe('UserAuthGuard', () => {
 
   it('allows a valid token for a non-revoked user and attaches request context', async () => {
     jwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', tenantId: 't1', customerId: 'cust-1' });
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', revokedAt: null });
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', revokedAt: null, permissions: ['invoices_view'] });
 
     const req: any = { headers: { authorization: 'Bearer valid-signature-token' } };
     const context = { switchToHttp: () => ({ getRequest: () => req }) } as unknown as ExecutionContext;
@@ -70,5 +70,25 @@ describe('UserAuthGuard', () => {
     expect(req.tenantId).toBe('t1');
     expect(req.customerId).toBe('cust-1');
     expect(req.userId).toBe('user-1');
+    expect(req.permissions).toEqual(['invoices_view']);
+  });
+
+  // Proves permissions are read live from the DB on every request, not
+  // cached from the JWT payload the way customerId is - this is what lets
+  // UsersController.updatePermissions take effect immediately instead of
+  // waiting up to 7 days for the caller's token to expire.
+  it('reflects a changed permissions row across two requests with the same token', async () => {
+    jwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', tenantId: 't1', customerId: null });
+    prisma.user.findUnique.mockResolvedValueOnce({ id: 'user-1', revokedAt: null, permissions: ['devices'] });
+
+    const req1: any = { headers: { authorization: 'Bearer same-token' } };
+    await guard.canActivate({ switchToHttp: () => ({ getRequest: () => req1 }) } as unknown as ExecutionContext);
+    expect(req1.permissions).toEqual(['devices']);
+
+    prisma.user.findUnique.mockResolvedValueOnce({ id: 'user-1', revokedAt: null, permissions: ['devices', 'reports'] });
+
+    const req2: any = { headers: { authorization: 'Bearer same-token' } };
+    await guard.canActivate({ switchToHttp: () => ({ getRequest: () => req2 }) } as unknown as ExecutionContext);
+    expect(req2.permissions).toEqual(['devices', 'reports']);
   });
 });

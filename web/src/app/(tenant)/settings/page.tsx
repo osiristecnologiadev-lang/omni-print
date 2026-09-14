@@ -1,5 +1,6 @@
 import { forbidden } from 'next/navigation';
-import { getSession, getTenant } from '@/lib/api';
+import { getViewerAccess, getTenant } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { updateTenantAction } from './actions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
@@ -12,8 +13,8 @@ const inputClass =
 export default async function SettingsPage(props: PageProps<'/settings'>) {
   const searchParams = await props.searchParams;
 
-  const session = await getSession();
-  if (session?.customerId) {
+  const access = await getViewerAccess();
+  if (!hasPermission(access, 'settings')) {
     forbidden();
   }
 

@@ -1,5 +1,6 @@
-import { Controller, ForbiddenException, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { assertPermission } from '../auth/permissions.util';
 import { PlatformAuthGuard } from '../platform/platform-auth.guard';
 import { AuditLogService } from './audit-log.service';
 
@@ -24,9 +25,7 @@ export class AuditLogController {
   // business seeing tenant-wide administrative history.
   @Get()
   list(@Req() req: any, @Query('limit') limit?: string, @Query('cursor') cursor?: string) {
-    if (req.customerId) {
-      throw new ForbiddenException('only tenant-wide users can do this');
-    }
+    assertPermission(req, 'audit_log');
     return this.auditLog.listForTenant(req.tenantId, { limit: parseLimit(limit), cursor });
   }
 }
