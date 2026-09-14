@@ -19,6 +19,8 @@ import { TicketsModule } from './tickets/tickets.module';
 import { AgentReleasesModule } from './agent-releases/agent-releases.module';
 import { AgentEnrollmentModule } from './agent-enrollment/agent-enrollment.module';
 import { SignupModule } from './signup/signup.module';
+import { StripeModule } from './stripe/stripe.module';
+import { SubscriptionModule } from './subscription/subscription.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -47,6 +49,8 @@ import { HealthController } from './health/health.controller';
     AgentReleasesModule,
     AgentEnrollmentModule,
     SignupModule,
+    StripeModule,
+    SubscriptionModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

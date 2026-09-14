@@ -50,7 +50,9 @@ describe('SignupService.register', () => {
 
     const result = await service.register({ companyName: 'Acme', email: 'new@example.com', password: 'longenough' });
 
-    expect(prisma.tenant.create).toHaveBeenCalledWith({ data: { name: 'Acme' } });
+    expect(prisma.tenant.create).toHaveBeenCalledWith({
+      data: { name: 'Acme', trialEndsAt: expect.any(Date) },
+    });
     expect(usersService.create).toHaveBeenCalledWith('tenant-1', {
       email: 'new@example.com',
       password: 'longenough',

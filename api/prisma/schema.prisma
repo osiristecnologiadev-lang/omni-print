@@ -87,6 +87,24 @@ model Tenant {
   phone        String?
   contactEmail String? @map("contact_email")
 
+  // OmniPrint's own billing of this tenant (distinct from Contract/Invoice,
+  // which is this tenant billing ITS OWN customers) - see SubscriptionGuard
+  // for how these two fields gate access. trialEndsAt is set once at
+  // creation (signup or PlatformService.createTenant, both via
+  // trialEndsAtFromNow()) and never recomputed. subscriptionStatus mirrors
+  // Stripe's own subscription status ('active'/'trialing' -> ACTIVE handled
+  // via trialEndsAt instead, since no Stripe subscription exists yet during
+  // a card-free trial; 'past_due'/'unpaid'/etc -> PAST_DUE;
+  // 'canceled'/'incomplete_expired' -> CANCELED), kept fresh by
+  // SubscriptionService's webhook handler, deliberately NOT derived at read
+  // time from a live Stripe call (would make every gated request depend on
+  // Stripe's uptime).
+  subscriptionStatus       SubscriptionStatus @default(TRIALING) @map("subscription_status")
+  trialEndsAt              DateTime           @map("trial_ends_at")
+  stripeCustomerId         String?            @map("stripe_customer_id")
+  stripeSubscriptionId     String?            @map("stripe_subscription_id")
+  stripeSubscriptionItemId String?            @map("stripe_subscription_item_id")
+
   agentTokens          AgentToken[]
   agentEnrollmentCodes AgentEnrollmentCode[]
   devices              Device[]
@@ -285,6 +303,14 @@ enum InvoiceStatus {
   PENDING
   PAID
   CANCELLED
+}
+
+// OmniPrint's own subscription status for a Tenant - see Tenant.subscriptionStatus.
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
 }
 
 // One row per billed period per customer - the persisted result of what

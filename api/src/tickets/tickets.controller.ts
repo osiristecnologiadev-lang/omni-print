@@ -1,6 +1,7 @@
 import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { TicketStatus } from '@prisma/client';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
@@ -10,7 +11,7 @@ import { AddCommentDto } from './dto/add-comment.dto';
 // comment here - a customer-scoped session isn't blocked outright, it's
 // restricted to its own customerId. Status/priority/assignment changes are
 // staff-only - see tickets-management.controller.ts.
-@UseGuards(UserAuthGuard)
+@UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/customers/:customerId/tickets')
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}

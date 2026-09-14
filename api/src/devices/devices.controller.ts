@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { DevicesService } from './devices.service';
 import { UpdateDeviceDto } from './dto/update-device.dto';
 
-@UseGuards(UserAuthGuard)
+@UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1')
 export class DevicesController {
   constructor(

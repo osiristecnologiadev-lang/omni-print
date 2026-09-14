@@ -56,7 +56,11 @@ async function main() {
     (await prisma.tenant.findFirst({ where: { name: 'MultiTonner' } })) ??
     (await prisma.tenant.findFirst({ where: { name: 'Dev Tenant' } })); // pre-rename dev DBs
   if (!tenant) {
-    tenant = await prisma.tenant.create({ data: { name: 'MultiTonner' } });
+    // ACTIVE, not TRIALING - this seed represents an established dev/demo
+    // tenant, not a fresh signup that should be gated by a trial.
+    tenant = await prisma.tenant.create({
+      data: { name: 'MultiTonner', subscriptionStatus: 'ACTIVE', trialEndsAt: new Date() },
+    });
     console.log('Tenant created:', tenant.id);
   } else {
     if (tenant.name !== 'MultiTonner') {

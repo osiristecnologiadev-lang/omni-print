@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CustomersService } from './customers.service';
@@ -14,7 +15,7 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 // 'customers', agent-token/enrollment-code routes need 'agent' (same key
 // AgentDownloadController uses) - they're a conceptually separate module
 // even though they happen to live under the same :id path today.
-@UseGuards(UserAuthGuard)
+@UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/customers')
 export class CustomersController {
   constructor(

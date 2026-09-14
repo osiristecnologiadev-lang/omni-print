@@ -9,11 +9,19 @@ import { redirect } from 'next/navigation';
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3000';
 export const PLATFORM_SESSION_COOKIE = 'omniprint_platform_session';
 
+export type SubscriptionStatusValue = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+
 export interface Tenant {
   id: string;
   name: string;
   createdAt: string;
   _count?: { customers: number; devices: number; users: number };
+  // OmniPrint's own billing of this tenant - see api's SubscriptionGuard.
+  subscriptionStatus: SubscriptionStatusValue;
+  trialEndsAt: string;
+  // Computed server-side (device count * price), not read from Stripe live -
+  // see PlatformService.listTenants.
+  mrrCents: number;
 }
 
 export interface TenantUser {

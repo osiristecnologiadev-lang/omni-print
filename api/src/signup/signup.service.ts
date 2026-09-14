@@ -2,6 +2,7 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import { trialEndsAtFromNow } from '../subscription/trial.util';
 import { SignupDto } from './dto/signup.dto';
 
 // Public tenant self-registration - the first outsourcing-company user for
@@ -29,7 +30,9 @@ export class SignupService {
       throw new ConflictException('email already in use');
     }
 
-    const tenant = await this.prisma.tenant.create({ data: { name: dto.companyName } });
+    const tenant = await this.prisma.tenant.create({
+      data: { name: dto.companyName, trialEndsAt: trialEndsAtFromNow() },
+    });
 
     // UsersService.create already hashes the password and enforces the
     // system-wide-unique email constraint (ConflictException on collision) -

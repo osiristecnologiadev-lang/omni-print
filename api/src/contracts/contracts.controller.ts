@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ContractsService } from './contracts.service';
@@ -9,7 +10,7 @@ import { UpdateContractDto } from './dto/update-contract.dto';
 // Contract management is tenant-wide only - it's the outsourcing company's
 // commercial terms with its own client, not something that client's own
 // (read-only) login should see or touch.
-@UseGuards(UserAuthGuard)
+@UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/customers/:customerId/contracts')
 export class ContractsController {
   constructor(

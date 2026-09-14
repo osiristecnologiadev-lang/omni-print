@@ -3,6 +3,7 @@ import { Controller, Get, NotFoundException, Param, Query, Req, Res, UseGuards }
 import { Response } from 'express';
 import { AgentPlatform } from '@prisma/client';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
 import { AgentReleasesService } from './agent-releases.service';
 
@@ -13,7 +14,7 @@ import { AgentReleasesService } from './agent-releases.service';
 // which a brand new install doesn't have yet). Tenant-wide only: setting up
 // a new agent install is an administrative action, same access rule as
 // customer/contract management elsewhere in this app.
-@UseGuards(UserAuthGuard)
+@UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/agent-download')
 export class AgentDownloadController {
   constructor(private readonly releases: AgentReleasesService) {}

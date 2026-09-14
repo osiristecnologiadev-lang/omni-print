@@ -1,5 +1,6 @@
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
 import { ContractsService } from './contracts.service';
 
@@ -7,7 +8,7 @@ import { ContractsService } from './contracts.service';
 // across every customer with an active contract - the outsource owner's own
 // overview, distinct from InvoicesService's usage-revenue report (which is
 // built from already-generated, closed-period invoices only).
-@UseGuards(UserAuthGuard)
+@UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/reports/current-period')
 export class CurrentPeriodReportController {
   constructor(private readonly contractsService: ContractsService) {}

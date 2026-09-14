@@ -1,5 +1,6 @@
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
 import { PlatformAuthGuard } from '../platform/platform-auth.guard';
 import { AuditLogService } from './audit-log.service';
@@ -15,7 +16,7 @@ function parseLimit(raw: string | undefined): number {
   return Math.min(parsed, MAX_LIMIT);
 }
 
-@UseGuards(UserAuthGuard)
+@UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/audit-log')
 export class AuditLogController {
   constructor(private readonly auditLog: AuditLogService) {}

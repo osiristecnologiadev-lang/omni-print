@@ -77,6 +77,33 @@ export function updateTenant(input: {
   return apiMutate<Tenant>('/v1/tenant', 'PATCH', input);
 }
 
+// OmniPrint's own billing of this tenant (distinct from Contract/Invoice,
+// which is this tenant billing ITS OWN customers - see api's
+// SubscriptionGuard for the gating this reflects).
+export type SubscriptionStatusValue = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+
+export interface SubscriptionStatus {
+  status: SubscriptionStatusValue;
+  trialEndsAt: string;
+  deviceCount: number;
+  pricePerDeviceCents: number;
+  estimatedMonthlyCents: number;
+  isBlocked: boolean;
+}
+
+// Ungated by SubscriptionGuard (see api's SubscriptionController) - this
+// is how a blocked tenant finds out why and un-blocks itself, so it must
+// stay reachable even when every other endpoint 402s.
+export function getSubscriptionStatus(): Promise<SubscriptionStatus> {
+  return apiFetch<SubscriptionStatus>('/v1/subscription');
+}
+
+// Returns a Stripe-hosted Checkout URL to redirect() to - see
+// subscribe/actions.ts.
+export function createCheckoutSession(): Promise<{ url: string }> {
+  return apiMutate<{ url: string }>('/v1/subscription/checkout', 'POST', {});
+}
+
 export interface Notification {
   id: string;
   type: 'OVERDUE_INVOICE' | 'EXPIRING_CONTRACT' | 'CRITICAL_DEVICE_ALERT' | 'LOW_SUPPLY' | 'UNASSIGNED_DEVICE';
@@ -283,6 +310,12 @@ async function apiFetch<T>(path: string): Promise<T> {
     // fallback for when they don't, not the primary check.
     forbidden();
   }
+  if (res.status === 402) {
+    // SubscriptionGuard: the tenant's OmniPrint subscription is inactive
+    // (trial expired or payment not active) - see /subscribe's own page,
+    // which calls /v1/subscription directly (ungated) to explain why.
+    redirect('/subscribe');
+  }
   if (!res.ok) {
     throw new Error(`API request to ${path} failed: ${res.status} ${res.statusText}`);
   }
@@ -307,6 +340,9 @@ async function apiMutate<T>(path: string, method: 'POST' | 'PATCH', body: unknow
   }
   if (res.status === 403) {
     forbidden();
+  }
+  if (res.status === 402) {
+    redirect('/subscribe');
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '');

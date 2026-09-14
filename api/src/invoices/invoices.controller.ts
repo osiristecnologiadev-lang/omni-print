@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission, assertInvoiceReadAccess } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,7 +17,7 @@ import { MarkPaidDto } from './dto/mark-paid.dto';
 // can see and download their OWN invoices only (assertInvoiceReadAccess
 // enforces the customerId match) - they can't generate, mark paid, or
 // cancel anything.
-@UseGuards(UserAuthGuard)
+@UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/customers/:customerId/invoices')
 export class InvoicesController {
   constructor(

@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { json } from 'express';
+import { json, raw } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -28,6 +28,14 @@ async function bootstrap() {
   // open, which is fine for local dev where the origin varies by machine/port.
   const corsOrigin = process.env.CORS_ORIGIN;
   app.enableCors(corsOrigin ? { origin: corsOrigin.split(',').map((o) => o.trim()) } : undefined);
+
+  // Stripe webhook signature verification needs the exact raw bytes of the
+  // request body - a JSON-reparsed/reserialized body isn't guaranteed to
+  // byte-match what Stripe signed (key order, whitespace). Mounted for this
+  // one path BEFORE the global json() parser below, so Express's
+  // path-specific middleware matching gives this route the raw Buffer
+  // instead - every other route still gets normal JSON parsing.
+  app.use('/v1/subscription/webhook', raw({ type: 'application/json' }));
 
   // Raw full-MIB capture (see agent's full_raw_capture) can push a batch
   // well past Express's 100kb default body limit.

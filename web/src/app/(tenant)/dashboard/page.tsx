@@ -8,6 +8,7 @@ import {
   getLowSupplyForecast,
   getPortfolioCurrentPeriod,
   getSession,
+  getSubscriptionStatus,
   getViewerAccess,
 } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
@@ -75,14 +76,16 @@ export default async function DashboardPage() {
   // would 403 and take down the whole dashboard, the page every session
   // lands on right after login.
   const canSeeReports = hasPermission(access, 'reports');
-  const [alerts, activeAlerts, pageTrend, lowSupplies, currentPeriod, currentMonthPages] = await Promise.all([
+  const [alerts, activeAlerts, pageTrend, lowSupplies, currentPeriod, currentMonthPages, subscription] = await Promise.all([
     canSeeReports ? getBillingAlerts() : Promise.resolve(null),
     getActiveAlerts(),
     getFleetPageTrend(30),
     getLowSupplyForecast(14, 90),
     canSeeReports ? getPortfolioCurrentPeriod() : Promise.resolve(null),
     getFleetCurrentMonthPages(),
+    getSubscriptionStatus(),
   ]);
+  const trialDaysLeft = Math.ceil((new Date(subscription.trialEndsAt).getTime() - Date.now()) / 86_400_000);
   const hasAlerts = !!alerts && (alerts.expiringContracts.length > 0 || alerts.overdueInvoices.length > 0);
   const trendData = pageTrend.map((p) => ({ label: formatShortDate(p.date), value: p.pages }));
 
@@ -97,6 +100,20 @@ export default async function DashboardPage() {
         title="Parque de impressoras"
         subtitle={`${devices.length} dispositivo${devices.length === 1 ? '' : 's'} monitorado${devices.length === 1 ? '' : 's'}`}
       />
+
+      {subscription.status === 'TRIALING' && (
+        <div className="mb-8 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/20">
+          <p className="text-sm text-amber-900 dark:text-amber-200">
+            {trialDaysLeft > 0
+              ? `Seu período de teste acaba em ${trialDaysLeft} dia${trialDaysLeft === 1 ? '' : 's'}.`
+              : 'Seu período de teste acaba hoje.'}{' '}
+            <Link href="/subscribe" className="font-medium hover:underline">
+              Assine para continuar usando o OmniPrint
+            </Link>
+            .
+          </p>
+        </div>
+      )}
 
       {devices.length > 0 && (
         <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-5">

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import { PRICE_PER_DEVICE_CENTS, trialEndsAtFromNow } from '../subscription/trial.util';
 
 @Injectable()
 export class PlatformService {
@@ -12,15 +13,26 @@ export class PlatformService {
   // Deliberately no tenantId filter anywhere in this file - this is the one
   // part of the codebase that's supposed to see across every tenant. See
   // PlatformAuthGuard for how access to it is gated.
-  listTenants() {
-    return this.prisma.tenant.findMany({
+  async listTenants() {
+    const tenants = await this.prisma.tenant.findMany({
       orderBy: { name: 'asc' },
       include: { _count: { select: { customers: true, devices: true, users: true } } },
     });
+    // mrr is computed here (device count * price), not read from Stripe -
+    // OmniPrint's own portfolio revenue visibility shouldn't depend on a
+    // live Stripe call per tenant, and this matches exactly what
+    // SubscriptionService.syncDeviceQuantities will converge Stripe's own
+    // billed quantity to anyway.
+    return tenants.map((tenant) => ({
+      ...tenant,
+      mrrCents: tenant.subscriptionStatus === 'ACTIVE' ? tenant._count.devices * PRICE_PER_DEVICE_CENTS : 0,
+    }));
   }
 
+  // New tenants (whether self-service signup or platform-admin-bootstrapped
+  // here) all start the same 14-day no-card trial - see trialEndsAtFromNow.
   createTenant(name: string) {
-    return this.prisma.tenant.create({ data: { name } });
+    return this.prisma.tenant.create({ data: { name, trialEndsAt: trialEndsAtFromNow() } });
   }
 
   async getTenant(tenantId: string) {

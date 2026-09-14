@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from '@nestjs/common';
 import { TicketStatus } from '@prisma/client';
 import { UserAuthGuard } from '../auth/user-auth.guard';
+import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { TicketsService } from './tickets.service';
@@ -9,7 +10,7 @@ import { UpdateTicketDto } from './dto/update-ticket.dto';
 // Tenant-wide-only surface (unlike TicketsController, which both sides use)
 // - the staff queue view across every customer at once, and the actions
 // only staff should take (change status/priority, assign).
-@UseGuards(UserAuthGuard)
+@UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/tickets')
 export class TicketsManagementController {
   constructor(
