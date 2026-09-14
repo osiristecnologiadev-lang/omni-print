@@ -31,7 +31,7 @@ describe('SubscriptionService', () => {
       webhooks: { constructEvent: jest.fn() },
     };
 
-    process.env.STRIPE_PRICE_ID = 'price_123';
+    process.env.STRIPE_PRODUCT_ID = 'prod_123';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
 
     const moduleRef = await Test.createTestingModule({
@@ -65,6 +65,23 @@ describe('SubscriptionService', () => {
       prisma.tenant.findUnique.mockResolvedValue(null);
       await expect(service.getStatus('missing')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    // A platform admin's negotiated rate must win over the standard price
+    // everywhere it's read, not just at checkout time - see
+    // effectivePricePerDeviceCents.
+    it('uses the tenant negotiated rate instead of the standard price when set', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({
+        subscriptionStatus: 'ACTIVE',
+        trialEndsAt: new Date(),
+        pricePerDeviceCentsOverride: 150,
+      });
+      prisma.device.count.mockResolvedValue(4);
+
+      const status = await service.getStatus('t1');
+
+      expect(status.pricePerDeviceCents).toBe(150);
+      expect(status.estimatedMonthlyCents).toBe(4 * 150);
+    });
   });
 
   describe('createCheckoutSession', () => {
@@ -80,8 +97,15 @@ describe('SubscriptionService', () => {
       expect(prisma.tenant.update).toHaveBeenCalledWith({ where: { id: 't1' }, data: { stripeCustomerId: 'cus_new' } });
       // Seeded to the REAL current device count, not an arbitrary 1 - so
       // the first invoice is correct from day one (see service comment).
+      // Built via price_data (not a fixed Price id) since a tenant's rate
+      // can be negotiated per-tenant - see stripePriceData.
       expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
-        expect.objectContaining({ line_items: [{ price: 'price_123', quantity: 3 }], client_reference_id: 't1' }),
+        expect.objectContaining({
+          line_items: [
+            { price_data: { currency: 'brl', unit_amount: 310, recurring: { interval: 'month' }, product: 'prod_123' }, quantity: 3 },
+          ],
+          client_reference_id: 't1',
+        }),
       );
       expect(result).toEqual({ url: 'https://checkout.stripe.com/session1' });
     });
@@ -97,7 +121,26 @@ describe('SubscriptionService', () => {
       // Zero real devices still floors to quantity 1 - Stripe requires a
       // positive quantity for a licensed price (see service comment).
       expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
-        expect.objectContaining({ line_items: [{ price: 'price_123', quantity: 1 }] }),
+        expect.objectContaining({ line_items: [expect.objectContaining({ quantity: 1 })] }),
+      );
+    });
+
+    it('uses the tenant negotiated rate in the Checkout line item when set', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({
+        id: 't1',
+        name: 'Acme',
+        stripeCustomerId: 'cus_existing',
+        pricePerDeviceCentsOverride: 500,
+      });
+      prisma.device.count.mockResolvedValue(2);
+      stripe.checkout.sessions.create.mockResolvedValue({ url: 'https://checkout.stripe.com/session3' });
+
+      await service.createCheckoutSession('t1');
+
+      expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          line_items: [expect.objectContaining({ price_data: expect.objectContaining({ unit_amount: 500 }) })],
+        }),
       );
     });
   });
@@ -150,21 +193,38 @@ describe('SubscriptionService', () => {
   });
 
   describe('syncDeviceQuantities', () => {
-    it('updates Stripe quantity to the real device count for every active tenant', async () => {
-      prisma.tenant.findMany.mockResolvedValue([{ id: 't1', stripeSubscriptionItemId: 'si_1' }]);
+    it('updates Stripe quantity AND price to the real device count/current rate for every active tenant', async () => {
+      prisma.tenant.findMany.mockResolvedValue([{ id: 't1', stripeSubscriptionItemId: 'si_1', pricePerDeviceCentsOverride: null }]);
       prisma.device.count.mockResolvedValue(5);
 
       await service.syncDeviceQuantities();
 
-      expect(stripe.subscriptionItems.update).toHaveBeenCalledWith('si_1', { quantity: 5 });
+      expect(stripe.subscriptionItems.update).toHaveBeenCalledWith('si_1', {
+        quantity: 5,
+        price_data: { currency: 'brl', unit_amount: 310, recurring: { interval: 'month' }, product: 'prod_123' },
+      });
+    });
+
+    // The price side is a self-healing safety net for a negotiated rate -
+    // see the method's own comment.
+    it('reconciles a negotiated rate even if it somehow drifted from Stripe', async () => {
+      prisma.tenant.findMany.mockResolvedValue([{ id: 't1', stripeSubscriptionItemId: 'si_1', pricePerDeviceCentsOverride: 200 }]);
+      prisma.device.count.mockResolvedValue(1);
+
+      await service.syncDeviceQuantities();
+
+      expect(stripe.subscriptionItems.update).toHaveBeenCalledWith(
+        'si_1',
+        expect.objectContaining({ price_data: expect.objectContaining({ unit_amount: 200 }) }),
+      );
     });
 
     // Mirrors InvoicesService.generateDueInvoices' per-tenant try/catch - one
     // tenant's Stripe failure must not stop the rest of the fleet from syncing.
     it('does not let one tenant failure block the others', async () => {
       prisma.tenant.findMany.mockResolvedValue([
-        { id: 't1', stripeSubscriptionItemId: 'si_1' },
-        { id: 't2', stripeSubscriptionItemId: 'si_2' },
+        { id: 't1', stripeSubscriptionItemId: 'si_1', pricePerDeviceCentsOverride: null },
+        { id: 't2', stripeSubscriptionItemId: 'si_2', pricePerDeviceCentsOverride: null },
       ]);
       prisma.device.count.mockResolvedValue(2);
       stripe.subscriptionItems.update.mockRejectedValueOnce(new Error('stripe down')).mockResolvedValueOnce({});
@@ -172,7 +232,46 @@ describe('SubscriptionService', () => {
       await service.syncDeviceQuantities();
 
       expect(stripe.subscriptionItems.update).toHaveBeenCalledTimes(2);
-      expect(stripe.subscriptionItems.update).toHaveBeenCalledWith('si_2', { quantity: 2 });
+      expect(stripe.subscriptionItems.update).toHaveBeenCalledWith('si_2', expect.objectContaining({ quantity: 2 }));
+    });
+  });
+
+  describe('updateTenantPricing', () => {
+    it('stores the override and does not touch Stripe when there is no live subscription yet', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ id: 't1', stripeSubscriptionItemId: null });
+      prisma.tenant.update.mockResolvedValue({ id: 't1', stripeSubscriptionItemId: null, pricePerDeviceCentsOverride: 250 });
+
+      await service.updateTenantPricing('t1', 250);
+
+      expect(prisma.tenant.update).toHaveBeenCalledWith({ where: { id: 't1' }, data: { pricePerDeviceCentsOverride: 250 } });
+      expect(stripe.subscriptionItems.update).not.toHaveBeenCalled();
+    });
+
+    // The core requirement: an already-subscribed tenant's price changes
+    // immediately, with Stripe's default proration - not just on the next
+    // cycle (2026-09-14 decision).
+    it('applies the new rate immediately to an already-active Stripe subscription', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ id: 't1', stripeSubscriptionItemId: 'si_1' });
+      prisma.tenant.update.mockResolvedValue({ id: 't1', stripeSubscriptionItemId: 'si_1', pricePerDeviceCentsOverride: 250 });
+
+      await service.updateTenantPricing('t1', 250);
+
+      expect(stripe.subscriptionItems.update).toHaveBeenCalledWith('si_1', {
+        price_data: { currency: 'brl', unit_amount: 250, recurring: { interval: 'month' }, product: 'prod_123' },
+      });
+    });
+
+    it('clears the override back to the standard rate when passed null', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ id: 't1', stripeSubscriptionItemId: 'si_1' });
+      prisma.tenant.update.mockResolvedValue({ id: 't1', stripeSubscriptionItemId: 'si_1', pricePerDeviceCentsOverride: null });
+
+      await service.updateTenantPricing('t1', null);
+
+      expect(prisma.tenant.update).toHaveBeenCalledWith({ where: { id: 't1' }, data: { pricePerDeviceCentsOverride: null } });
+      expect(stripe.subscriptionItems.update).toHaveBeenCalledWith(
+        'si_1',
+        expect.objectContaining({ price_data: expect.objectContaining({ unit_amount: 310 }) }),
+      );
     });
   });
 });

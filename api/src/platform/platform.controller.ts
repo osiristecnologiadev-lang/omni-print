@@ -1,15 +1,18 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { PlatformAuthGuard } from './platform-auth.guard';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { PlatformService } from './platform.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
+import { UpdateTenantPricingDto } from './dto/update-tenant-pricing.dto';
 
 @UseGuards(PlatformAuthGuard)
 @Controller('v1/platform')
 export class PlatformController {
   constructor(
     private readonly platformService: PlatformService,
+    private readonly subscriptionService: SubscriptionService,
     private readonly auditLog: AuditLogService,
   ) {}
 
@@ -63,5 +66,25 @@ export class PlatformController {
   @Get('agent-fleet')
   listAgentFleet() {
     return this.platformService.listAgentFleet();
+  }
+
+  // Sets (or clears, when null) a negotiated per-device rate for this
+  // tenant - see SubscriptionService.updateTenantPricing for how this
+  // applies immediately to any already-active Stripe subscription.
+  @Patch('tenants/:id/pricing')
+  async updateTenantPricing(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateTenantPricingDto) {
+    const tenant = await this.subscriptionService.updateTenantPricing(id, dto.pricePerDeviceCentsOverride ?? null);
+    await this.auditLog.log({
+      tenantId: id,
+      actorType: 'PLATFORM_ADMIN',
+      actorId: req.platformAdminId,
+      actorLabel: req.platformAdminEmail,
+      action: 'platform.update_tenant_pricing',
+      targetType: 'Tenant',
+      targetId: id,
+      targetLabel: tenant.name,
+      metadata: { pricePerDeviceCentsOverride: tenant.pricePerDeviceCentsOverride },
+    });
+    return tenant;
   }
 }

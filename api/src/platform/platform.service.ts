@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
-import { PRICE_PER_DEVICE_CENTS, trialEndsAtFromNow } from '../subscription/trial.util';
+import { effectivePricePerDeviceCents, trialEndsAtFromNow } from '../subscription/trial.util';
 
 @Injectable()
 export class PlatformService {
@@ -25,7 +25,7 @@ export class PlatformService {
     // billed quantity to anyway.
     return tenants.map((tenant) => ({
       ...tenant,
-      mrrCents: tenant.subscriptionStatus === 'ACTIVE' ? tenant._count.devices * PRICE_PER_DEVICE_CENTS : 0,
+      mrrCents: tenant.subscriptionStatus === 'ACTIVE' ? tenant._count.devices * effectivePricePerDeviceCents(tenant) : 0,
     }));
   }
 

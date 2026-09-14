@@ -4,7 +4,27 @@ import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
 import { isTenantBlocked } from './subscription.guard';
-import { PRICE_PER_DEVICE_CENTS } from './trial.util';
+import { effectivePricePerDeviceCents } from './trial.util';
+
+// Built inline via Checkout's/subscription items' own price_data, rather
+// than referencing one pre-created Stripe Price object - a negotiated
+// per-tenant rate (Tenant.pricePerDeviceCentsOverride) means the unit
+// amount varies per tenant, and Stripe Prices are immutable once created,
+// so a fixed STRIPE_PRICE_ID couldn't represent that. STRIPE_PRODUCT_ID
+// just groups every generated price under one Product in the Stripe
+// dashboard/catalog.
+function stripePriceData(unitAmountCents: number) {
+  const productId = process.env.STRIPE_PRODUCT_ID;
+  if (!productId) {
+    throw new Error('STRIPE_PRODUCT_ID is not set');
+  }
+  return {
+    currency: 'brl',
+    unit_amount: unitAmountCents,
+    recurring: { interval: 'month' as const },
+    product: productId,
+  };
+}
 
 // Maps a Stripe subscription's own status string to this app's simplified
 // SubscriptionStatus enum. 'active'/'trialing' both map to ACTIVE (a
@@ -42,12 +62,13 @@ export class SubscriptionService {
   async getStatus(tenantId: string) {
     const tenant = await this.requireTenant(tenantId);
     const deviceCount = await this.prisma.device.count({ where: { tenantId } });
+    const pricePerDeviceCents = effectivePricePerDeviceCents(tenant);
     return {
       status: tenant.subscriptionStatus,
       trialEndsAt: tenant.trialEndsAt,
       deviceCount,
-      pricePerDeviceCents: PRICE_PER_DEVICE_CENTS,
-      estimatedMonthlyCents: deviceCount * PRICE_PER_DEVICE_CENTS,
+      pricePerDeviceCents,
+      estimatedMonthlyCents: deviceCount * pricePerDeviceCents,
       isBlocked: isTenantBlocked(tenant),
     };
   }
@@ -63,10 +84,6 @@ export class SubscriptionService {
   // rather than specially handled.
   async createCheckoutSession(tenantId: string) {
     const tenant = await this.requireTenant(tenantId);
-    const priceId = process.env.STRIPE_PRICE_ID;
-    if (!priceId) {
-      throw new Error('STRIPE_PRICE_ID is not set');
-    }
 
     let stripeCustomerId = tenant.stripeCustomerId;
     if (!stripeCustomerId) {
@@ -86,7 +103,7 @@ export class SubscriptionService {
       mode: 'subscription',
       customer: stripeCustomerId,
       client_reference_id: tenantId,
-      line_items: [{ price: priceId, quantity: Math.max(1, deviceCount) }],
+      line_items: [{ price_data: stripePriceData(effectivePricePerDeviceCents(tenant)), quantity: Math.max(1, deviceCount) }],
       success_url: `${appUrl}/subscribe?checkout=success`,
       cancel_url: `${appUrl}/subscribe?checkout=cancelled`,
     });
@@ -95,6 +112,31 @@ export class SubscriptionService {
       throw new Error('Stripe did not return a Checkout Session URL');
     }
     return { url: session.url };
+  }
+
+  // Platform-admin-only (see PlatformController) - sets a negotiated
+  // per-device rate for this tenant, or clears it back to the standard
+  // rate when cents is null. Applied to any already-active Stripe
+  // subscription item IMMEDIATELY (Stripe prorates the current period by
+  // default, same behavior as a device-count change) rather than waiting
+  // for the next billing cycle - a 2026-09-14 product decision. A tenant
+  // with no live subscription yet (still trialing, or never subscribed)
+  // just has the override stored for the NEXT createCheckoutSession call
+  // to pick up.
+  async updateTenantPricing(tenantId: string, cents: number | null) {
+    const tenant = await this.requireTenant(tenantId);
+    const updated = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { pricePerDeviceCentsOverride: cents },
+    });
+
+    if (tenant.stripeSubscriptionItemId) {
+      await this.stripe.subscriptionItems.update(tenant.stripeSubscriptionItemId, {
+        price_data: stripePriceData(effectivePricePerDeviceCents(updated)),
+      });
+    }
+
+    return updated;
   }
 
   // Verifies the webhook signature and dispatches the 3 events this app
@@ -147,9 +189,13 @@ export class SubscriptionService {
     }
   }
 
-  // Keeps each active tenant's Stripe subscription quantity in sync with
-  // its REAL device count - Stripe prorates the difference automatically.
-  // Runs nightly (offset 1h from InvoicesService's 2am job to avoid both
+  // Keeps each active tenant's Stripe subscription quantity AND price in
+  // sync with its REAL device count / current negotiated rate - Stripe
+  // prorates either difference automatically. The price side of this is a
+  // self-healing safety net (updateTenantPricing already applies a rate
+  // change immediately) - this just guarantees the two can never silently
+  // drift apart even if that direct update ever fails partway. Runs
+  // nightly (offset 1h from InvoicesService's 2am job to avoid both
   // hitting the DB at once) rather than on every device-count change, to
   // avoid adding a Stripe API call to the hot ingest path (new devices are
   // rare events, but this keeps the two concerns fully decoupled). Same
@@ -158,7 +204,7 @@ export class SubscriptionService {
   async syncDeviceQuantities() {
     const tenants = await this.prisma.tenant.findMany({
       where: { subscriptionStatus: 'ACTIVE', stripeSubscriptionItemId: { not: null } },
-      select: { id: true, stripeSubscriptionItemId: true },
+      select: { id: true, stripeSubscriptionItemId: true, pricePerDeviceCentsOverride: true },
     });
 
     for (const tenant of tenants) {
@@ -166,9 +212,10 @@ export class SubscriptionService {
         const deviceCount = await this.prisma.device.count({ where: { tenantId: tenant.id } });
         await this.stripe.subscriptionItems.update(tenant.stripeSubscriptionItemId!, {
           quantity: Math.max(1, deviceCount),
+          price_data: stripePriceData(effectivePricePerDeviceCents(tenant)),
         });
       } catch (err) {
-        this.logger.error(`failed to sync device quantity for tenant ${tenant.id}`, err as Error);
+        this.logger.error(`failed to sync device quantity/price for tenant ${tenant.id}`, err as Error);
       }
     }
   }

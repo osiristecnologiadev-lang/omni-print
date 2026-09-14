@@ -19,9 +19,12 @@ export interface Tenant {
   // OmniPrint's own billing of this tenant - see api's SubscriptionGuard.
   subscriptionStatus: SubscriptionStatusValue;
   trialEndsAt: string;
-  // Computed server-side (device count * price), not read from Stripe live -
-  // see PlatformService.listTenants.
+  // Computed server-side (device count * effective price), not read from
+  // Stripe live - see PlatformService.listTenants.
   mrrCents: number;
+  // Negotiated per-device rate in cents, or null for the standard rate -
+  // see api's Tenant.pricePerDeviceCentsOverride.
+  pricePerDeviceCentsOverride: number | null;
 }
 
 export interface TenantUser {
@@ -58,7 +61,7 @@ async function apiFetch<T>(path: string): Promise<T> {
   return res.json();
 }
 
-async function apiMutate<T>(path: string, method: 'POST', body: unknown): Promise<T> {
+async function apiMutate<T>(path: string, method: 'POST' | 'PATCH', body: unknown): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers: await authHeaders(),
@@ -120,6 +123,11 @@ export function getTenant(tenantId: string): Promise<Tenant> {
 
 export function createTenant(name: string): Promise<Tenant> {
   return apiMutate<Tenant>('/v1/platform/tenants', 'POST', { name });
+}
+
+// pricePerDeviceCentsOverride: null clears it back to the standard rate.
+export function updateTenantPricing(tenantId: string, pricePerDeviceCentsOverride: number | null): Promise<Tenant> {
+  return apiMutate<Tenant>(`/v1/platform/tenants/${tenantId}/pricing`, 'PATCH', { pricePerDeviceCentsOverride });
 }
 
 export function getTenantUsers(tenantId: string): Promise<TenantUser[]> {

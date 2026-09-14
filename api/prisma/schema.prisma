@@ -104,6 +104,13 @@ model Tenant {
   stripeCustomerId         String?            @map("stripe_customer_id")
   stripeSubscriptionId     String?            @map("stripe_subscription_id")
   stripeSubscriptionItemId String?            @map("stripe_subscription_item_id")
+  // Negotiated per-device price for this tenant, in cents - null means "use
+  // the standard PRICE_PER_DEVICE_CENTS rate" (see
+  // subscription/trial.util.ts's effectivePricePerDeviceCents). Set only by
+  // a platform admin (PlatformController.updateTenantPricing); applied
+  // immediately (with Stripe proration) to any already-active subscription,
+  // not just future checkouts - see SubscriptionService.updateTenantPricing.
+  pricePerDeviceCentsOverride Int? @map("price_per_device_cents_override")
 
   agentTokens          AgentToken[]
   agentEnrollmentCodes AgentEnrollmentCode[]
