@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   getActiveAlerts,
   getBillingAlerts,
+  getCustomers,
   getDevices,
   getFleetPageTrend,
   getFleetCurrentMonthPages,
@@ -14,6 +15,7 @@ import {
 import { hasPermission } from '@/lib/permissions';
 import { deriveHealth } from '@/lib/health';
 import { Badge, type BadgeTone } from '@/components/Badge';
+import { Button } from '@/components/Button';
 import { DeviceFleetTable } from '@/components/DeviceFleetTable';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel, PanelSection } from '@/components/Panel';
@@ -76,15 +78,21 @@ export default async function DashboardPage() {
   // would 403 and take down the whole dashboard, the page every session
   // lands on right after login.
   const canSeeReports = hasPermission(access, 'reports');
-  const [alerts, activeAlerts, pageTrend, lowSupplies, currentPeriod, currentMonthPages, subscription] = await Promise.all([
-    canSeeReports ? getBillingAlerts() : Promise.resolve(null),
-    getActiveAlerts(),
-    getFleetPageTrend(30),
-    getLowSupplyForecast(14, 90),
-    canSeeReports ? getPortfolioCurrentPeriod() : Promise.resolve(null),
-    getFleetCurrentMonthPages(),
-    getSubscriptionStatus(),
-  ]);
+  // Only needed to pick which empty state to show below - not fetched at
+  // all once the fleet has devices, and not fetched for a session that
+  // can't manage customers anyway (it would just 403).
+  const canManageCustomers = isTenantWide && hasPermission(access, 'customers');
+  const [alerts, activeAlerts, pageTrend, lowSupplies, currentPeriod, currentMonthPages, subscription, customers] =
+    await Promise.all([
+      canSeeReports ? getBillingAlerts() : Promise.resolve(null),
+      getActiveAlerts(),
+      getFleetPageTrend(30),
+      getLowSupplyForecast(14, 90),
+      canSeeReports ? getPortfolioCurrentPeriod() : Promise.resolve(null),
+      getFleetCurrentMonthPages(),
+      getSubscriptionStatus(),
+      devices.length === 0 && canManageCustomers ? getCustomers() : Promise.resolve([]),
+    ]);
   const trialDaysLeft = Math.ceil((new Date(subscription.trialEndsAt).getTime() - Date.now()) / 86_400_000);
   const hasAlerts = !!alerts && (alerts.expiringContracts.length > 0 || alerts.overdueInvoices.length > 0);
   const trendData = pageTrend.map((p) => ({ label: formatShortDate(p.date), value: p.pages }));
@@ -260,10 +268,32 @@ export default async function DashboardPage() {
       )}
 
       {devices.length === 0 ? (
-        <EmptyState
-          title="Nenhum dispositivo ainda"
-          hint="Configure o agente (agent/config.yaml) e aguarde o primeiro ciclo de coleta."
-        />
+        canManageCustomers && customers.length === 0 ? (
+          <EmptyState
+            title="Nenhum dispositivo ainda"
+            hint="Primeiro passo: cadastre o cliente cujas impressoras você vai monitorar."
+            action={
+              <Link href="/customers">
+                <Button variant="primary">Cadastrar primeiro cliente</Button>
+              </Link>
+            }
+          />
+        ) : canManageCustomers ? (
+          <EmptyState
+            title="Nenhum dispositivo ainda"
+            hint="Gere um código de instalação para o cliente e instale o agente na rede dele - as impressoras aparecem aqui sozinhas depois do primeiro ciclo de coleta (a cada ~30 min)."
+            action={
+              <Link href="/agent-download">
+                <Button variant="primary">Baixar o agente</Button>
+              </Link>
+            }
+          />
+        ) : (
+          <EmptyState
+            title="Nenhum dispositivo atribuído a você ainda"
+            hint="Fale com o administrador da sua conta para associar impressoras ao seu usuário."
+          />
+        )
       ) : (
         <DeviceFleetTable
           devices={devices.map((d) => ({ ...d, health: deriveHealth(d.latestMetric) }))}
