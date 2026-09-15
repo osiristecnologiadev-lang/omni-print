@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SubscriptionController } from './subscription.controller';
 import type { SubscriptionService } from './subscription.service';
 
@@ -47,5 +47,76 @@ describe('SubscriptionController.webhook', () => {
 
     expect(subscriptionService.handleWebhookEvent).toHaveBeenCalledWith(fakeEvent);
     expect(result).toEqual({ received: true });
+  });
+});
+
+// Billing is a company-level concern - a customer-scoped login (the
+// outsource's own end-client) must never be able to touch the TENANT's own
+// OmniPrint subscription. Regression coverage for a real gap found while
+// building this: every mutating route here used to only check
+// UserAuthGuard, so a customer-scoped session could already call checkout
+// (a real charge) before this fix.
+describe('SubscriptionController billing-mutation routes are staff-only', () => {
+  let controller: SubscriptionController;
+  let service: {
+    createCheckoutSession: jest.Mock;
+    listInvoices: jest.Mock;
+    cancelSubscription: jest.Mock;
+    reactivateSubscription: jest.Mock;
+    createSetupIntent: jest.Mock;
+    confirmPaymentMethod: jest.Mock;
+  };
+
+  const staffReq = { tenantId: 't1', customerId: null };
+  const customerReq = { tenantId: 't1', customerId: 'cust1' };
+
+  beforeEach(() => {
+    service = {
+      createCheckoutSession: jest.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/x' }),
+      listInvoices: jest.fn().mockResolvedValue([]),
+      cancelSubscription: jest.fn().mockResolvedValue(undefined),
+      reactivateSubscription: jest.fn().mockResolvedValue(undefined),
+      createSetupIntent: jest.fn().mockResolvedValue({ clientSecret: 'seti_x' }),
+      confirmPaymentMethod: jest.fn().mockResolvedValue(undefined),
+    };
+    controller = new SubscriptionController(service as unknown as SubscriptionService);
+  });
+
+  it.each([
+    // Wrapped in an async arrow so a SYNCHRONOUS throw (checkout/invoices/
+    // createSetupIntent aren't `async` methods - requireTenantWide throws
+    // before any Promise exists) still surfaces as a rejected promise here,
+    // same as the two genuinely-async ones (cancel/reactivate/
+    // confirmPaymentMethod).
+    ['checkout', async () => controller.checkout(customerReq)],
+    ['invoices', async () => controller.invoices(customerReq)],
+    ['cancel', async () => controller.cancel(customerReq)],
+    ['reactivate', async () => controller.reactivate(customerReq)],
+    ['createSetupIntent', async () => controller.createSetupIntent(customerReq)],
+    ['confirmPaymentMethod', async () => controller.confirmPaymentMethod(customerReq, { paymentMethodId: 'pm_1' })],
+  ])('%s rejects a customer-scoped caller with 403', async (_name, call) => {
+    await expect(call()).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('checkout succeeds for a tenant-wide (staff) caller', async () => {
+    await controller.checkout(staffReq);
+    expect(service.createCheckoutSession).toHaveBeenCalledWith('t1');
+  });
+
+  it('cancel succeeds for a tenant-wide (staff) caller', async () => {
+    const result = await controller.cancel(staffReq);
+    expect(service.cancelSubscription).toHaveBeenCalledWith('t1');
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('confirmPaymentMethod forwards the paymentMethodId for a staff caller', async () => {
+    await controller.confirmPaymentMethod(staffReq, { paymentMethodId: 'pm_abc' });
+    expect(service.confirmPaymentMethod).toHaveBeenCalledWith('t1', 'pm_abc');
+  });
+
+  it('status stays reachable for a customer-scoped caller (unlike every route above)', async () => {
+    const statusService = { getStatus: jest.fn().mockResolvedValue({ status: 'ACTIVE' }) };
+    const c2 = new SubscriptionController(statusService as unknown as SubscriptionService);
+    await expect(c2.status(customerReq)).resolves.toEqual({ status: 'ACTIVE' });
   });
 });

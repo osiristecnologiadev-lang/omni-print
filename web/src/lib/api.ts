@@ -99,6 +99,24 @@ export interface SubscriptionStatus {
   // tenant", never blocked regardless of trial/subscription status. See
   // api's isTenantBlocked.
   isComped: boolean;
+  // Live Stripe state - null/false when there's no subscription yet (still
+  // trialing, or comped). cancelAtPeriodEnd true means "will lapse into
+  // CANCELED at currentPeriodEnd unless reactivated" - status itself stays
+  // ACTIVE until that actually happens (Stripe's own webhook flips it).
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+  paymentMethod: { brand: string; last4: string } | null;
+}
+
+export interface SubscriptionInvoice {
+  id: string;
+  number: string | null;
+  createdAt: string;
+  amountPaidCents: number;
+  currency: string;
+  status: string | null;
+  hostedInvoiceUrl: string | null;
+  invoicePdf: string | null;
 }
 
 // Ungated by SubscriptionGuard (see api's SubscriptionController) - this
@@ -108,10 +126,35 @@ export function getSubscriptionStatus(): Promise<SubscriptionStatus> {
   return apiFetch<SubscriptionStatus>('/v1/subscription');
 }
 
+// Staff-only on the backend (a customer-scoped login gets a 403 - billing
+// is a company-level concern, see SubscriptionController.requireTenantWide).
+export function getSubscriptionInvoices(): Promise<SubscriptionInvoice[]> {
+  return apiFetch<SubscriptionInvoice[]>('/v1/subscription/invoices');
+}
+
 // Returns a Stripe-hosted Checkout URL to redirect() to - see
 // subscribe/actions.ts.
 export function createCheckoutSession(): Promise<{ url: string }> {
   return apiMutate<{ url: string }>('/v1/subscription/checkout', 'POST', {});
+}
+
+export function cancelSubscription(): Promise<{ ok: boolean }> {
+  return apiMutate<{ ok: boolean }>('/v1/subscription/cancel', 'POST', {});
+}
+
+export function reactivateSubscription(): Promise<{ ok: boolean }> {
+  return apiMutate<{ ok: boolean }>('/v1/subscription/reactivate', 'POST', {});
+}
+
+// Step 1 of the embedded card-update flow - see PaymentMethodForm.tsx
+// (client component) for step 2 (confirming this with Stripe.js) and
+// confirmPaymentMethod below for step 3.
+export function createSetupIntent(): Promise<{ clientSecret: string }> {
+  return apiMutate<{ clientSecret: string }>('/v1/subscription/payment-method/setup-intent', 'POST', {});
+}
+
+export function confirmPaymentMethod(paymentMethodId: string): Promise<{ ok: boolean }> {
+  return apiMutate<{ ok: boolean }>('/v1/subscription/payment-method', 'POST', { paymentMethodId });
 }
 
 export type NotificationType =

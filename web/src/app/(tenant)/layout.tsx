@@ -48,6 +48,16 @@ function BuildingIcon() {
   );
 }
 
+function BillingIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="2.5" y="5" width="15" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M2.5 8.2h15" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5.5 11.5h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function AuditLogIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -153,6 +163,16 @@ export default async function TenantLayout({ children }: { children: React.React
           )}
           {hasPermission(access, 'settings') && (
             <SidebarLink href="/settings" icon={<BuildingIcon />} label="Empresa" />
+          )}
+          {/* Same permission as Empresa - billing is a company-level
+              concern, and the backend rejects a customer-scoped caller on
+              every route here except the read-only status check (see
+              SubscriptionController.requireTenantWide). Always visible now,
+              not only while blocked - closing the audit finding that once
+              a tenant went ACTIVE there was no way back to manage payment
+              method/invoices/cancellation. */}
+          {hasPermission(access, 'settings') && (
+            <SidebarLink href="/subscribe" icon={<BillingIcon />} label="Assinatura" />
           )}
           {hasPermission(access, 'notifications') && <NotificationBell className={NAV_ROW} />}
         </nav>

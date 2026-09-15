@@ -63,6 +63,44 @@ export class SubscriptionService {
     const tenant = await this.requireTenant(tenantId);
     const deviceCount = await this.prisma.device.count({ where: { tenantId } });
     const pricePerDeviceCents = effectivePricePerDeviceCents(tenant);
+
+    // Live Stripe state (cancellation schedule, current period, card on
+    // file) is fetched fresh here rather than mirrored into our own DB -
+    // this page is viewed rarely (not a hot path), so one extra Stripe call
+    // is cheaper than a second source of truth that could drift from
+    // Stripe's own (webhooks only update subscriptionStatus, not these
+    // finer-grained fields).
+    let cancelAtPeriodEnd = false;
+    let currentPeriodEnd: Date | null = null;
+    let paymentMethod: { brand: string; last4: string } | null = null;
+    if (tenant.stripeSubscriptionId) {
+      const subscription = await this.stripe.subscriptions.retrieve(tenant.stripeSubscriptionId, {
+        expand: ['default_payment_method'],
+      });
+      cancelAtPeriodEnd = subscription.cancel_at_period_end;
+      currentPeriodEnd = new Date(subscription.current_period_end * 1000);
+      const pm = subscription.default_payment_method;
+      if (pm && typeof pm !== 'string' && pm.card) {
+        paymentMethod = { brand: pm.card.brand, last4: pm.card.last4 };
+      }
+    } else if (tenant.stripeCustomerId) {
+      // No live subscription yet (still trialing, or comped-then-cleared) -
+      // but a card can still have been saved in advance via the
+      // payment-method panel (createSetupIntent lazily creates the Stripe
+      // Customer the moment someone opens that panel, well before any
+      // checkout). Fall back to the CUSTOMER's own default payment method
+      // so it isn't invisible until they actually subscribe.
+      const customer = await this.stripe.customers.retrieve(tenant.stripeCustomerId, {
+        expand: ['invoice_settings.default_payment_method'],
+      });
+      if (!customer.deleted) {
+        const pm = customer.invoice_settings?.default_payment_method;
+        if (pm && typeof pm !== 'string' && pm.card) {
+          paymentMethod = { brand: pm.card.brand, last4: pm.card.last4 };
+        }
+      }
+    }
+
     return {
       status: tenant.subscriptionStatus,
       trialEndsAt: tenant.trialEndsAt,
@@ -77,7 +115,111 @@ export class SubscriptionService {
       // override, standard rate" with "explicitly comped" if the standard
       // rate itself were ever set to 0.
       isComped: tenant.pricePerDeviceCentsOverride === 0,
+      cancelAtPeriodEnd,
+      currentPeriodEnd,
+      paymentMethod,
     };
+  }
+
+  // Invoice history for the self-service billing page - read straight from
+  // Stripe rather than mirrored into our own DB, same reasoning as the
+  // live fields in getStatus above.
+  async listInvoices(tenantId: string) {
+    const tenant = await this.requireTenant(tenantId);
+    if (!tenant.stripeCustomerId) {
+      return [];
+    }
+    const invoices = await this.stripe.invoices.list({ customer: tenant.stripeCustomerId, limit: 24 });
+    return invoices.data.map((inv) => ({
+      id: inv.id,
+      number: inv.number,
+      createdAt: new Date(inv.created * 1000),
+      amountPaidCents: inv.amount_paid,
+      currency: inv.currency,
+      status: inv.status,
+      hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
+      invoicePdf: inv.invoice_pdf ?? null,
+    }));
+  }
+
+  // Graceful cancel - keeps access through the period already paid for
+  // instead of cutting it off immediately (unlike PAST_DUE, which blocks
+  // right away - see SubscriptionGuard's comment on that being a deliberate
+  // asymmetry: a tenant who explicitly asked to cancel gets to use what
+  // they paid for, a tenant who stopped paying doesn't). subscriptionStatus
+  // in our own DB isn't touched here - it stays ACTIVE until Stripe's own
+  // customer.subscription.deleted webhook fires at the actual period end.
+  async cancelSubscription(tenantId: string): Promise<void> {
+    const tenant = await this.requireTenant(tenantId);
+    if (!tenant.stripeSubscriptionId) {
+      throw new NotFoundException('no active subscription to cancel');
+    }
+    await this.stripe.subscriptions.update(tenant.stripeSubscriptionId, { cancel_at_period_end: true });
+  }
+
+  // Undoes a scheduled cancellation before the period actually ends.
+  async reactivateSubscription(tenantId: string): Promise<void> {
+    const tenant = await this.requireTenant(tenantId);
+    if (!tenant.stripeSubscriptionId) {
+      throw new NotFoundException('no subscription to reactivate');
+    }
+    await this.stripe.subscriptions.update(tenant.stripeSubscriptionId, { cancel_at_period_end: false });
+  }
+
+  // First step of the embedded (not hosted-redirect) card-update flow: a
+  // SetupIntent lets the frontend collect and confirm a new card directly
+  // via Stripe Elements/Stripe.js, so raw card data only ever touches
+  // Stripe's own iframe, never this server. Creates the Stripe Customer if
+  // this tenant somehow doesn't have one yet (e.g. updating a card before
+  // ever checking out) - same lazy-create as createCheckoutSession.
+  async createSetupIntent(tenantId: string): Promise<{ clientSecret: string }> {
+    const tenant = await this.requireTenant(tenantId);
+
+    let stripeCustomerId = tenant.stripeCustomerId;
+    if (!stripeCustomerId) {
+      const customer = await this.stripe.customers.create({ name: tenant.name, email: tenant.contactEmail ?? undefined, metadata: { tenantId } });
+      stripeCustomerId = customer.id;
+      await this.prisma.tenant.update({ where: { id: tenantId }, data: { stripeCustomerId } });
+    }
+
+    const setupIntent = await this.stripe.setupIntents.create({
+      customer: stripeCustomerId,
+      payment_method_types: ['card'],
+      usage: 'off_session',
+    });
+    if (!setupIntent.client_secret) {
+      throw new Error('Stripe did not return a SetupIntent client secret');
+    }
+    return { clientSecret: setupIntent.client_secret };
+  }
+
+  // Second step: called after the frontend confirms the SetupIntent with
+  // Stripe.js and gets back a real PaymentMethod id. Makes it the default
+  // for future invoices (customer-level) AND for this specific subscription
+  // (subscription-level overrides customer-level if a subscription is
+  // already using a different one) - both need setting, Stripe doesn't
+  // cascade one to the other automatically.
+  async confirmPaymentMethod(tenantId: string, paymentMethodId: string): Promise<void> {
+    const tenant = await this.requireTenant(tenantId);
+    if (!tenant.stripeCustomerId) {
+      throw new NotFoundException('no Stripe customer for this tenant');
+    }
+
+    // Ownership check - a paymentMethodId is a Stripe-generated id, not
+    // secret, but this still guards against one tenant's client somehow
+    // submitting a payment method id that belongs to a DIFFERENT Stripe
+    // customer (e.g. a stale/forged value from a previous session).
+    const paymentMethod = await this.stripe.paymentMethods.retrieve(paymentMethodId);
+    if (paymentMethod.customer !== tenant.stripeCustomerId) {
+      throw new NotFoundException('payment method does not belong to this tenant');
+    }
+
+    await this.stripe.customers.update(tenant.stripeCustomerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+    if (tenant.stripeSubscriptionId) {
+      await this.stripe.subscriptions.update(tenant.stripeSubscriptionId, { default_payment_method: paymentMethodId });
+    }
   }
 
   // Creates (or reuses) a Stripe Customer for this tenant, then a hosted

@@ -11,11 +11,14 @@ describe('SubscriptionService', () => {
     device: { count: jest.Mock };
   };
   let stripe: {
-    customers: { create: jest.Mock };
+    customers: { create: jest.Mock; update: jest.Mock; retrieve: jest.Mock };
     checkout: { sessions: { create: jest.Mock } };
-    subscriptions: { retrieve: jest.Mock };
+    subscriptions: { retrieve: jest.Mock; update: jest.Mock };
     subscriptionItems: { update: jest.Mock };
     webhooks: { constructEvent: jest.Mock };
+    invoices: { list: jest.Mock };
+    setupIntents: { create: jest.Mock };
+    paymentMethods: { retrieve: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -24,11 +27,14 @@ describe('SubscriptionService', () => {
       device: { count: jest.fn() },
     };
     stripe = {
-      customers: { create: jest.fn() },
+      customers: { create: jest.fn(), update: jest.fn(), retrieve: jest.fn() },
       checkout: { sessions: { create: jest.fn() } },
-      subscriptions: { retrieve: jest.fn() },
+      subscriptions: { retrieve: jest.fn(), update: jest.fn() },
       subscriptionItems: { update: jest.fn() },
       webhooks: { constructEvent: jest.fn() },
+      invoices: { list: jest.fn() },
+      setupIntents: { create: jest.fn() },
+      paymentMethods: { retrieve: jest.fn() },
     };
 
     process.env.STRIPE_PRODUCT_ID = 'prod_123';
@@ -102,6 +108,220 @@ describe('SubscriptionService', () => {
       expect(status.estimatedMonthlyCents).toBe(0);
       expect(status.isBlocked).toBe(false);
       expect(status.isComped).toBe(true);
+    });
+
+    it('fetches live cancellation/payment-method state from Stripe when a subscription exists', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({
+        subscriptionStatus: 'ACTIVE',
+        trialEndsAt: new Date(),
+        stripeSubscriptionId: 'sub_1',
+      });
+      prisma.device.count.mockResolvedValue(1);
+      stripe.subscriptions.retrieve.mockResolvedValue({
+        cancel_at_period_end: true,
+        current_period_end: 1_800_000_000,
+        default_payment_method: { card: { brand: 'visa', last4: '4242' } },
+      });
+
+      const status = await service.getStatus('t1');
+
+      expect(stripe.subscriptions.retrieve).toHaveBeenCalledWith('sub_1', { expand: ['default_payment_method'] });
+      expect(status.cancelAtPeriodEnd).toBe(true);
+      expect(status.currentPeriodEnd).toEqual(new Date(1_800_000_000 * 1000));
+      expect(status.paymentMethod).toEqual({ brand: 'visa', last4: '4242' });
+    });
+
+    it('defaults cancellation/payment-method fields when there is no live subscription yet', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ subscriptionStatus: 'TRIALING', trialEndsAt: new Date(Date.now() + 100_000) });
+      prisma.device.count.mockResolvedValue(0);
+
+      const status = await service.getStatus('t1');
+
+      expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+      expect(status.cancelAtPeriodEnd).toBe(false);
+      expect(status.currentPeriodEnd).toBeNull();
+      expect(status.paymentMethod).toBeNull();
+    });
+
+    it('treats an unexpanded (string) default_payment_method as "no card details to show"', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE', trialEndsAt: new Date(), stripeSubscriptionId: 'sub_1' });
+      prisma.device.count.mockResolvedValue(1);
+      stripe.subscriptions.retrieve.mockResolvedValue({
+        cancel_at_period_end: false,
+        current_period_end: 1_800_000_000,
+        default_payment_method: 'pm_not_expanded',
+      });
+
+      const status = await service.getStatus('t1');
+
+      expect(status.paymentMethod).toBeNull();
+    });
+
+    // A real gap found via live testing: a card can be saved (via the
+    // payment-method panel's lazy-create-a-customer flow) well BEFORE any
+    // checkout, e.g. during the trial. Without this fallback the saved card
+    // stays invisible forever until the tenant actually subscribes, since
+    // paymentMethod otherwise only ever comes from the SUBSCRIPTION's own
+    // default_payment_method.
+    it('falls back to the CUSTOMER default payment method when there is a Stripe customer but no subscription yet', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ subscriptionStatus: 'TRIALING', trialEndsAt: new Date(Date.now() + 100_000), stripeCustomerId: 'cus_1' });
+      prisma.device.count.mockResolvedValue(0);
+      stripe.customers.retrieve.mockResolvedValue({
+        deleted: false,
+        invoice_settings: { default_payment_method: { card: { brand: 'visa', last4: '4242' } } },
+      });
+
+      const status = await service.getStatus('t1');
+
+      expect(stripe.customers.retrieve).toHaveBeenCalledWith('cus_1', { expand: ['invoice_settings.default_payment_method'] });
+      expect(status.paymentMethod).toEqual({ brand: 'visa', last4: '4242' });
+      expect(status.cancelAtPeriodEnd).toBe(false);
+      expect(status.currentPeriodEnd).toBeNull();
+    });
+
+    it('does not fetch the customer at all when neither a subscription nor a customer exists yet', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ subscriptionStatus: 'TRIALING', trialEndsAt: new Date(Date.now() + 100_000) });
+      prisma.device.count.mockResolvedValue(0);
+
+      const status = await service.getStatus('t1');
+
+      expect(stripe.customers.retrieve).not.toHaveBeenCalled();
+      expect(status.paymentMethod).toBeNull();
+    });
+  });
+
+  describe('listInvoices', () => {
+    it('returns an empty list when the tenant has no Stripe customer yet', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeCustomerId: null });
+
+      const invoices = await service.listInvoices('t1');
+
+      expect(invoices).toEqual([]);
+      expect(stripe.invoices.list).not.toHaveBeenCalled();
+    });
+
+    it('maps Stripe invoice fields for display', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeCustomerId: 'cus_1' });
+      stripe.invoices.list.mockResolvedValue({
+        data: [
+          {
+            id: 'in_1',
+            number: 'ACME-0001',
+            created: 1_700_000_000,
+            amount_paid: 3100,
+            currency: 'brl',
+            status: 'paid',
+            hosted_invoice_url: 'https://invoice.stripe.com/x',
+            invoice_pdf: 'https://invoice.stripe.com/x.pdf',
+          },
+        ],
+      });
+
+      const invoices = await service.listInvoices('t1');
+
+      expect(stripe.invoices.list).toHaveBeenCalledWith({ customer: 'cus_1', limit: 24 });
+      expect(invoices).toEqual([
+        {
+          id: 'in_1',
+          number: 'ACME-0001',
+          createdAt: new Date(1_700_000_000 * 1000),
+          amountPaidCents: 3100,
+          currency: 'brl',
+          status: 'paid',
+          hostedInvoiceUrl: 'https://invoice.stripe.com/x',
+          invoicePdf: 'https://invoice.stripe.com/x.pdf',
+        },
+      ]);
+    });
+  });
+
+  describe('cancelSubscription / reactivateSubscription', () => {
+    it('cancelSubscription schedules cancellation at period end, not immediately', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeSubscriptionId: 'sub_1' });
+
+      await service.cancelSubscription('t1');
+
+      expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', { cancel_at_period_end: true });
+    });
+
+    it('cancelSubscription throws when there is nothing to cancel', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeSubscriptionId: null });
+      await expect(service.cancelSubscription('t1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('reactivateSubscription clears the scheduled cancellation', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeSubscriptionId: 'sub_1' });
+
+      await service.reactivateSubscription('t1');
+
+      expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', { cancel_at_period_end: false });
+    });
+
+    it('reactivateSubscription throws when there is no subscription at all', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeSubscriptionId: null });
+      await expect(service.reactivateSubscription('t1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('createSetupIntent', () => {
+    it('creates a Stripe customer first when the tenant does not have one yet', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ id: 't1', name: 'Acme', contactEmail: null, stripeCustomerId: null });
+      stripe.customers.create.mockResolvedValue({ id: 'cus_new' });
+      stripe.setupIntents.create.mockResolvedValue({ client_secret: 'seti_1_secret' });
+
+      const result = await service.createSetupIntent('t1');
+
+      expect(stripe.customers.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Acme' }));
+      expect(prisma.tenant.update).toHaveBeenCalledWith({ where: { id: 't1' }, data: { stripeCustomerId: 'cus_new' } });
+      expect(stripe.setupIntents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ customer: 'cus_new', payment_method_types: ['card'] }),
+      );
+      expect(result).toEqual({ clientSecret: 'seti_1_secret' });
+    });
+
+    it('reuses an existing Stripe customer', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ id: 't1', name: 'Acme', stripeCustomerId: 'cus_existing' });
+      stripe.setupIntents.create.mockResolvedValue({ client_secret: 'seti_2_secret' });
+
+      await service.createSetupIntent('t1');
+
+      expect(stripe.customers.create).not.toHaveBeenCalled();
+      expect(stripe.setupIntents.create).toHaveBeenCalledWith(expect.objectContaining({ customer: 'cus_existing' }));
+    });
+  });
+
+  describe('confirmPaymentMethod', () => {
+    it('throws when the tenant has no Stripe customer at all', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeCustomerId: null });
+      await expect(service.confirmPaymentMethod('t1', 'pm_1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('rejects a payment method that belongs to a different Stripe customer', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeCustomerId: 'cus_1', stripeSubscriptionId: null });
+      stripe.paymentMethods.retrieve.mockResolvedValue({ id: 'pm_1', customer: 'cus_OTHER' });
+
+      await expect(service.confirmPaymentMethod('t1', 'pm_1')).rejects.toBeInstanceOf(NotFoundException);
+      expect(stripe.customers.update).not.toHaveBeenCalled();
+    });
+
+    it('sets the customer AND subscription default payment method when both exist', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' });
+      stripe.paymentMethods.retrieve.mockResolvedValue({ id: 'pm_1', customer: 'cus_1' });
+
+      await service.confirmPaymentMethod('t1', 'pm_1');
+
+      expect(stripe.customers.update).toHaveBeenCalledWith('cus_1', { invoice_settings: { default_payment_method: 'pm_1' } });
+      expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', { default_payment_method: 'pm_1' });
+    });
+
+    it('skips the subscription update when the tenant has no live subscription yet', async () => {
+      prisma.tenant.findUnique.mockResolvedValue({ stripeCustomerId: 'cus_1', stripeSubscriptionId: null });
+      stripe.paymentMethods.retrieve.mockResolvedValue({ id: 'pm_1', customer: 'cus_1' });
+
+      await service.confirmPaymentMethod('t1', 'pm_1');
+
+      expect(stripe.customers.update).toHaveBeenCalled();
+      expect(stripe.subscriptions.update).not.toHaveBeenCalled();
     });
   });
 

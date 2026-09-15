@@ -18,11 +18,17 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      // Stripe Elements (the embedded card-update form on /subscribe) needs
+      // its own script loaded, its own fraud-detection/telemetry XHR calls,
+      // and its own iframe (the actual card input + any 3D Secure
+      // challenge) - all three directives below are Stripe's own
+      // documented CSP requirements, not a general third-party carve-out.
+      "script-src 'self' 'unsafe-inline' https://js.stripe.com",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data:",
+      "img-src 'self' data: https://*.stripe.com",
       "font-src 'self' data:",
-      "connect-src 'self'",
+      "connect-src 'self' https://api.stripe.com https://m.stripe.com https://m.stripe.network https://errors.stripe.com",
+      "frame-src https://js.stripe.com https://hooks.stripe.com",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
