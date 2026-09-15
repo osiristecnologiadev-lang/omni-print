@@ -67,8 +67,9 @@ describe('SubscriptionController billing-mutation routes are staff-only', () => 
     confirmPaymentMethod: jest.Mock;
   };
 
-  const staffReq = { tenantId: 't1', customerId: null };
-  const customerReq = { tenantId: 't1', customerId: 'cust1' };
+  const staffReq = { tenantId: 't1', customerId: null, permissions: ['billing'] };
+  const staffNoBillingReq = { tenantId: 't1', customerId: null, permissions: ['settings'] };
+  const customerReq = { tenantId: 't1', customerId: 'cust1', permissions: ['billing'] };
 
   beforeEach(() => {
     service = {
@@ -95,6 +96,17 @@ describe('SubscriptionController billing-mutation routes are staff-only', () => 
     ['createSetupIntent', async () => controller.createSetupIntent(customerReq)],
     ['confirmPaymentMethod', async () => controller.confirmPaymentMethod(customerReq, { paymentMethodId: 'pm_1' })],
   ])('%s rejects a customer-scoped caller with 403', async (_name, call) => {
+    await expect(call()).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it.each([
+    ['checkout', async () => controller.checkout(staffNoBillingReq)],
+    ['invoices', async () => controller.invoices(staffNoBillingReq)],
+    ['cancel', async () => controller.cancel(staffNoBillingReq)],
+    ['reactivate', async () => controller.reactivate(staffNoBillingReq)],
+    ['createSetupIntent', async () => controller.createSetupIntent(staffNoBillingReq)],
+    ['confirmPaymentMethod', async () => controller.confirmPaymentMethod(staffNoBillingReq, { paymentMethodId: 'pm_1' })],
+  ])('%s rejects a tenant-wide staffer who lacks the billing permission', async (_name, call) => {
     await expect(call()).rejects.toBeInstanceOf(ForbiddenException);
   });
 

@@ -164,14 +164,17 @@ export default async function TenantLayout({ children }: { children: React.React
           {hasPermission(access, 'settings') && (
             <SidebarLink href="/settings" icon={<BuildingIcon />} label="Empresa" />
           )}
-          {/* Same permission as Empresa - billing is a company-level
-              concern, and the backend rejects a customer-scoped caller on
-              every route here except the read-only status check (see
-              SubscriptionController.requireTenantWide). Always visible now,
-              not only while blocked - closing the audit finding that once
-              a tenant went ACTIVE there was no way back to manage payment
-              method/invoices/cancellation. */}
-          {hasPermission(access, 'settings') && (
+          {/* Its own dedicated permission, deliberately NOT bundled into
+              'settings' - billing (payment method, invoices, cancel) was
+              specifically asked to be restricted to whoever the outsource
+              designates, not everyone who can edit Empresa. The backend
+              rejects a customer-scoped caller on every route here
+              regardless of permissions (see SubscriptionController.
+              requireBillingAccess). Always visible now, not only while
+              blocked - closing the audit finding that once a tenant went
+              ACTIVE there was no way back to manage payment method/
+              invoices/cancellation. */}
+          {hasPermission(access, 'billing') && (
             <SidebarLink href="/subscribe" icon={<BillingIcon />} label="Assinatura" />
           )}
           {hasPermission(access, 'notifications') && <NotificationBell className={NAV_ROW} />}

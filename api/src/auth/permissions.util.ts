@@ -19,6 +19,11 @@ export const TENANT_ONLY_PERMISSION_KEYS = [
   'audit_log',
   'settings',
   'notifications',
+  // Deliberately separate from 'settings' - the outsource's OmniPrint bill
+  // (payment method, invoices, cancel) is sensitive enough that the user
+  // wanted it gated on its own, not bundled with general company settings.
+  // See SubscriptionController - every mutating route requires this.
+  'billing',
 ] as const;
 
 export const CUSTOMER_ONLY_PERMISSION_KEYS = ['invoices_view'] as const;

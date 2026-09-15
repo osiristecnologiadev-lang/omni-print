@@ -16,6 +16,7 @@ export const TENANT_PERMISSION_OPTIONS = [
   'audit_log',
   'settings',
   'notifications',
+  'billing',
 ] as const;
 
 // Translated to Portuguese only here at display time - same pattern as
@@ -34,6 +35,7 @@ export const PERMISSION_LABEL: Record<string, string> = {
   audit_log: 'Log de auditoria',
   settings: 'Empresa',
   notifications: 'Notificações',
+  billing: 'Assinatura (cobrança, cartão, faturas)',
 };
 
 export function permissionLabel(key: string): string {

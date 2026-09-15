@@ -1,4 +1,5 @@
-import { getSession, getSubscriptionStatus, getSubscriptionInvoices } from '@/lib/api';
+import { getSession, getViewerAccess, getSubscriptionStatus, getSubscriptionInvoices } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { Badge, type BadgeTone } from '@/components/Badge';
@@ -39,13 +40,17 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
   if (!session) return null;
   const isTenantWide = !session.customerId;
 
-  const subscription = await getSubscriptionStatus();
-  // Invoice history/cancel/payment-method are staff-only on the backend
-  // (billing is a company-level concern, not the outsource's own client's -
-  // see SubscriptionController.requireTenantWide) - only fetched here for a
-  // tenant-wide viewer, so a customer-scoped session never hits a 403 just
+  // Invoice history/cancel/payment-method are gated on their own dedicated
+  // 'billing' permission on the backend (not just "any staff", and never a
+  // customer-scoped login regardless of permissions - see
+  // SubscriptionController.requireBillingAccess) - only fetched/rendered
+  // here when the viewer actually has it, so nobody else hits a 403 just
   // from loading this page.
-  const invoices = isTenantWide ? await getSubscriptionInvoices() : [];
+  const access = await getViewerAccess();
+  const canManageBilling = isTenantWide && hasPermission(access, 'billing');
+
+  const subscription = await getSubscriptionStatus();
+  const invoices = canManageBilling ? await getSubscriptionInvoices() : [];
   const trialDaysLeft = Math.ceil((new Date(subscription.trialEndsAt).getTime() - Date.now()) / 86_400_000);
 
   return (
@@ -99,7 +104,7 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
               Cancelamento agendado{subscription.currentPeriodEnd ? ` para ${formatDate(subscription.currentPeriodEnd)}` : ''}.
               Você mantém acesso normal até essa data.
             </p>
-            {isTenantWide && (
+            {canManageBilling && (
               <form action={reactivateSubscriptionAction}>
                 <SubmitButton variant="secondary" pendingLabel="Reativando...">
                   Desfazer cancelamento
@@ -128,7 +133,7 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
           </p>
         </div>
 
-        {!subscription.isComped && subscription.status !== 'ACTIVE' && isTenantWide && (
+        {!subscription.isComped && subscription.status !== 'ACTIVE' && canManageBilling && (
           <form action={createCheckoutSessionAction}>
             <SubmitButton variant="primary" pendingLabel="Redirecionando...">
               Assinar agora
@@ -136,7 +141,7 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
           </form>
         )}
 
-        {!subscription.isComped && subscription.status === 'ACTIVE' && !subscription.cancelAtPeriodEnd && isTenantWide && (
+        {!subscription.isComped && subscription.status === 'ACTIVE' && !subscription.cancelAtPeriodEnd && canManageBilling && (
           <form action={cancelSubscriptionAction}>
             <button type="submit" className={buttonClasses('danger')}>
               Cancelar assinatura
@@ -145,10 +150,11 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
         )}
       </Panel>
 
-      {/* Payment method and invoice history are staff-only (see the
-          page-level isTenantWide fetch guard above) - a customer-scoped
-          session never even sees these panels, not just a disabled state. */}
-      {isTenantWide && !subscription.isComped && (
+      {/* Payment method and invoice history need the 'billing' permission
+          (see the page-level canManageBilling fetch guard above) - anyone
+          without it, including a customer-scoped session, never even sees
+          these panels, not just a disabled state. */}
+      {canManageBilling && !subscription.isComped && (
         <Panel className="mt-6">
           <h2 className="mb-3 text-sm font-medium text-ink">Método de pagamento</h2>
           {subscription.paymentMethod ? (
@@ -162,7 +168,7 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
         </Panel>
       )}
 
-      {isTenantWide && invoices.length > 0 && (
+      {canManageBilling && invoices.length > 0 && (
         <Panel className="mt-6">
           <h2 className="mb-3 text-sm font-medium text-ink">Faturas</h2>
           <div className="space-y-2">
