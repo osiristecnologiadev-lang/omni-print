@@ -170,6 +170,15 @@ model AuditLogEntry {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([tenantId, createdAt])
+  // Supports the audit-log screen's action/target-type filters (both
+  // combined with the same createdAt-desc ordering as the unfiltered
+  // list) without falling back to a sequential scan as the table grows -
+  // see AuditLogService.paginate.
+  @@index([tenantId, action, createdAt])
+  @@index([tenantId, targetType, createdAt])
+  // listForPlatformAdmins has no tenantId to filter on at all - this is its
+  // equivalent of the index above.
+  @@index([actorType, createdAt])
   @@map("audit_log_entries")
 }
 

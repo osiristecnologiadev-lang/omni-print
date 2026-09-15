@@ -16,6 +16,13 @@ export interface AuditLogEntryInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface AuditLogFilters {
+  action?: string;
+  targetType?: string;
+  from?: Date;
+  to?: Date;
+}
+
 // Deliberately called from CONTROLLERS, right after the service call that
 // actually mutated something succeeds - not from inside the services
 // themselves. This keeps services pure/testable without mocking the audit
@@ -48,11 +55,11 @@ export class AuditLogService {
     });
   }
 
-  listForTenant(tenantId: string, opts: { limit: number; cursor?: string }): Promise<AuditLogPage> {
+  listForTenant(tenantId: string, opts: AuditLogFilters & { limit: number; cursor?: string }): Promise<AuditLogPage> {
     return this.paginate({ tenantId }, opts);
   }
 
-  listForPlatformAdmins(opts: { limit: number; cursor?: string }): Promise<AuditLogPage> {
+  listForPlatformAdmins(opts: AuditLogFilters & { limit: number; cursor?: string }): Promise<AuditLogPage> {
     return this.paginate({ actorType: 'PLATFORM_ADMIN' }, opts);
   }
 
@@ -63,9 +70,18 @@ export class AuditLogService {
   // Fetches one extra row to know whether a next page actually exists
   // without a separate count query.
   private async paginate(
-    where: { tenantId: string } | { actorType: AuditActorType },
-    opts: { limit: number; cursor?: string },
+    base: { tenantId: string } | { actorType: AuditActorType },
+    opts: AuditLogFilters & { limit: number; cursor?: string },
   ): Promise<AuditLogPage> {
+    const where: Prisma.AuditLogEntryWhereInput = {
+      ...base,
+      ...(opts.action ? { action: opts.action } : {}),
+      ...(opts.targetType ? { targetType: opts.targetType } : {}),
+      ...((opts.from || opts.to)
+        ? { createdAt: { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lte: opts.to } : {}) } }
+        : {}),
+    };
+
     const rows = await this.prisma.auditLogEntry.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

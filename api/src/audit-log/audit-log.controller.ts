@@ -16,6 +16,21 @@ function parseLimit(raw: string | undefined): number {
   return Math.min(parsed, MAX_LIMIT);
 }
 
+// `from`/`to` come from plain `<input type="date">` values (YYYY-MM-DD) -
+// `to` is bumped to the end of that calendar day so the filter is inclusive
+// of the whole day picked, not just its first millisecond.
+function parseDateFilters(from?: string, to?: string): { from?: Date; to?: Date } {
+  const fromDate = from ? new Date(from) : undefined;
+  const toDate = to ? new Date(to) : undefined;
+  if (toDate && !Number.isNaN(toDate.getTime())) {
+    toDate.setHours(23, 59, 59, 999);
+  }
+  return {
+    ...(fromDate && !Number.isNaN(fromDate.getTime()) ? { from: fromDate } : {}),
+    ...(toDate && !Number.isNaN(toDate.getTime()) ? { to: toDate } : {}),
+  };
+}
+
 @UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/audit-log')
 export class AuditLogController {
@@ -25,9 +40,23 @@ export class AuditLogController {
   // (customers, users, contracts, ...). A customer-scoped session has no
   // business seeing tenant-wide administrative history.
   @Get()
-  list(@Req() req: any, @Query('limit') limit?: string, @Query('cursor') cursor?: string) {
+  list(
+    @Req() req: any,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+    @Query('action') action?: string,
+    @Query('targetType') targetType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
     assertPermission(req, 'audit_log');
-    return this.auditLog.listForTenant(req.tenantId, { limit: parseLimit(limit), cursor });
+    return this.auditLog.listForTenant(req.tenantId, {
+      limit: parseLimit(limit),
+      cursor,
+      action: action || undefined,
+      targetType: targetType || undefined,
+      ...parseDateFilters(from, to),
+    });
   }
 }
 
@@ -37,7 +66,20 @@ export class PlatformAuditLogController {
   constructor(private readonly auditLog: AuditLogService) {}
 
   @Get()
-  list(@Query('limit') limit?: string, @Query('cursor') cursor?: string) {
-    return this.auditLog.listForPlatformAdmins({ limit: parseLimit(limit), cursor });
+  list(
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+    @Query('action') action?: string,
+    @Query('targetType') targetType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.auditLog.listForPlatformAdmins({
+      limit: parseLimit(limit),
+      cursor,
+      action: action || undefined,
+      targetType: targetType || undefined,
+      ...parseDateFilters(from, to),
+    });
   }
 }

@@ -5,6 +5,7 @@ import { hasPermission } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { EmptyState } from '@/components/EmptyState';
+import { Button } from '@/components/Button';
 
 // Server Components render on Railway (UTC) - see getViewerTimeZone.
 function formatDateTime(iso: string, timeZone?: string): string {
@@ -44,16 +45,47 @@ function actionLabel(action: string): string {
   return ACTION_LABEL[action] ?? action;
 }
 
+const TARGET_TYPE_LABEL: Record<string, string> = {
+  Device: 'Dispositivo',
+  Customer: 'Cliente',
+  AgentToken: 'Token de agente',
+  AgentEnrollmentCode: 'Código de instalação',
+  Contract: 'Contrato',
+  Invoice: 'Fatura',
+  User: 'Usuário',
+  Tenant: 'Empresa',
+  Notification: 'Notificação',
+  Ticket: 'Chamado',
+};
+
+const selectClass = 'rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent';
+
 export default async function AuditLogPage(props: PageProps<'/audit-log'>) {
   const searchParams = await props.searchParams;
-  const cursor = typeof searchParams?.cursor === 'string' ? searchParams.cursor : undefined;
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+  const cursor = str(searchParams?.cursor);
+  const action = str(searchParams?.action);
+  const targetType = str(searchParams?.targetType);
+  const from = str(searchParams?.from);
+  const to = str(searchParams?.to);
 
   const access = await getViewerAccess();
   if (!hasPermission(access, 'audit_log')) {
     forbidden();
   }
 
-  const [page, tz] = await Promise.all([getAuditLog(cursor), getViewerTimeZone()]);
+  const [page, tz] = await Promise.all([
+    getAuditLog({ cursor, action, targetType, from, to }),
+    getViewerTimeZone(),
+  ]);
+
+  // Carried into the "load more" link so paging forward doesn't drop the
+  // active filters back to "show everything".
+  const filterParams = new URLSearchParams();
+  if (action) filterParams.set('action', action);
+  if (targetType) filterParams.set('targetType', targetType);
+  if (from) filterParams.set('from', from);
+  if (to) filterParams.set('to', to);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -62,10 +94,49 @@ export default async function AuditLogPage(props: PageProps<'/audit-log'>) {
         subtitle="Quem fez o quê, e quando - revogar um token, reatribuir um dispositivo, cancelar um contrato, e outras ações administrativas."
       />
 
+      <form method="get" className="mb-6 flex flex-wrap items-end gap-2">
+        <select name="action" defaultValue={action ?? ''} className={selectClass}>
+          <option value="">Todas as ações</option>
+          {Object.entries(ACTION_LABEL).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <select name="targetType" defaultValue={targetType ?? ''} className={selectClass}>
+          <option value="">Qualquer tipo de item</option>
+          {Object.entries(TARGET_TYPE_LABEL).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1.5 text-sm text-ink-muted">
+          De
+          <input type="date" name="from" defaultValue={from ?? ''} className={selectClass} />
+        </label>
+        <label className="flex items-center gap-1.5 text-sm text-ink-muted">
+          Até
+          <input type="date" name="to" defaultValue={to ?? ''} className={selectClass} />
+        </label>
+        <Button type="submit" variant="secondary">
+          Filtrar
+        </Button>
+        {(action || targetType || from || to) && (
+          <Link href="/audit-log" className="text-sm text-accent hover:underline">
+            Limpar filtros
+          </Link>
+        )}
+      </form>
+
       {page.entries.length === 0 ? (
         <EmptyState
-          title="Nenhuma ação registrada ainda"
-          hint="Aparece aqui assim que alguma ação administrativa acontecer no painel."
+          title={action || targetType || from || to ? 'Nenhuma ação encontrada com esses filtros' : 'Nenhuma ação registrada ainda'}
+          hint={
+            action || targetType || from || to
+              ? 'Tente ampliar o período ou remover algum filtro.'
+              : 'Aparece aqui assim que alguma ação administrativa acontecer no painel.'
+          }
         />
       ) : (
         <div className="space-y-3">
@@ -87,7 +158,7 @@ export default async function AuditLogPage(props: PageProps<'/audit-log'>) {
       {page.nextCursor && (
         <div className="mt-4 text-center">
           <Link
-            href={`/audit-log?cursor=${encodeURIComponent(page.nextCursor)}`}
+            href={`/audit-log?${new URLSearchParams({ ...Object.fromEntries(filterParams), cursor: page.nextCursor }).toString()}`}
             className="text-sm text-accent hover:underline"
           >
             Carregar mais

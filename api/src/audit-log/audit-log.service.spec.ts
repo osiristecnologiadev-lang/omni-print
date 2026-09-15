@@ -90,5 +90,38 @@ describe('AuditLogService', () => {
         expect.objectContaining({ where: { actorType: 'PLATFORM_ADMIN' } }),
       );
     });
+
+    it('adds action/targetType to the where clause only when given', async () => {
+      prisma.auditLogEntry.findMany.mockResolvedValue([]);
+
+      await service.listForTenant('t1', { limit: 50, action: 'customer.create', targetType: 'Customer' });
+
+      expect(prisma.auditLogEntry.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: 't1', action: 'customer.create', targetType: 'Customer' } }),
+      );
+    });
+
+    it('turns from/to into a createdAt range, inclusive on both ends', async () => {
+      prisma.auditLogEntry.findMany.mockResolvedValue([]);
+      const from = new Date('2026-09-01T00:00:00.000Z');
+      const to = new Date('2026-09-14T23:59:59.999Z');
+
+      await service.listForTenant('t1', { limit: 50, from, to });
+
+      expect(prisma.auditLogEntry.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: 't1', createdAt: { gte: from, lte: to } } }),
+      );
+    });
+
+    it('an open-ended range (only from, or only to) omits the other bound entirely', async () => {
+      prisma.auditLogEntry.findMany.mockResolvedValue([]);
+      const from = new Date('2026-09-01T00:00:00.000Z');
+
+      await service.listForTenant('t1', { limit: 50, from });
+
+      expect(prisma.auditLogEntry.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: 't1', createdAt: { gte: from } } }),
+      );
+    });
   });
 });

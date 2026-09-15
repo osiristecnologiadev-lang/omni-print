@@ -155,8 +155,21 @@ export interface AuditLogPage {
   nextCursor: string | null;
 }
 
-export function getAuditLog(cursor?: string): Promise<AuditLogPage> {
-  return apiFetch<AuditLogPage>(`/v1/audit-log${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`);
+export interface AuditLogFilters {
+  cursor?: string;
+  action?: string;
+  targetType?: string;
+  from?: string;
+  to?: string;
+}
+
+export function getAuditLog(filters: AuditLogFilters = {}): Promise<AuditLogPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return apiFetch<AuditLogPage>(`/v1/audit-log${qs ? `?${qs}` : ''}`);
 }
 
 // Snake_case: this shape comes from the backend's raw SQL "latest metric per
