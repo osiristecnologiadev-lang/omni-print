@@ -1,8 +1,10 @@
-import { getCustomers, getDevices, getSession } from '@/lib/api';
+import { getCustomers, getDevices, getSession, getViewerAccess } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { deriveHealth } from '@/lib/health';
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { DeviceFleetTable } from '@/components/DeviceFleetTable';
+import { bulkAssignDevicesAction } from './actions';
 
 // A dedicated, filterable view of the whole fleet - distinct from the
 // dashboard's device table, which is the last section of a longer
@@ -10,8 +12,13 @@ import { DeviceFleetTable } from '@/components/DeviceFleetTable';
 // of customers and hundreds of printers needs to find/narrow a device by
 // customer or status without scrolling past everything else on /dashboard.
 export default async function DevicesPage() {
-  const session = await getSession();
+  const [session, access] = await Promise.all([getSession(), getViewerAccess()]);
   const isTenantWide = session != null && !session.customerId;
+  // Same gate the underlying PATCH /v1/devices/:id already enforces - a
+  // tenant-wide user without the 'devices' permission (e.g. a technician
+  // with only tickets/devices-view access) gets the filterable list but
+  // not the checkbox column/bulk-assign bar.
+  const canAssign = isTenantWide && hasPermission(access, 'devices');
 
   const [devices, customers] = await Promise.all([getDevices(), isTenantWide ? getCustomers() : Promise.resolve([])]);
 
@@ -33,6 +40,7 @@ export default async function DevicesPage() {
           isTenantWide={isTenantWide}
           customers={isTenantWide ? customers : undefined}
           showStatusFilter
+          onBulkAssign={canAssign ? bulkAssignDevicesAction : undefined}
         />
       )}
     </main>

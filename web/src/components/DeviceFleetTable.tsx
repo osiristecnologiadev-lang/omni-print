@@ -1,8 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { StatusBadge } from './StatusBadge';
+import { Button } from './Button';
 import type { Health, HealthTone } from '@/lib/health';
 import type { Customer, Device } from '@/lib/api';
 import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
@@ -51,6 +53,7 @@ export function DeviceFleetTable({
   revenueByDeviceId,
   customers,
   showStatusFilter,
+  onBulkAssign,
 }: {
   devices: DeviceRow[];
   isTenantWide: boolean;
@@ -68,10 +71,20 @@ export function DeviceFleetTable({
   // dashboard already has its own stat tiles for that).
   customers?: Customer[];
   showStatusFilter?: boolean;
+  // Present only when the viewer has the 'devices' permission (same gate
+  // as the single-device PATCH this ultimately calls) - enables the
+  // checkbox column + bulk-assign action bar. Omitted everywhere except
+  // /devices for a tenant-wide, permitted session.
+  onBulkAssign?: (deviceIds: string[], customerId: string | null) => Promise<{ failed: number; total: number }>;
 }) {
   const [query, setQuery] = useState('');
   const [customerFilter, setCustomerFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<HealthTone | 'all'>('all');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkTarget, setBulkTarget] = useState('');
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -94,6 +107,47 @@ export function DeviceFleetTable({
   }, [devices, query, customerFilter, statusFilter]);
 
   const hasActiveFilter = query || customerFilter !== 'all' || statusFilter !== 'all';
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((d) => selected.has(d.id));
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllFiltered() {
+    setSelected((prev) => {
+      if (allFilteredSelected) {
+        const next = new Set(prev);
+        filtered.forEach((d) => next.delete(d.id));
+        return next;
+      }
+      const next = new Set(prev);
+      filtered.forEach((d) => next.add(d.id));
+      return next;
+    });
+  }
+
+  function applyBulkAssign() {
+    if (!onBulkAssign || selected.size === 0) return;
+    const ids = Array.from(selected);
+    const customerId = bulkTarget === '' ? null : bulkTarget;
+    startTransition(async () => {
+      const result = await onBulkAssign(ids, customerId);
+      setFeedback(
+        result.failed === 0
+          ? `${result.total} dispositivo${result.total === 1 ? '' : 's'} atribuído${result.total === 1 ? '' : 's'}.`
+          : `${result.total - result.failed} de ${result.total} atribuído(s) - ${result.failed} falharam, tente de novo.`,
+      );
+      setSelected(new Set());
+      setBulkTarget('');
+      router.refresh();
+    });
+  }
 
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-surface">
@@ -140,6 +194,38 @@ export function DeviceFleetTable({
         )}
       </div>
 
+      {onBulkAssign && selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-line bg-accent/5 p-3">
+          <span className="text-sm font-medium text-ink">
+            {selected.size} dispositivo{selected.size === 1 ? '' : 's'} selecionado{selected.size === 1 ? '' : 's'}
+          </span>
+          <span className="text-sm text-ink-muted">Atribuir a:</span>
+          <select value={bulkTarget} onChange={(e) => setBulkTarget(e.target.value)} className={selectClass}>
+            <option value="">Não atribuído</option>
+            {customers?.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <Button type="button" variant="primary" onClick={applyBulkAssign} disabled={isPending}>
+            {isPending ? 'Aplicando...' : 'Aplicar'}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => setSelected(new Set())} disabled={isPending}>
+            Cancelar seleção
+          </Button>
+        </div>
+      )}
+
+      {feedback && (
+        <div className="border-b border-line p-3 text-sm text-ink-muted">
+          {feedback}{' '}
+          <button type="button" onClick={() => setFeedback(null)} className="text-accent hover:underline">
+            fechar
+          </button>
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <p className="p-6 text-center text-sm text-ink-faint">
           {query ? <>Nenhum dispositivo encontrado para &quot;{query}&quot;.</> : 'Nenhum dispositivo encontrado com esses filtros.'}
@@ -152,6 +238,16 @@ export function DeviceFleetTable({
           <table className="w-full text-left text-sm">
             <thead className="bg-surface-2 text-xs uppercase tracking-wide text-ink-muted">
               <tr>
+                {onBulkAssign && (
+                  <th className="w-10 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={toggleAllFiltered}
+                      aria-label="Selecionar todos os dispositivos filtrados"
+                    />
+                  </th>
+                )}
                 <th className="px-4 py-3 font-medium">Dispositivo</th>
                 <th className="px-4 py-3 font-medium">IP</th>
                 <th className="px-4 py-3 font-medium">Nº de série</th>
@@ -169,6 +265,16 @@ export function DeviceFleetTable({
                 const hasSplit = enginePages != null && pages !== enginePages;
                 return (
                   <tr key={device.id} className="transition-colors hover:bg-surface-2">
+                    {onBulkAssign && (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(device.id)}
+                          onChange={() => toggleOne(device.id)}
+                          aria-label={`Selecionar ${device.customLabel ?? device.printerName ?? device.name ?? device.host}`}
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <Link href={`/devices/${device.id}`} className="block">
                         <div className="font-medium text-ink">
