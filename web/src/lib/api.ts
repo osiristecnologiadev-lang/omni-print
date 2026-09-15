@@ -108,9 +108,11 @@ export function createCheckoutSession(): Promise<{ url: string }> {
   return apiMutate<{ url: string }>('/v1/subscription/checkout', 'POST', {});
 }
 
+export type NotificationType = 'OVERDUE_INVOICE' | 'EXPIRING_CONTRACT' | 'CRITICAL_DEVICE_ALERT' | 'LOW_SUPPLY' | 'UNASSIGNED_DEVICE';
+
 export interface Notification {
   id: string;
-  type: 'OVERDUE_INVOICE' | 'EXPIRING_CONTRACT' | 'CRITICAL_DEVICE_ALERT' | 'LOW_SUPPLY' | 'UNASSIGNED_DEVICE';
+  type: NotificationType;
   title: string;
   body: string;
   // Null only for a row created before this field existed - see the
@@ -140,6 +142,21 @@ export function syncNotificationsNow(): Promise<{ created: number; updated: numb
 
 export function resolveNotification(id: string): Promise<Notification> {
   return apiMutate<Notification>(`/v1/notifications/${id}/resolve`, 'POST', {});
+}
+
+export interface NotificationEmailPreferences {
+  emailEnabled: boolean;
+  emailTypes: NotificationType[];
+}
+
+export function getNotificationEmailPreferences(): Promise<NotificationEmailPreferences> {
+  return apiFetch<NotificationEmailPreferences>('/v1/notifications/preferences');
+}
+
+export function updateNotificationEmailPreferences(
+  prefs: NotificationEmailPreferences,
+): Promise<NotificationEmailPreferences> {
+  return apiMutate<NotificationEmailPreferences>('/v1/notifications/preferences', 'PATCH', prefs);
 }
 
 export interface AuditLogEntry {

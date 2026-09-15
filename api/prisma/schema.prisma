@@ -112,6 +112,16 @@ model Tenant {
   // not just future checkouts - see SubscriptionService.updateTenantPricing.
   pricePerDeviceCentsOverride Int? @map("price_per_device_cents_override")
 
+  // Digest-email preferences (NotificationsService.sendDigestEmail) - both
+  // default to "send nothing" on purpose (a tenant that never opts in never
+  // gets emailed), not because email is expensive but because a new
+  // notification *type* added later shouldn't silently start emailing
+  // every existing tenant. emailTypes is only consulted when Enabled is
+  // true; an empty array with Enabled true also sends nothing - the admin
+  // has to actually pick at least one category.
+  notifyEmailEnabled Boolean            @default(false) @map("notify_email_enabled")
+  notifyEmailTypes   NotificationType[] @default([]) @map("notify_email_types")
+
   agentTokens          AgentToken[]
   agentEnrollmentCodes AgentEnrollmentCode[]
   devices              Device[]

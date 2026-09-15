@@ -4,11 +4,20 @@ import { Notification, NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { DevicesService } from '../devices/devices.service';
+import { EmailService } from '../email/email.service';
 
 function fmtDate(d: Date | string | null | undefined): string {
   if (!d) return '';
   return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 }
+
+const TYPE_LABEL: Record<NotificationType, string> = {
+  OVERDUE_INVOICE: 'Fatura vencida',
+  EXPIRING_CONTRACT: 'Contrato',
+  CRITICAL_DEVICE_ALERT: 'Dispositivo',
+  LOW_SUPPLY: 'Suprimento',
+  UNASSIGNED_DEVICE: 'Sem cliente',
+};
 
 interface CurrentAlert {
   type: NotificationType;
@@ -28,18 +37,22 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly invoicesService: InvoicesService,
     private readonly devicesService: DevicesService,
+    private readonly emailService: EmailService,
   ) {}
 
   // Runs nightly, after invoice generation (2am) so an invoice that just
   // became overdue is already reflected - see InvoicesService.generateDueInvoices.
   // Also callable on demand (POST /v1/notifications/sync) so a tenant admin
-  // can refresh without waiting for the cron.
+  // can refresh without waiting for the cron - that manual path never
+  // emails (sendEmail defaults false, see syncNotifications), only this
+  // cron does, so email volume is capped at once per tenant per day
+  // regardless of how many times someone clicks "Atualizar agora".
   @Cron(CronExpression.EVERY_DAY_AT_7AM)
   async syncAllTenants(): Promise<void> {
     const tenants = await this.prisma.tenant.findMany({ select: { id: true } });
     for (const tenant of tenants) {
       try {
-        await this.syncNotifications(tenant.id);
+        await this.syncNotifications(tenant.id, { sendEmail: true });
       } catch (err) {
         this.logger.error(`notification sync failed for tenant ${tenant.id}`, err as Error);
       }
@@ -140,7 +153,10 @@ export class NotificationsService {
   // is left alone - that's the whole point, someone already dealt with it.
   // A row that's unresolved but no longer detected auto-resolves itself
   // (the real problem went away on its own - paid, renewed, replaced).
-  async syncNotifications(tenantId: string): Promise<{ created: number; updated: number; autoResolved: number }> {
+  async syncNotifications(
+    tenantId: string,
+    opts: { sendEmail?: boolean } = {},
+  ): Promise<{ created: number; updated: number; autoResolved: number }> {
     const current = await this.collectCurrentAlerts(tenantId);
     const currentKeys = new Set(current.map((i) => i.dedupeKey));
 
@@ -152,6 +168,7 @@ export class NotificationsService {
 
     let created = 0;
     let updated = 0;
+    const newlyCreated: CurrentAlert[] = [];
 
     for (const item of current) {
       const row = existingByKey.get(item.dedupeKey);
@@ -167,6 +184,7 @@ export class NotificationsService {
           },
         });
         created++;
+        newlyCreated.push(item);
       } else if (!row.resolvedAt) {
         await this.prisma.notification.update({
           where: { tenantId_dedupeKey: { tenantId, dedupeKey: item.dedupeKey } },
@@ -187,7 +205,89 @@ export class NotificationsService {
       autoResolved = result.count;
     }
 
+    // Email only about what's genuinely NEW this run, never a rehash of
+    // still-open items - same "don't re-alert about something already
+    // known to be true" principle the dedupe logic above already applies
+    // to the in-app list (see that block's own comment). Also only ever
+    // from the cron (opts.sendEmail) - see syncAllTenants's comment on why
+    // the on-demand sync path never triggers this.
+    if (opts.sendEmail && newlyCreated.length > 0) {
+      await this.sendDigestEmail(tenantId, newlyCreated);
+    }
+
     return { created, updated, autoResolved };
+  }
+
+  async getEmailPreferences(tenantId: string): Promise<{ emailEnabled: boolean; emailTypes: NotificationType[] }> {
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { notifyEmailEnabled: true, notifyEmailTypes: true },
+    });
+    return { emailEnabled: tenant.notifyEmailEnabled, emailTypes: tenant.notifyEmailTypes };
+  }
+
+  updateEmailPreferences(
+    tenantId: string,
+    prefs: { emailEnabled: boolean; emailTypes: NotificationType[] },
+  ): Promise<{ emailEnabled: boolean; emailTypes: NotificationType[] }> {
+    return this.prisma.tenant
+      .update({
+        where: { id: tenantId },
+        data: { notifyEmailEnabled: prefs.emailEnabled, notifyEmailTypes: prefs.emailTypes },
+        select: { notifyEmailEnabled: true, notifyEmailTypes: true },
+      })
+      .then((t) => ({ emailEnabled: t.notifyEmailEnabled, emailTypes: t.notifyEmailTypes }));
+  }
+
+  private async sendDigestEmail(tenantId: string, items: CurrentAlert[]): Promise<void> {
+    const prefs = await this.getEmailPreferences(tenantId);
+    if (!prefs.emailEnabled) return;
+
+    const relevant = items.filter((i) => prefs.emailTypes.includes(i.type));
+    if (relevant.length === 0) return;
+
+    const recipients = await this.prisma.user.findMany({
+      where: { tenantId, revokedAt: null, permissions: { has: 'notifications' } },
+      select: { email: true },
+    });
+    if (recipients.length === 0) return;
+
+    const appUrl = process.env.APP_URL ?? 'http://localhost:3001';
+    const plural = relevant.length === 1 ? '' : 's';
+    const subject = `OmniPrint: ${relevant.length} novo${plural} aviso${plural}`;
+
+    const rows = relevant
+      .map(
+        (i) => `
+          <tr>
+            <td style="padding:10px 0;border-bottom:1px solid #e2e5eb;">
+              <div style="font-size:11px;font-weight:600;color:#57606f;text-transform:uppercase;letter-spacing:.04em;">${TYPE_LABEL[i.type]}</div>
+              <div style="font-size:15px;font-weight:600;color:#14181f;margin-top:2px;">${i.title}</div>
+              <div style="font-size:13.5px;color:#57606f;margin-top:2px;">${i.body}</div>
+              <a href="${appUrl}${i.linkHref}" style="font-size:13px;color:#2547d0;text-decoration:none;">Ver detalhes →</a>
+            </td>
+          </tr>`,
+      )
+      .join('');
+
+    const html = `
+      <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;">
+        <h1 style="font-size:18px;color:#14181f;">${relevant.length} novo${plural} aviso${plural} no OmniPrint</h1>
+        <table style="width:100%;border-collapse:collapse;">${rows}</table>
+        <p style="margin-top:20px;">
+          <a href="${appUrl}/notifications" style="font-size:13.5px;color:#2547d0;">Ver todas as notificações no painel →</a>
+        </p>
+      </div>`;
+
+    const text = [
+      `${relevant.length} novo${plural} aviso${plural} no OmniPrint:`,
+      '',
+      ...relevant.map((i) => `[${TYPE_LABEL[i.type]}] ${i.title} - ${i.body} (${appUrl}${i.linkHref})`),
+      '',
+      `Ver todas: ${appUrl}/notifications`,
+    ].join('\n');
+
+    await this.emailService.send({ to: recipients.map((r) => r.email), subject, html, text });
   }
 
   async resolve(tenantId: string, id: string): Promise<Notification> {

@@ -1,10 +1,11 @@
-import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
 import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
+import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 
 @UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/notifications')
@@ -81,5 +82,31 @@ export class NotificationsController {
       data: { readAt: new Date() },
     });
     return { ok: true };
+  }
+
+  // Gated by 'notifications' (not 'settings') - whoever manages this
+  // screen manages its email preferences too, independent of who edits
+  // the company's invoice-facing info in Empresa.
+  @Get('preferences')
+  getPreferences(@Req() req: any) {
+    assertPermission(req, 'notifications');
+    return this.notificationsService.getEmailPreferences(req.tenantId);
+  }
+
+  @Patch('preferences')
+  async updatePreferences(@Req() req: any, @Body() dto: UpdateNotificationPreferencesDto) {
+    assertPermission(req, 'notifications');
+    const prefs = await this.notificationsService.updateEmailPreferences(req.tenantId, dto);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'notification.update_email_preferences',
+      targetType: 'Tenant',
+      targetId: req.tenantId,
+      metadata: prefs,
+    });
+    return prefs;
   }
 }

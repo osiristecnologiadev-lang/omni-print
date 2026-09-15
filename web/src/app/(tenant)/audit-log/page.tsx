@@ -37,6 +37,7 @@ const ACTION_LABEL: Record<string, string> = {
   'invoice.cancel': 'Fatura cancelada',
   'ticket.update': 'Chamado atualizado',
   'notification.resolve': 'Notificação resolvida',
+  'notification.update_email_preferences': 'Preferências de e-mail de notificação alteradas',
   'tenant.update': 'Dados da empresa editados',
   'platform.create_tenant_user': 'Usuário criado pela equipe OmniPrint',
 };

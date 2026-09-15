@@ -1,12 +1,20 @@
 import Link from 'next/link';
 import { forbidden } from 'next/navigation';
-import { getViewerAccess, getNotifications, markAllNotificationsRead, getViewerTimeZone, type Notification } from '@/lib/api';
+import {
+  getViewerAccess,
+  getNotifications,
+  markAllNotificationsRead,
+  getNotificationEmailPreferences,
+  getViewerTimeZone,
+  type Notification,
+  type NotificationType,
+} from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { Badge, type BadgeTone } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
-import { syncNowAction, resolveNotificationAction } from './actions';
+import { syncNowAction, resolveNotificationAction, updateEmailPreferencesAction } from './actions';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
 
@@ -31,6 +39,14 @@ const TYPE_TONE: Record<Notification['type'], BadgeTone> = {
   UNASSIGNED_DEVICE: 'warning',
 };
 
+const ALL_TYPES: NotificationType[] = [
+  'OVERDUE_INVOICE',
+  'EXPIRING_CONTRACT',
+  'CRITICAL_DEVICE_ALERT',
+  'LOW_SUPPLY',
+  'UNASSIGNED_DEVICE',
+];
+
 export default async function NotificationsPage(props: PageProps<'/notifications'>) {
   const searchParams = await props.searchParams;
 
@@ -39,7 +55,11 @@ export default async function NotificationsPage(props: PageProps<'/notifications
     forbidden();
   }
 
-  const [notifications, tz] = await Promise.all([getNotifications(), getViewerTimeZone()]);
+  const [notifications, emailPrefs, tz] = await Promise.all([
+    getNotifications(),
+    getNotificationEmailPreferences(),
+    getViewerTimeZone(),
+  ]);
 
   // Opening this screen is what clears the bell's badge - a deliberate side
   // effect of a page visit (same pattern as most notification centers), not
@@ -67,6 +87,8 @@ export default async function NotificationsPage(props: PageProps<'/notifications
       {searchParams?.sync === 'error' && <Banner tone="error">Não foi possível atualizar as notificações. Tente novamente.</Banner>}
       {searchParams?.resolved === '1' && <Banner tone="success">Notificação resolvida.</Banner>}
       {searchParams?.resolveError === '1' && <Banner tone="error">Não foi possível resolver a notificação. Tente novamente.</Banner>}
+      {searchParams?.prefsSaved === '1' && <Banner tone="success">Preferências de e-mail salvas.</Banner>}
+      {searchParams?.prefsError === '1' && <Banner tone="error">Não foi possível salvar as preferências. Tente novamente.</Banner>}
 
       <Panel className="mb-6">
         <p className="mb-3 text-xs text-ink-faint">
@@ -75,6 +97,32 @@ export default async function NotificationsPage(props: PageProps<'/notifications
         <form action={syncNowAction}>
           <SubmitButton variant="secondary" pendingLabel="Atualizando...">
             Atualizar agora
+          </SubmitButton>
+        </form>
+      </Panel>
+
+      <Panel className="mb-6">
+        <h2 className="mb-1 text-sm font-medium text-ink">Notificações por e-mail</h2>
+        <p className="mb-4 text-xs text-ink-faint">
+          Vem desativado por padrão. Quando ativo, manda no máximo um e-mail por dia (na verificação automática de
+          madrugada - clicar em &quot;Atualizar agora&quot; nunca dispara e-mail), só com o que for realmente novo, e só
+          das categorias marcadas abaixo.
+        </p>
+        <form action={updateEmailPreferencesAction} className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-ink">
+            <input type="checkbox" name="emailEnabled" defaultChecked={emailPrefs.emailEnabled} />
+            Ativar notificações por e-mail
+          </label>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-3">
+            {ALL_TYPES.map((t) => (
+              <label key={t} className="flex items-center gap-2 text-sm text-ink-muted">
+                <input type="checkbox" name="emailTypes" value={t} defaultChecked={emailPrefs.emailTypes.includes(t)} />
+                {TYPE_LABEL[t]}
+              </label>
+            ))}
+          </div>
+          <SubmitButton variant="secondary" pendingLabel="Salvando...">
+            Salvar preferências
           </SubmitButton>
         </form>
       </Panel>
