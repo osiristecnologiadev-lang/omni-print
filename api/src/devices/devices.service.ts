@@ -207,19 +207,40 @@ export class DevicesService {
   // caller - the fleet-wide "how much has been printed this month so far"
   // headline, for the dashboard. No contract needed anywhere in the fleet
   // for this to show real numbers, unlike the "receita garantida" panel.
-  async fleetCurrentMonthPages(tenantId: string, customerId: string | null) {
+  // Also returns the top-N devices by volume (the per-device figures were
+  // already being computed to build the total below - this just stops
+  // discarding them) - feeds the dashboard's "Top impressoras" panel
+  // without a second, separate query.
+  async fleetCurrentMonthPages(tenantId: string, customerId: string | null, topN = 5) {
     const devices = await this.prisma.device.findMany({
       where: { tenantId, ...(customerId ? { customerId } : {}) },
+      include: { customer: { select: { name: true } } },
     });
     const now = new Date();
     const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const perDevice = await Promise.all(devices.map((d) => this.devicePages.pagesInPeriod(d, periodStart, now)));
+    const perDevice = await Promise.all(
+      devices.map(async (d) => ({ device: d, ...(await this.devicePages.pagesInPeriod(d, periodStart, now)) })),
+    );
     const totalPages = perDevice.reduce((sum, r) => sum + r.pages, 0);
+    const topDevices = [...perDevice]
+      .sort((a, b) => b.pages - a.pages)
+      .slice(0, topN)
+      .filter((r) => r.pages > 0)
+      .map((r) => ({
+        deviceId: r.device.id,
+        printerName: r.device.printerName,
+        name: r.device.name,
+        customLabel: r.device.customLabel,
+        host: r.device.host,
+        customerName: r.device.customer?.name ?? null,
+        pages: r.pages,
+      }));
     return {
       periodStart: periodStart.toISOString(),
       periodEnd: now.toISOString(),
       totalPages,
       deviceCount: devices.length,
+      topDevices,
     };
   }
 

@@ -539,11 +539,22 @@ export function getDeviceCurrentMonthPages(deviceId: string): Promise<DeviceCurr
   return apiFetch<DeviceCurrentMonthPages>(`/v1/devices/${deviceId}/current-month-pages`);
 }
 
+export interface FleetTopDevice {
+  deviceId: string;
+  printerName: string | null;
+  name: string | null;
+  customLabel: string | null;
+  host: string;
+  customerName: string | null;
+  pages: number;
+}
+
 export interface FleetCurrentMonthPages {
   periodStart: string;
   periodEnd: string;
   totalPages: number;
   deviceCount: number;
+  topDevices: FleetTopDevice[];
 }
 
 export function getFleetCurrentMonthPages(): Promise<FleetCurrentMonthPages> {

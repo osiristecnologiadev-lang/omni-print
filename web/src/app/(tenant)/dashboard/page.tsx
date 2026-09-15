@@ -102,6 +102,16 @@ export default async function DashboardPage() {
   const warningCount = healths.filter((h) => h.tone === 'warning').length;
   const okCount = devices.length - criticalCount - warningCount;
 
+  // Same current-period customer data the "Receita garantida" panel above
+  // already fetches, just re-ranked by print VOLUME instead of revenue -
+  // deliberately not a copy of that panel (which stays sorted by totalDue),
+  // so the two together show two different real leaderboards instead of
+  // the same one twice.
+  const topClientsByVolume = currentPeriod
+    ? [...currentPeriod.byCustomer].sort((a, b) => b.totalPages - a.totalPages).slice(0, 5).filter((c) => c.totalPages > 0)
+    : [];
+  const topDevices = currentMonthPages.topDevices;
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <PageHeader
@@ -257,6 +267,46 @@ export default async function DashboardPage() {
             ))}
           </ul>
         </Panel>
+      )}
+
+      {isTenantWide && (topClientsByVolume.length > 0 || topDevices.length > 0) && (
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {topClientsByVolume.length > 0 && (
+            <Panel>
+              <h2 className="mb-1 text-sm font-medium text-ink">Top clientes</h2>
+              <p className="mb-3 text-xs text-ink-faint">Por páginas impressas este mês.</p>
+              <ol className="space-y-2">
+                {topClientsByVolume.map((c, i) => (
+                  <li key={c.customerId} className="flex items-center gap-3 text-sm">
+                    <span className="w-4 shrink-0 tabular-nums text-ink-faint">{i + 1}º</span>
+                    <Link href={`/customers/${c.customerId}`} className="flex-1 truncate text-ink transition-colors hover:text-accent">
+                      {c.customerName}
+                    </Link>
+                    <span className="tabular-nums text-ink-muted">{formatPageCount(c.totalPages)} pág.</span>
+                  </li>
+                ))}
+              </ol>
+            </Panel>
+          )}
+          {topDevices.length > 0 && (
+            <Panel>
+              <h2 className="mb-1 text-sm font-medium text-ink">Top impressoras</h2>
+              <p className="mb-3 text-xs text-ink-faint">Por páginas impressas este mês.</p>
+              <ol className="space-y-2">
+                {topDevices.map((d, i) => (
+                  <li key={d.deviceId} className="flex items-center gap-3 text-sm">
+                    <span className="w-4 shrink-0 tabular-nums text-ink-faint">{i + 1}º</span>
+                    <Link href={`/devices/${d.deviceId}`} className="min-w-0 flex-1 text-ink transition-colors hover:text-accent">
+                      <span className="block truncate">{d.customLabel ?? d.printerName ?? d.name ?? d.host}</span>
+                      {d.customerName && <span className="block truncate text-xs text-ink-faint">{d.customerName}</span>}
+                    </Link>
+                    <span className="tabular-nums text-ink-muted">{formatPageCount(d.pages)} pág.</span>
+                  </li>
+                ))}
+              </ol>
+            </Panel>
+          )}
+        </div>
       )}
 
       {devices.length > 0 && (

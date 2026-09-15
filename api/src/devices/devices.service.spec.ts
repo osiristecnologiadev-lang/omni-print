@@ -97,6 +97,52 @@ describe('DevicesService.fleetCurrentMonthPages', () => {
     expect(result.totalPages).toBe(0);
     expect(result.deviceCount).toBe(0);
   });
+
+  // Feeds the dashboard's "Top impressoras" panel - the per-device figures
+  // were already computed to build totalPages above, this just exposes the
+  // top ones instead of discarding them after the sum.
+  it('returns the top devices by volume, sorted descending', async () => {
+    prisma.device.findMany.mockResolvedValue([
+      { id: 'd1', printerName: 'HP LaserJet', name: null, customLabel: null, host: '10.0.0.1', customer: { name: 'Acme' } },
+      { id: 'd2', printerName: 'Brother', name: null, customLabel: 'Recepção', host: '10.0.0.2', customer: { name: 'Beta' } },
+      { id: 'd3', printerName: 'Epson', name: null, customLabel: null, host: '10.0.0.3', customer: null },
+    ]);
+    devicePages.pagesInPeriod
+      .mockResolvedValueOnce({ pages: 100 })
+      .mockResolvedValueOnce({ pages: 900 })
+      .mockResolvedValueOnce({ pages: 50 });
+
+    const result = await service.fleetCurrentMonthPages('t1', null);
+
+    expect(result.topDevices.map((d: { deviceId: string; pages: number }) => [d.deviceId, d.pages])).toEqual([
+      ['d2', 900],
+      ['d1', 100],
+      ['d3', 50],
+    ]);
+    expect(result.topDevices[0]).toEqual(
+      expect.objectContaining({ customLabel: 'Recepção', customerName: 'Beta', printerName: 'Brother' }),
+    );
+    expect(result.topDevices[2].customerName).toBeNull();
+  });
+
+  it('caps topDevices at topN and excludes devices with zero pages this month', async () => {
+    prisma.device.findMany.mockResolvedValue([
+      { id: 'd1', printerName: 'A', name: null, customLabel: null, host: 'h1', customer: null },
+      { id: 'd2', printerName: 'B', name: null, customLabel: null, host: 'h2', customer: null },
+      { id: 'd3', printerName: 'C', name: null, customLabel: null, host: 'h3', customer: null },
+      { id: 'd4', printerName: 'D (parada)', name: null, customLabel: null, host: 'h4', customer: null },
+    ]);
+    devicePages.pagesInPeriod
+      .mockResolvedValueOnce({ pages: 10 })
+      .mockResolvedValueOnce({ pages: 20 })
+      .mockResolvedValueOnce({ pages: 30 })
+      .mockResolvedValueOnce({ pages: 0 });
+
+    const result = await service.fleetCurrentMonthPages('t1', null, 2);
+
+    expect(result.topDevices).toHaveLength(2);
+    expect(result.topDevices.map((d: { deviceId: string }) => d.deviceId)).toEqual(['d3', 'd2']);
+  });
 });
 
 // pageTrend used to bucket purely off the engine/mechanism counter
