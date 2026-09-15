@@ -74,6 +74,16 @@ function DownloadIcon() {
   );
 }
 
+function DevicesIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="3" y="3.5" width="14" height="8" rx="1.4" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M6 15h8M10 11.5V15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <circle cx="13.2" cy="7.3" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
 function TicketsIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -108,6 +118,12 @@ export default async function TenantLayout({ children }: { children: React.React
           {hasPermission(access, 'customers') && (
             <SidebarLink href="/customers" icon={<CustomersIcon />} label="Clientes" />
           )}
+          {/* Same "any authenticated session, no dedicated permission gate"
+              rule GET /v1/devices itself already applies (unlike the PATCH
+              that reassigns one, which needs the 'devices' permission) - a
+              customer-scoped user browsing here just sees their own fleet,
+              same as the dashboard's own device table already shows them. */}
+          <SidebarLink href="/devices" icon={<DevicesIcon />} label="Dispositivos" />
           {hasPermission(access, 'reports') && (
             <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
           )}

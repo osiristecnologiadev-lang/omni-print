@@ -3,9 +3,20 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { StatusBadge } from './StatusBadge';
-import type { Health } from '@/lib/health';
-import type { Device } from '@/lib/api';
+import type { Health, HealthTone } from '@/lib/health';
+import type { Customer, Device } from '@/lib/api';
 import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
+
+const STATUS_FILTER_OPTIONS: Array<{ value: HealthTone | 'all'; label: string }> = [
+  { value: 'all', label: 'Todos os status' },
+  { value: 'ok', label: 'Normal' },
+  { value: 'warning', label: 'Atenção' },
+  { value: 'critical', label: 'Crítico' },
+  { value: 'neutral', label: 'Sem dados' },
+];
+
+const selectClass =
+  'rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
 
 export interface DeviceRow extends Device {
   health: Health;
@@ -38,6 +49,8 @@ export function DeviceFleetTable({
   devices,
   isTenantWide,
   revenueByDeviceId,
+  customers,
+  showStatusFilter,
 }: {
   devices: DeviceRow[];
   isTenantWide: boolean;
@@ -49,47 +62,88 @@ export function DeviceFleetTable({
   // "not applicable"). See ContractsService's allocateUsageRevenue for why
   // this is an estimate, not a literal per-device bill.
   revenueByDeviceId?: Map<string, number>;
+  // Only the dedicated /devices page passes these two - the dashboard and
+  // a single customer's own device list don't need "which customer" (the
+  // customer page is already scoped to one) or a status breakdown (the
+  // dashboard already has its own stat tiles for that).
+  customers?: Customer[];
+  showStatusFilter?: boolean;
 }) {
   const [query, setQuery] = useState('');
+  const [customerFilter, setCustomerFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<HealthTone | 'all'>('all');
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return devices;
     return devices.filter((d) => {
-      const haystack = [
-        d.customLabel,
-        d.printerName,
-        d.name,
-        d.host,
-        d.serialNumber,
-        d.customer?.name,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(q);
+      if (q) {
+        const haystack = [d.customLabel, d.printerName, d.name, d.host, d.serialNumber, d.customer?.name]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (customerFilter === 'unassigned' && d.customerId != null) return false;
+      if (customerFilter !== 'all' && customerFilter !== 'unassigned' && d.customerId !== customerFilter) return false;
+      if (statusFilter !== 'all') {
+        const matches = statusFilter === 'ok' ? d.health.tone === 'ok' || d.health.tone === 'info' : d.health.tone === statusFilter;
+        if (!matches) return false;
+      }
+      return true;
     });
-  }, [devices, query]);
+  }, [devices, query, customerFilter, statusFilter]);
+
+  const hasActiveFilter = query || customerFilter !== 'all' || statusFilter !== 'all';
 
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-surface">
-      <div className="border-b border-line p-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar por nome, apelido, IP ou número de série..."
-          className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent"
+          className="min-w-[220px] flex-1 rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent"
         />
-        {query && (
-          <p className="mt-2 text-xs text-ink-faint">
+        {customers && isTenantWide && (
+          <select
+            value={customerFilter}
+            onChange={(e) => setCustomerFilter(e.target.value)}
+            className={selectClass}
+          >
+            <option value="all">Todos os clientes</option>
+            <option value="unassigned">Não atribuído</option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {showStatusFilter && (
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as HealthTone | 'all')}
+            className={selectClass}
+          >
+            {STATUS_FILTER_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {hasActiveFilter && (
+          <p className="w-full text-xs text-ink-faint">
             {filtered.length} de {devices.length} dispositivo{devices.length === 1 ? '' : 's'}
           </p>
         )}
       </div>
 
       {filtered.length === 0 ? (
-        <p className="p-6 text-center text-sm text-ink-faint">Nenhum dispositivo encontrado para &quot;{query}&quot;.</p>
+        <p className="p-6 text-center text-sm text-ink-faint">
+          {query ? <>Nenhum dispositivo encontrado para &quot;{query}&quot;.</> : 'Nenhum dispositivo encontrado com esses filtros.'}
+        </p>
       ) : (
         // Wide tables (many columns, or a narrow viewport) scroll inside
         // this container instead of getting clipped by the outer
