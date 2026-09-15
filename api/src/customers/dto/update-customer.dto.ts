@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 // Shown on the invoice PDF's "cliente" block - see Customer's schema
 // comment. Renaming a customer isn't exposed here on purpose: name is also
@@ -13,6 +13,11 @@ import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validato
 export class UpdateCustomerDto {
   @IsOptional() @IsString() @MaxLength(32) document?: string;
   @IsOptional() @IsString() @MaxLength(300) address?: string;
+
+  // Same null-clears/undefined-leaves-untouched convention as slaHours*
+  // below - see the schema comment on Customer.notifyEmail for what this
+  // actually controls.
+  @IsOptional() @IsEmail() @MaxLength(200) notifyEmail?: string | null;
 
   @IsOptional() @IsInt() @Min(0) @Max(999) slaHoursLow?: number | null;
   @IsOptional() @IsInt() @Min(0) @Max(999) slaHoursMedium?: number | null;

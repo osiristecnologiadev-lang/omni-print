@@ -19,6 +19,12 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   UNASSIGNED_DEVICE: 'Sem cliente',
 };
 
+// The only two categories a tenant's own CLIENT can ever be emailed about
+// (Customer.notifyEmail) - never billing/contract categories, and never
+// configurable wider than this, see the schema comment on
+// Customer.notifyEmail for why this boundary is fixed, not a preference.
+const CUSTOMER_NOTIFIABLE_TYPES: NotificationType[] = ['CRITICAL_DEVICE_ALERT', 'LOW_SUPPLY'];
+
 interface CurrentAlert {
   type: NotificationType;
   dedupeKey: string;
@@ -27,6 +33,9 @@ interface CurrentAlert {
   // App path to the thing this notification is about - see the schema
   // comment on Notification.linkHref.
   linkHref: string;
+  // Which of the tenant's own clients this is about, if any - see the
+  // schema comment on Notification.customerId.
+  customerId: string | null;
 }
 
 @Injectable()
@@ -84,6 +93,7 @@ export class NotificationsService {
         // No per-invoice detail page exists (only a list per customer) -
         // the list is the closest real destination.
         linkHref: `/customers/${inv.customerId}/invoices`,
+        customerId: inv.customerId,
       });
     }
 
@@ -94,6 +104,7 @@ export class NotificationsService {
         title: `Contrato próximo do fim: ${c.customer.name}`,
         body: `Vence em ${fmtDate(c.endDate)}.`,
         linkHref: `/customers/${c.customerId}/contract`,
+        customerId: c.customerId,
       });
     }
 
@@ -104,6 +115,7 @@ export class NotificationsService {
         title: `Alerta crítico: ${a.deviceName}`,
         body: a.description ?? 'Alerta crítico reportado pelo dispositivo.',
         linkHref: `/devices/${a.deviceId}`,
+        customerId: a.customerId,
       });
     }
 
@@ -119,6 +131,7 @@ export class NotificationsService {
         title: `Suprimento baixo: ${s.deviceName} · ${s.description}`,
         body: detail,
         linkHref: `/devices/${s.deviceId}`,
+        customerId: s.customerId,
       });
     }
 
@@ -140,6 +153,7 @@ export class NotificationsService {
         title: `Dispositivo sem cliente: ${deviceName}`,
         body: `${d.host}${d.serialNumber ? ` · nº série ${d.serialNumber}` : ''} - atribua um cliente para que este dispositivo entre no faturamento.`,
         linkHref: `/devices/${d.id}`,
+        customerId: null, // by definition - that's the whole point of this notification type
       });
     }
 
@@ -181,6 +195,7 @@ export class NotificationsService {
             title: item.title,
             body: item.body,
             linkHref: item.linkHref,
+            customerId: item.customerId,
           },
         });
         created++;
@@ -188,7 +203,7 @@ export class NotificationsService {
       } else if (!row.resolvedAt) {
         await this.prisma.notification.update({
           where: { tenantId_dedupeKey: { tenantId, dedupeKey: item.dedupeKey } },
-          data: { title: item.title, body: item.body, linkHref: item.linkHref },
+          data: { title: item.title, body: item.body, linkHref: item.linkHref, customerId: item.customerId },
         });
         updated++;
       }
@@ -243,20 +258,56 @@ export class NotificationsService {
     const prefs = await this.getEmailPreferences(tenantId);
     if (!prefs.emailEnabled) return;
 
-    const relevant = items.filter((i) => prefs.emailTypes.includes(i.type));
-    if (relevant.length === 0) return;
+    // Staff digest - whichever categories the tenant opted into, tenant-wide.
+    const forStaff = items.filter((i) => prefs.emailTypes.includes(i.type));
+    if (forStaff.length > 0) {
+      const recipients = await this.prisma.user.findMany({
+        where: { tenantId, revokedAt: null, permissions: { has: 'notifications' } },
+        select: { email: true },
+      });
+      if (recipients.length > 0) {
+        await this.emailService.send({ to: recipients.map((r) => r.email), ...this.buildDigest(forStaff) });
+      }
+    }
 
-    const recipients = await this.prisma.user.findMany({
-      where: { tenantId, revokedAt: null, permissions: { has: 'notifications' } },
-      select: { email: true },
+    // Per-customer digest - a completely separate, fixed-category channel
+    // (see CUSTOMER_NOTIFIABLE_TYPES) independent of the staff categories
+    // above: a client can be told about their own critical alerts even if
+    // staff themselves didn't opt into that category, and vice versa.
+    // Still gated by the same tenant-wide emailEnabled master switch above.
+    const forCustomers = items.filter((i) => i.customerId && CUSTOMER_NOTIFIABLE_TYPES.includes(i.type));
+    if (forCustomers.length === 0) return;
+
+    const customerIds = [...new Set(forCustomers.map((i) => i.customerId as string))];
+    const customers = await this.prisma.customer.findMany({
+      where: { id: { in: customerIds }, notifyEmail: { not: null } },
+      select: { id: true, notifyEmail: true },
     });
-    if (recipients.length === 0) return;
 
+    for (const customer of customers) {
+      const theirItems = forCustomers.filter((i) => i.customerId === customer.id);
+      await this.emailService.send({
+        to: customer.notifyEmail as string,
+        ...this.buildDigest(theirItems, { withAppLinks: false }),
+      });
+    }
+  }
+
+  // withAppLinks: false for the customer-facing channel - a Customer.
+  // notifyEmail contact has no OmniPrint login at all by design (see that
+  // field's schema comment), so every link this digest would otherwise
+  // include (/devices/<id>, /notifications) is a dead end that just
+  // redirects them to a login screen they have no credentials for.
+  private buildDigest(items: CurrentAlert[], opts: { withAppLinks: boolean } = { withAppLinks: true }): {
+    subject: string;
+    html: string;
+    text: string;
+  } {
     const appUrl = process.env.APP_URL ?? 'http://localhost:3001';
-    const plural = relevant.length === 1 ? '' : 's';
-    const subject = `OmniPrint: ${relevant.length} novo${plural} aviso${plural}`;
+    const plural = items.length === 1 ? '' : 's';
+    const subject = `OmniPrint: ${items.length} novo${plural} aviso${plural}`;
 
-    const rows = relevant
+    const rows = items
       .map(
         (i) => `
           <tr>
@@ -264,7 +315,7 @@ export class NotificationsService {
               <div style="font-size:11px;font-weight:600;color:#57606f;text-transform:uppercase;letter-spacing:.04em;">${TYPE_LABEL[i.type]}</div>
               <div style="font-size:15px;font-weight:600;color:#14181f;margin-top:2px;">${i.title}</div>
               <div style="font-size:13.5px;color:#57606f;margin-top:2px;">${i.body}</div>
-              <a href="${appUrl}${i.linkHref}" style="font-size:13px;color:#2547d0;text-decoration:none;">Ver detalhes →</a>
+              ${opts.withAppLinks ? `<a href="${appUrl}${i.linkHref}" style="font-size:13px;color:#2547d0;text-decoration:none;">Ver detalhes →</a>` : ''}
             </td>
           </tr>`,
       )
@@ -272,22 +323,23 @@ export class NotificationsService {
 
     const html = `
       <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;">
-        <h1 style="font-size:18px;color:#14181f;">${relevant.length} novo${plural} aviso${plural} no OmniPrint</h1>
+        <h1 style="font-size:18px;color:#14181f;">${items.length} novo${plural} aviso${plural} no OmniPrint</h1>
         <table style="width:100%;border-collapse:collapse;">${rows}</table>
-        <p style="margin-top:20px;">
-          <a href="${appUrl}/notifications" style="font-size:13.5px;color:#2547d0;">Ver todas as notificações no painel →</a>
-        </p>
+        ${
+          opts.withAppLinks
+            ? `<p style="margin-top:20px;"><a href="${appUrl}/notifications" style="font-size:13.5px;color:#2547d0;">Ver todas as notificações no painel →</a></p>`
+            : ''
+        }
       </div>`;
 
     const text = [
-      `${relevant.length} novo${plural} aviso${plural} no OmniPrint:`,
+      `${items.length} novo${plural} aviso${plural} no OmniPrint:`,
       '',
-      ...relevant.map((i) => `[${TYPE_LABEL[i.type]}] ${i.title} - ${i.body} (${appUrl}${i.linkHref})`),
-      '',
-      `Ver todas: ${appUrl}/notifications`,
+      ...items.map((i) => `[${TYPE_LABEL[i.type]}] ${i.title} - ${i.body}${opts.withAppLinks ? ` (${appUrl}${i.linkHref})` : ''}`),
+      ...(opts.withAppLinks ? ['', `Ver todas: ${appUrl}/notifications`] : []),
     ].join('\n');
 
-    await this.emailService.send({ to: recipients.map((r) => r.email), subject, html, text });
+    return { subject, html, text };
   }
 
   async resolve(tenantId: string, id: string): Promise<Notification> {

@@ -209,6 +209,17 @@ model Customer {
   document String?
   address  String?
 
+  // This customer's own contact, for the device-health-only notification
+  // digest (CRITICAL_DEVICE_ALERT/LOW_SUPPLY - see NotificationsService.
+  // sendDigestEmail's CUSTOMER_NOTIFIABLE_TYPES) - deliberately NOT the
+  // tenant's billing/contract categories, since an automated system alert
+  // about the client's own overdue invoice would cut across a business
+  // relationship the tenant should manage itself, not OmniPrint. No login
+  // implied - just an address someone at the client company reads, same
+  // "contact info, not an account" posture as document/address above.
+  // Still gated by the tenant's own notifyEmailEnabled master switch.
+  notifyEmail String? @map("notify_email")
+
   // Per-customer SLA override for support tickets, in hours - null means
   // "use common/sla.util.ts's global default for this priority" (see
   // resolveSlaHours). Different customers legitimately negotiate different
@@ -229,6 +240,7 @@ model Customer {
   contracts            Contract[]
   invoices             Invoice[]
   tickets              Ticket[]
+  notifications        Notification[]
 
   @@unique([tenantId, name])
   @@map("customers")
@@ -661,6 +673,14 @@ model Notification {
   dedupeKey  String           @map("dedupe_key")
   title      String
   body       String
+  // Which of the tenant's own clients this is about, when it's about one
+  // at all - null for UNASSIGNED_DEVICE (there IS no customer yet) and,
+  // in principle, any future type that isn't customer-specific. Exists
+  // only to scope the customer-facing email digest (see the schema
+  // comment on Customer.notifyEmail) - the in-app list stays tenant-wide
+  // for everyone with the 'notifications' permission regardless of this.
+  customerId String?          @map("customer_id")
+  customer   Customer?        @relation(fields: [customerId], references: [id])
   // Where clicking this notification should take the viewer - the app path
   // to the invoice/contract/device the dedupeKey already identifies (e.g.
   // "/devices/<id>"). Nullable only so a pre-existing row from before this

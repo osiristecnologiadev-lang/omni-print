@@ -22,6 +22,7 @@ import {
   revokeTokenAction,
   revokeEnrollmentCodeAction,
   updateCustomerInfoAction,
+  updateCustomerNotifyEmailAction,
   updateCustomerSlaAction,
 } from './actions';
 import { PageHeader } from '@/components/PageHeader';
@@ -116,6 +117,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
   const boundCreateUser = createCustomerUserAction.bind(null, id);
   const boundRevokeUser = revokeCustomerUserAction.bind(null, id);
   const boundUpdateInfo = updateCustomerInfoAction.bind(null, id);
+  const boundUpdateNotifyEmail = updateCustomerNotifyEmailAction.bind(null, id);
   const boundUpdateSla = updateCustomerSlaAction.bind(null, id);
 
   return (
@@ -212,6 +214,34 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
             />
           </label>
           <SubmitButton variant="secondary" size="sm" className="sm:col-span-2 sm:w-fit" pendingLabel="Salvando...">
+            Salvar
+          </SubmitButton>
+        </form>
+      </Panel>
+
+      <Panel className="mb-6">
+        <h2 className="mb-1 text-sm font-medium text-ink">Notificações por e-mail para &ldquo;{customer.name}&rdquo;</h2>
+        <p className="mb-4 text-xs text-ink-faint">
+          Se preenchido, esse contato recebe um e-mail quando um dispositivo dele tiver um alerta crítico ou
+          suprimento baixo - nunca sobre faturas ou contratos. Depende também do interruptor geral de e-mail estar
+          ativo em Notificações. Deixe em branco para não notificar ninguém do lado do cliente.
+        </p>
+        {searchParams?.notifyEmailSaved === '1' && <Banner tone="success">E-mail de notificação salvo.</Banner>}
+        {searchParams?.notifyEmailError === '1' && (
+          <Banner tone="error">Não foi possível salvar o e-mail de notificação. Tente novamente.</Banner>
+        )}
+        <form action={boundUpdateNotifyEmail} className="flex flex-wrap items-end gap-2">
+          <label className="flex-1 text-xs text-ink-muted">
+            E-mail do cliente
+            <input
+              type="email"
+              name="notifyEmail"
+              defaultValue={customer.notifyEmail ?? ''}
+              placeholder="contato@clientedaoutsource.com"
+              className={`${inputClass} w-full`}
+            />
+          </label>
+          <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
             Salvar
           </SubmitButton>
         </form>

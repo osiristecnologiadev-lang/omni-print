@@ -37,6 +37,7 @@ export class CustomersService {
     data: {
       document?: string;
       address?: string;
+      notifyEmail?: string | null;
       slaHoursLow?: number | null;
       slaHoursMedium?: number | null;
       slaHoursHigh?: number | null;

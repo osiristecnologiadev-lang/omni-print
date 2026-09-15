@@ -118,6 +118,21 @@ export async function updateCustomerInfoAction(customerId: string, formData: For
   redirect(`/customers/${customerId}?infoSaved=1`);
 }
 
+// Same explicit-null-clears convention as slaHoursField below - an empty
+// field really does mean "stop emailing this contact", not "leave it
+// alone", so it has to be sent as null rather than omitted.
+export async function updateCustomerNotifyEmailAction(customerId: string, formData: FormData) {
+  const notifyEmail = String(formData.get('notifyEmail') ?? '').trim() || null;
+
+  try {
+    await updateCustomer(customerId, { notifyEmail });
+  } catch {
+    redirect(`/customers/${customerId}?notifyEmailError=1`);
+  }
+  revalidatePath(`/customers/${customerId}`);
+  redirect(`/customers/${customerId}?notifyEmailSaved=1`);
+}
+
 // An empty field means "use the global default" - sent as null (explicit
 // clear) rather than omitted, so a previously-set override actually gets
 // removed instead of silently staying in place (see UpdateCustomerDto's

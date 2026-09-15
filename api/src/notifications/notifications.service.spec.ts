@@ -22,6 +22,7 @@ describe('NotificationsService.syncNotifications', () => {
     };
     user: { findMany: jest.Mock };
     tenant: { findUniqueOrThrow: jest.Mock; update: jest.Mock };
+    customer: { findMany: jest.Mock };
   };
   let invoicesService: { alerts: jest.Mock };
   let devicesService: { activeAlerts: jest.Mock; lowSupplyForecast: jest.Mock; listUnassigned: jest.Mock };
@@ -46,6 +47,7 @@ describe('NotificationsService.syncNotifications', () => {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ notifyEmailEnabled: true, notifyEmailTypes: ['UNASSIGNED_DEVICE'] }),
         update: jest.fn(),
       },
+      customer: { findMany: jest.fn().mockResolvedValue([]) },
     };
     invoicesService = { alerts: jest.fn().mockResolvedValue({ overdueInvoices: [], expiringContracts: [] }) };
     devicesService = {
@@ -226,6 +228,94 @@ describe('NotificationsService.syncNotifications', () => {
       expect(call.subject).toContain('1 novo aviso');
       expect(call.html).toContain('Dispositivo sem cliente: HP LaserJet');
       expect(call.html).not.toContain('Xerox');
+    });
+  });
+
+  describe('customer-facing digest email', () => {
+    it('emails a customer with notifyEmail set about their own critical device alert, with no app links', async () => {
+      mockPrefs(true, []); // staff selected nothing - customer channel is independent
+      devicesService.activeAlerts.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'Xerox', severity: 'critical', code: 42, customerId: 'cust-1' },
+      ]);
+      prisma.customer.findMany.mockResolvedValue([{ id: 'cust-1', notifyEmail: 'cliente@empresaX.com' }]);
+
+      await service.syncNotifications('tenant-1', { sendEmail: true });
+
+      expect(prisma.customer.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['cust-1'] }, notifyEmail: { not: null } },
+        select: { id: true, notifyEmail: true },
+      });
+      expect(emailService.send).toHaveBeenCalledTimes(1);
+      const call = emailService.send.mock.calls[0][0];
+      expect(call.to).toBe('cliente@empresaX.com');
+      expect(call.html).toContain('Alerta crítico: Xerox');
+      expect(call.html).not.toContain('Ver detalhes');
+      expect(call.html).not.toContain('/devices/dev-1');
+      expect(call.text).not.toContain('/devices/dev-1');
+    });
+
+    it('never emails a customer about billing/contract categories, even with notifyEmail set and customerId present', async () => {
+      mockPrefs(true, ['OVERDUE_INVOICE']);
+      invoicesService.alerts.mockResolvedValue({
+        overdueInvoices: [{ id: 'inv-1', customerId: 'cust-1', customer: { name: 'Empresa X' }, dueDate: new Date(), totalDue: '100' }],
+        expiringContracts: [],
+      });
+      prisma.customer.findMany.mockResolvedValue([{ id: 'cust-1', notifyEmail: 'cliente@empresaX.com' }]);
+      prisma.user.findMany.mockResolvedValue([{ email: 'admin@empresa.com' }]);
+
+      await service.syncNotifications('tenant-1', { sendEmail: true });
+
+      // Staff still gets it (OVERDUE_INVOICE is in their selected types) -
+      // but the customer lookup for this category never happens at all.
+      expect(prisma.customer.findMany).not.toHaveBeenCalled();
+      expect(emailService.send).toHaveBeenCalledTimes(1);
+      expect(emailService.send.mock.calls[0][0].to).toEqual(['admin@empresa.com']);
+    });
+
+    it('skips a customer with a matching alert but no notifyEmail configured', async () => {
+      mockPrefs(true, []);
+      devicesService.lowSupplyForecast.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'HP', description: 'Toner preto', customerId: 'cust-1', premature: false, likelyEmptyAlready: false, daysRemaining: 5, estimatedEmptyDate: new Date() },
+      ]);
+      prisma.customer.findMany.mockResolvedValue([]); // the `notifyEmail: { not: null }` filter excludes it
+
+      await service.syncNotifications('tenant-1', { sendEmail: true });
+
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('respects the tenant master switch for the customer channel too', async () => {
+      mockPrefs(false, []);
+      devicesService.activeAlerts.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'Xerox', severity: 'critical', code: 42, customerId: 'cust-1' },
+      ]);
+
+      await service.syncNotifications('tenant-1', { sendEmail: true });
+
+      expect(prisma.customer.findMany).not.toHaveBeenCalled();
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('sends each customer only their own items when two customers have alerts in the same sync', async () => {
+      mockPrefs(true, []);
+      devicesService.activeAlerts.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'Xerox A', severity: 'critical', code: 1, customerId: 'cust-1' },
+        { deviceId: 'dev-2', deviceName: 'Xerox B', severity: 'critical', code: 2, customerId: 'cust-2' },
+      ]);
+      prisma.customer.findMany.mockResolvedValue([
+        { id: 'cust-1', notifyEmail: 'a@empresaA.com' },
+        { id: 'cust-2', notifyEmail: 'b@empresaB.com' },
+      ]);
+
+      await service.syncNotifications('tenant-1', { sendEmail: true });
+
+      expect(emailService.send).toHaveBeenCalledTimes(2);
+      const toA = emailService.send.mock.calls.find((c) => c[0].to === 'a@empresaA.com')[0];
+      const toB = emailService.send.mock.calls.find((c) => c[0].to === 'b@empresaB.com')[0];
+      expect(toA.html).toContain('Xerox A');
+      expect(toA.html).not.toContain('Xerox B');
+      expect(toB.html).toContain('Xerox B');
+      expect(toB.html).not.toContain('Xerox A');
     });
   });
 

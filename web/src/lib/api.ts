@@ -31,6 +31,11 @@ export interface Customer {
   address: string | null;
   createdAt: string;
   _count?: { devices: number };
+  // This customer's own contact for the device-health-only notification
+  // digest (critical alerts + low supply, never billing) - null means no
+  // one at the client gets emailed. See the API's schema comment on
+  // Customer.notifyEmail for the full reasoning.
+  notifyEmail: string | null;
   // Per-customer SLA override for support tickets, in hours - null means
   // "use the global default for that priority" (see api's common/sla.util.ts).
   slaHoursLow: number | null;
@@ -44,6 +49,7 @@ export function updateCustomer(
   input: {
     document?: string;
     address?: string;
+    notifyEmail?: string | null;
     slaHoursLow?: number | null;
     slaHoursMedium?: number | null;
     slaHoursHigh?: number | null;
