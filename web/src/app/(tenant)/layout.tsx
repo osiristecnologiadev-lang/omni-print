@@ -5,6 +5,7 @@ import { LogoutButton } from "@/components/LogoutButton";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBell } from "@/components/NotificationBell";
+import { GlobalSearch } from "@/components/GlobalSearch";
 
 const NAV_ROW =
   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink";
@@ -106,13 +107,23 @@ export default async function TenantLayout({ children }: { children: React.React
   }
 
   const access = await getViewerAccess();
+  const isTenantWide = !session.customerId;
 
   return (
     <div className="flex">
       <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-surface px-3 py-4">
-        <Link href="/dashboard" className="mb-6 flex items-center gap-2 px-2 transition-opacity hover:opacity-80">
+        <Link href="/dashboard" className="mb-4 flex items-center gap-2 px-2 transition-opacity hover:opacity-80">
           <Logo />
         </Link>
+
+        {/* Tenant-wide only - a customer-scoped session's own nav is
+            already small (own devices/tickets), no cross-entity jump to
+            search for. */}
+        {isTenantWide && (
+          <div className="mb-4">
+            <GlobalSearch />
+          </div>
+        )}
 
         <nav className="flex flex-1 flex-col gap-1">
           {hasPermission(access, 'customers') && (
