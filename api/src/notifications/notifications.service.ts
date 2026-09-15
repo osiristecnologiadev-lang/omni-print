@@ -15,6 +15,9 @@ interface CurrentAlert {
   dedupeKey: string;
   title: string;
   body: string;
+  // App path to the thing this notification is about - see the schema
+  // comment on Notification.linkHref.
+  linkHref: string;
 }
 
 @Injectable()
@@ -65,6 +68,9 @@ export class NotificationsService {
         dedupeKey: `invoice:${inv.id}`,
         title: `Fatura vencida: ${inv.customer.name}`,
         body: `Vencida em ${fmtDate(inv.dueDate)}, R$ ${Number(inv.totalDue).toFixed(2)}.`,
+        // No per-invoice detail page exists (only a list per customer) -
+        // the list is the closest real destination.
+        linkHref: `/customers/${inv.customerId}/invoices`,
       });
     }
 
@@ -74,6 +80,7 @@ export class NotificationsService {
         dedupeKey: `contract:${c.id}`,
         title: `Contrato próximo do fim: ${c.customer.name}`,
         body: `Vence em ${fmtDate(c.endDate)}.`,
+        linkHref: `/customers/${c.customerId}/contract`,
       });
     }
 
@@ -83,6 +90,7 @@ export class NotificationsService {
         dedupeKey: `device-alert:${a.deviceId}:${a.code ?? a.description ?? 'critical'}`,
         title: `Alerta crítico: ${a.deviceName}`,
         body: a.description ?? 'Alerta crítico reportado pelo dispositivo.',
+        linkHref: `/devices/${a.deviceId}`,
       });
     }
 
@@ -97,6 +105,7 @@ export class NotificationsService {
         dedupeKey: `supply:${s.deviceId}:${s.description}`,
         title: `Suprimento baixo: ${s.deviceName} · ${s.description}`,
         body: detail,
+        linkHref: `/devices/${s.deviceId}`,
       });
     }
 
@@ -117,6 +126,7 @@ export class NotificationsService {
         dedupeKey: `unassigned-device:${d.id}`,
         title: `Dispositivo sem cliente: ${deviceName}`,
         body: `${d.host}${d.serialNumber ? ` · nº série ${d.serialNumber}` : ''} - atribua um cliente para que este dispositivo entre no faturamento.`,
+        linkHref: `/devices/${d.id}`,
       });
     }
 
@@ -147,13 +157,20 @@ export class NotificationsService {
       const row = existingByKey.get(item.dedupeKey);
       if (!row) {
         await this.prisma.notification.create({
-          data: { tenantId, type: item.type, dedupeKey: item.dedupeKey, title: item.title, body: item.body },
+          data: {
+            tenantId,
+            type: item.type,
+            dedupeKey: item.dedupeKey,
+            title: item.title,
+            body: item.body,
+            linkHref: item.linkHref,
+          },
         });
         created++;
       } else if (!row.resolvedAt) {
         await this.prisma.notification.update({
           where: { tenantId_dedupeKey: { tenantId, dedupeKey: item.dedupeKey } },
-          data: { title: item.title, body: item.body },
+          data: { title: item.title, body: item.body, linkHref: item.linkHref },
         });
         updated++;
       }

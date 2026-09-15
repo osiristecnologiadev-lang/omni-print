@@ -113,6 +113,9 @@ export interface Notification {
   type: 'OVERDUE_INVOICE' | 'EXPIRING_CONTRACT' | 'CRITICAL_DEVICE_ALERT' | 'LOW_SUPPLY' | 'UNASSIGNED_DEVICE';
   title: string;
   body: string;
+  // Null only for a row created before this field existed - see the
+  // schema comment on Notification.linkHref.
+  linkHref: string | null;
   createdAt: string;
   updatedAt: string;
   readAt: string | null;

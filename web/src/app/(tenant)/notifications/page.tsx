@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { forbidden } from 'next/navigation';
 import { getViewerAccess, getNotifications, markAllNotificationsRead, getViewerTimeZone, type Notification } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
@@ -91,16 +92,29 @@ export default async function NotificationsPage(props: PageProps<'/notifications
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <Badge tone={TYPE_TONE[n.type]}>{TYPE_LABEL[n.type]}</Badge>
-                        <span className="font-medium text-ink">{n.title}</span>
+                        {n.linkHref ? (
+                          <Link href={n.linkHref} className="font-medium text-ink transition-colors hover:text-accent hover:underline">
+                            {n.title}
+                          </Link>
+                        ) : (
+                          <span className="font-medium text-ink">{n.title}</span>
+                        )}
                       </div>
                       <span className="shrink-0 text-xs text-ink-faint">{formatDateTime(n.updatedAt, tz)}</span>
                     </div>
                     <p className="text-sm text-ink-muted">{n.body}</p>
-                    <form action={boundResolve} className="mt-3">
-                      <SubmitButton variant="ghost" size="sm" pendingLabel="Resolvendo...">
-                        Resolver
-                      </SubmitButton>
-                    </form>
+                    <div className="mt-3 flex items-center gap-4">
+                      <form action={boundResolve}>
+                        <SubmitButton variant="ghost" size="sm" pendingLabel="Resolvendo...">
+                          Resolver
+                        </SubmitButton>
+                      </form>
+                      {n.linkHref && (
+                        <Link href={n.linkHref} className="text-xs font-medium text-ink-muted transition-colors hover:text-accent">
+                          Ver detalhes →
+                        </Link>
+                      )}
+                    </div>
                   </Panel>
                 );
               })}
@@ -116,7 +130,13 @@ export default async function NotificationsPage(props: PageProps<'/notifications
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <Badge tone="neutral">{TYPE_LABEL[n.type]}</Badge>
-                        <span className="font-medium text-ink">{n.title}</span>
+                        {n.linkHref ? (
+                          <Link href={n.linkHref} className="font-medium text-ink transition-colors hover:text-accent hover:underline">
+                            {n.title}
+                          </Link>
+                        ) : (
+                          <span className="font-medium text-ink">{n.title}</span>
+                        )}
                       </div>
                       <span className="shrink-0 text-xs text-ink-faint">
                         resolvida em {formatDateTime(n.resolvedAt as string, tz)}

@@ -651,6 +651,13 @@ model Notification {
   dedupeKey  String           @map("dedupe_key")
   title      String
   body       String
+  // Where clicking this notification should take the viewer - the app path
+  // to the invoice/contract/device the dedupeKey already identifies (e.g.
+  // "/devices/<id>"). Nullable only so a pre-existing row from before this
+  // field existed still renders (as plain, unlinked text) rather than
+  // breaking - every notification created/refreshed from here on always
+  // sets it, see NotificationsService.collectCurrentAlerts.
+  linkHref   String?          @map("link_href")
   createdAt  DateTime         @default(now()) @map("created_at")
   updatedAt  DateTime         @updatedAt @map("updated_at")
   // Shared across the tenant's own users (no per-user state, same

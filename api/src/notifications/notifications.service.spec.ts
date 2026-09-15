@@ -66,6 +66,7 @@ describe('NotificationsService.syncNotifications', () => {
         dedupeKey: 'unassigned-device:dev-1',
         title: 'Dispositivo sem cliente: HP LaserJet',
         body: expect.stringContaining('SN123'),
+        linkHref: '/devices/dev-1',
       }),
     });
     expect(prisma.notification.create).toHaveBeenCalledWith({
