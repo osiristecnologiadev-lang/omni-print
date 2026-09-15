@@ -62,6 +62,13 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
         title="Faturas"
         subtitle="Histórico de cobrança gerado a partir do contrato - cada fatura fica registrada com os valores exatos daquele mês, mesmo que o contrato mude depois."
         back={customer ? { href: `/customers/${id}`, label: customer.name } : undefined}
+        actions={
+          invoices.length > 0 ? (
+            <a href={`/customers/${id}/invoices/export`} className="text-sm text-accent hover:underline">
+              Exportar CSV
+            </a>
+          ) : undefined
+        }
       />
 
       {searchParams?.generated === '1' && <Banner tone="success">Fatura gerada.</Banner>}

@@ -78,7 +78,14 @@ export default async function ReportsPage(props: PageProps<'/reports'>) {
       </Panel>
 
       <Panel>
-        <h2 className="mb-4 text-sm font-medium text-ink">Por cliente</h2>
+        <div className="mb-4 flex items-baseline justify-between gap-3">
+          <h2 className="text-sm font-medium text-ink">Por cliente</h2>
+          {report.byCustomer.length > 0 && (
+            <a href={`/reports/export?months=${months}`} className="text-xs text-accent hover:underline">
+              Exportar CSV
+            </a>
+          )}
+        </div>
         {report.byCustomer.length === 0 ? (
           <EmptyState title="Nenhum cliente faturado neste período" hint="Gere faturas para ver o comparativo aqui." />
         ) : (
