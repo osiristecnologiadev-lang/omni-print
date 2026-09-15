@@ -438,9 +438,10 @@ model User {
   // change, not a migration.
   permissions String[] @default([])
 
-  createdTickets  Ticket[]        @relation("TicketCreatedBy")
-  assignedTickets Ticket[]        @relation("TicketAssignedTo")
-  ticketComments  TicketComment[]
+  createdTickets      Ticket[]           @relation("TicketCreatedBy")
+  assignedTickets     Ticket[]           @relation("TicketAssignedTo")
+  ticketComments      TicketComment[]
+  ticketAttachments   TicketAttachment[]
 
   @@map("users")
 }
@@ -649,6 +650,12 @@ enum NotificationType {
   // only a human sorting it out can). Without this alert, an unassigned
   // device silently misses billing for whatever period it sits unassigned.
   UNASSIGNED_DEVICE
+  // An open ticket (not RESOLVED/CLOSED) whose slaDueAt has already passed -
+  // an internal accountability signal for staff, deliberately never sent to
+  // a Customer.notifyEmail contact (see CUSTOMER_NOTIFIABLE_TYPES) - telling
+  // the client "we're failing our own SLA with you" isn't something an
+  // automated alert should do on the tenant's behalf.
+  TICKET_SLA_BREACH
 }
 
 // One row per distinct issue (not per day) - dedupeKey is the stable
@@ -757,7 +764,8 @@ model Ticket {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  comments TicketComment[]
+  comments    TicketComment[]
+  attachments TicketAttachment[]
 
   @@index([tenantId, status])
   @@index([tenantId, customerId])
@@ -765,11 +773,14 @@ model Ticket {
 }
 
 // A flat comment thread, visible to both sides (tenant staff and the
-// customer who opened the ticket) - matches Printwayy's own described
-// "comment sections for status updates between technician and client," not
-// a separate internal-notes channel (that's a real gap vs. some fuller
-// helpdesk products, but wasn't asked for - revisit if the user wants
-// staff-only notes later).
+// customer who opened the ticket) by default - matches Printwayy's own
+// described "comment sections for status updates between technician and
+// client." `internal` (added 2026-09-15) is the staff-only exception: a
+// customer-scoped read (TicketsService.get/list) filters these out
+// entirely, and only a tenant-wide caller can ever set the flag
+// (TicketsService.addComment) - the field exists specifically so staff can
+// leave a note ("esperando peça do fornecedor") without the client seeing
+// it, which a flat shared thread alone can't do.
 model TicketComment {
   id       String @id @default(uuid())
   ticketId String @map("ticket_id")
@@ -779,8 +790,39 @@ model TicketComment {
   authorUser   User   @relation(fields: [authorUserId], references: [id])
 
   body      String
+  internal  Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
+
+  attachments TicketAttachment[]
 
   @@index([ticketId, createdAt])
   @@map("ticket_comments")
+}
+
+// A file attached either directly to the ticket (commentId null - the
+// initial report, alongside `description`, which has no TicketComment row
+// of its own) or to one specific reply. Stored on local disk under
+// storage/ticket-attachments/ - same posture and same persistent Railway
+// volume as AgentReleasesService's STORAGE_ROOT (see that file's comment on
+// why local disk is fine at this project's current scale).
+model TicketAttachment {
+  id       String  @id @default(uuid())
+  ticketId String  @map("ticket_id")
+  ticket   Ticket  @relation(fields: [ticketId], references: [id])
+  commentId String? @map("comment_id")
+  comment   TicketComment? @relation(fields: [commentId], references: [id])
+
+  uploadedByUserId String @map("uploaded_by_user_id")
+  uploadedByUser   User   @relation(fields: [uploadedByUserId], references: [id])
+
+  // Original filename (shown to the user), never trusted as a filesystem
+  // path - storedPath is a server-generated name, see TicketsService.
+  filename   String
+  storedPath String @map("stored_path")
+  sizeBytes  Int    @map("size_bytes")
+  mimeType   String @map("mime_type")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@map("ticket_attachments")
 }

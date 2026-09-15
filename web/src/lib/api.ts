@@ -114,7 +114,13 @@ export function createCheckoutSession(): Promise<{ url: string }> {
   return apiMutate<{ url: string }>('/v1/subscription/checkout', 'POST', {});
 }
 
-export type NotificationType = 'OVERDUE_INVOICE' | 'EXPIRING_CONTRACT' | 'CRITICAL_DEVICE_ALERT' | 'LOW_SUPPLY' | 'UNASSIGNED_DEVICE';
+export type NotificationType =
+  | 'OVERDUE_INVOICE'
+  | 'EXPIRING_CONTRACT'
+  | 'CRITICAL_DEVICE_ALERT'
+  | 'LOW_SUPPLY'
+  | 'UNASSIGNED_DEVICE'
+  | 'TICKET_SLA_BREACH';
 
 export interface Notification {
   id: string;
@@ -376,6 +382,37 @@ async function apiMutate<T>(path: string, method: 'POST' | 'PATCH', body: unknow
     method,
     headers: await authHeaders(),
     body: JSON.stringify(body),
+    cache: 'no-store',
+  });
+  if (res.status === 401) {
+    redirect('/login');
+  }
+  if (res.status === 403) {
+    forbidden();
+  }
+  if (res.status === 402) {
+    redirect('/subscribe');
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+// Separate from apiMutate: a FormData body (ticket attachment upload) needs
+// fetch to set its own multipart boundary in Content-Type - sending the JSON
+// header from authHeaders() alongside it would break the upload. Same
+// reasoning as platform-api.ts's apiSendForm.
+async function apiSendForm<T>(path: string, method: 'POST', form: FormData): Promise<T> {
+  const token = await getSessionToken();
+  if (!token) {
+    redirect('/login');
+  }
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
     cache: 'no-store',
   });
   if (res.status === 401) {
@@ -1016,12 +1053,23 @@ interface TicketPerson {
   email: string;
 }
 
+export interface TicketAttachment {
+  id: string;
+  filename: string;
+  sizeBytes: number;
+  mimeType: string;
+  createdAt: string;
+  uploadedByUser: TicketPerson;
+}
+
 export interface TicketComment {
   id: string;
   ticketId: string;
   body: string;
+  internal: boolean;
   createdAt: string;
   authorUser: TicketPerson;
+  attachments: TicketAttachment[];
 }
 
 export interface Ticket {
@@ -1042,6 +1090,7 @@ export interface Ticket {
   createdByUser: TicketPerson;
   assignedToUser: TicketPerson | null;
   comments?: TicketComment[];
+  attachments?: TicketAttachment[];
 }
 
 // Both sides use this: a customer-scoped session only ever sees its own
@@ -1055,15 +1104,36 @@ export function getTicket(customerId: string, ticketId: string): Promise<Ticket>
   return apiFetch<Ticket>(`/v1/customers/${customerId}/tickets/${ticketId}`);
 }
 
-export function createTicket(
-  customerId: string,
-  input: { subject: string; description: string; priority?: TicketPriority; deviceId?: string },
-): Promise<Ticket> {
-  return apiMutate<Ticket>(`/v1/customers/${customerId}/tickets`, 'POST', input);
+// Takes the raw FormData straight from the creation form (subject,
+// description, priority, deviceId, and an optional `attachment` file) - see
+// apiSendForm's comment on why a file upload can't go through apiMutate.
+export function createTicket(customerId: string, form: FormData): Promise<Ticket> {
+  return apiSendForm<Ticket>(`/v1/customers/${customerId}/tickets`, 'POST', form);
 }
 
-export function addTicketComment(customerId: string, ticketId: string, body: string): Promise<TicketComment> {
-  return apiMutate<TicketComment>(`/v1/customers/${customerId}/tickets/${ticketId}/comments`, 'POST', { body });
+// Same deal: raw FormData with `body`, optional `internal`, optional
+// `attachment`.
+export function addTicketComment(customerId: string, ticketId: string, form: FormData): Promise<TicketComment> {
+  return apiSendForm<TicketComment>(`/v1/customers/${customerId}/tickets/${ticketId}/comments`, 'POST', form);
+}
+
+// Same proxy-through-server-side-auth reasoning as fetchInvoicePdf - used
+// only by the /tickets/[id]/attachments/[attachmentId] route handler.
+export async function fetchTicketAttachment(customerId: string, ticketId: string, attachmentId: string): Promise<Response> {
+  const res = await fetch(`${API_BASE_URL}/v1/customers/${customerId}/tickets/${ticketId}/attachments/${attachmentId}`, {
+    headers: await authHeaders(),
+    cache: 'no-store',
+  });
+  if (res.status === 401) {
+    redirect('/login');
+  }
+  if (res.status === 403) {
+    forbidden();
+  }
+  if (!res.ok) {
+    throw new Error(`API GET ticket attachment failed: ${res.status}`);
+  }
+  return res;
 }
 
 // Tenant-wide only - the staff queue across every customer at once.

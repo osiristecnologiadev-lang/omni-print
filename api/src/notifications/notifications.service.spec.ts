@@ -3,6 +3,7 @@ import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { DevicesService } from '../devices/devices.service';
+import { TicketsService } from '../tickets/tickets.service';
 import { EmailService } from '../email/email.service';
 
 // Focused on the UNASSIGNED_DEVICE source (see the shared-network scenario
@@ -26,6 +27,7 @@ describe('NotificationsService.syncNotifications', () => {
   };
   let invoicesService: { alerts: jest.Mock };
   let devicesService: { activeAlerts: jest.Mock; lowSupplyForecast: jest.Mock; listUnassigned: jest.Mock };
+  let ticketsService: { slaBreached: jest.Mock };
   let emailService: { send: jest.Mock };
 
   // Default: email preferences on, listening to every type used in these
@@ -55,6 +57,7 @@ describe('NotificationsService.syncNotifications', () => {
       lowSupplyForecast: jest.fn().mockResolvedValue([]),
       listUnassigned: jest.fn().mockResolvedValue([]),
     };
+    ticketsService = { slaBreached: jest.fn().mockResolvedValue([]) };
     emailService = { send: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
@@ -63,6 +66,7 @@ describe('NotificationsService.syncNotifications', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: InvoicesService, useValue: invoicesService },
         { provide: DevicesService, useValue: devicesService },
+        { provide: TicketsService, useValue: ticketsService },
         { provide: EmailService, useValue: emailService },
       ],
     }).compile();

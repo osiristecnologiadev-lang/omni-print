@@ -75,7 +75,7 @@ export default async function NewTicketPage(props: PageProps<'/tickets/new'>) {
         <Banner tone="error">Não foi possível abrir o chamado. Confira os dados e tente novamente.</Banner>
       )}
       <Panel>
-        <form action={boundCreate} className="space-y-4">
+        <form action={boundCreate} encType="multipart/form-data" className="space-y-4">
           <label className="block text-xs text-ink-muted">
             Assunto
             <input name="subject" required minLength={3} className={inputClass} placeholder="Ex: Impressora atolando" />
@@ -114,6 +114,15 @@ export default async function NewTicketPage(props: PageProps<'/tickets/new'>) {
               <span className="mt-1 block text-xs text-ink-faint">Apelido — nome capturado da impressora — IP</span>
             </label>
           )}
+          <label className="block text-xs text-ink-muted">
+            Anexo (opcional) — imagem ou PDF, até 10 MB
+            <input
+              type="file"
+              name="attachment"
+              accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+              className="mt-1 block w-full text-xs text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-1.5 file:text-xs file:text-ink"
+            />
+          </label>
           <SubmitButton variant="primary" pendingLabel="Abrindo...">
             Abrir chamado
           </SubmitButton>

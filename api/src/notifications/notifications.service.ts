@@ -4,6 +4,7 @@ import { Notification, NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { DevicesService } from '../devices/devices.service';
+import { TicketsService } from '../tickets/tickets.service';
 import { EmailService } from '../email/email.service';
 
 function fmtDate(d: Date | string | null | undefined): string {
@@ -17,6 +18,7 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   CRITICAL_DEVICE_ALERT: 'Dispositivo',
   LOW_SUPPLY: 'Suprimento',
   UNASSIGNED_DEVICE: 'Sem cliente',
+  TICKET_SLA_BREACH: 'Chamado',
 };
 
 // The only two categories a tenant's own CLIENT can ever be emailed about
@@ -46,6 +48,7 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly invoicesService: InvoicesService,
     private readonly devicesService: DevicesService,
+    private readonly ticketsService: TicketsService,
     private readonly emailService: EmailService,
   ) {}
 
@@ -74,11 +77,12 @@ export class NotificationsService {
   // critical, DevicesService.lowSupplyForecast) - just shaped as individual
   // dedupeKey'd items instead of one bundled text blob.
   private async collectCurrentAlerts(tenantId: string): Promise<CurrentAlert[]> {
-    const [billingAlerts, activeAlerts, lowSupplies, unassignedDevices] = await Promise.all([
+    const [billingAlerts, activeAlerts, lowSupplies, unassignedDevices, breachedTickets] = await Promise.all([
       this.invoicesService.alerts(tenantId),
       this.devicesService.activeAlerts(tenantId, null),
       this.devicesService.lowSupplyForecast(tenantId, null, 14, 90),
       this.devicesService.listUnassigned(tenantId),
+      this.ticketsService.slaBreached(tenantId),
     ]);
     const criticalDeviceAlerts = activeAlerts.filter((a) => a.severity === 'critical');
 
@@ -154,6 +158,21 @@ export class NotificationsService {
         body: `${d.host}${d.serialNumber ? ` · nº série ${d.serialNumber}` : ''} - atribua um cliente para que este dispositivo entre no faturamento.`,
         linkHref: `/devices/${d.id}`,
         customerId: null, // by definition - that's the whole point of this notification type
+      });
+    }
+
+    for (const t of breachedTickets) {
+      items.push({
+        type: 'TICKET_SLA_BREACH',
+        dedupeKey: `ticket-sla:${t.id}`,
+        title: `Chamado com SLA estourado: ${t.subject}`,
+        body: `${t.customer.name} · prazo era ${fmtDate(t.slaDueAt)}.`,
+        linkHref: `/tickets/${t.id}`,
+        // Never reaches CUSTOMER_NOTIFIABLE_TYPES - this is a "we're
+        // breaching our own promise" signal for staff, not the customer -
+        // but customerId is still recorded for consistency/future audit
+        // filtering, same as OVERDUE_INVOICE/EXPIRING_CONTRACT above.
+        customerId: t.customerId,
       });
     }
 

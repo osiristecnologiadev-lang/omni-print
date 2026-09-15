@@ -1,5 +1,14 @@
 import { notFound } from 'next/navigation';
-import { getSession, getTicket, getAnyTicket, getUsers, getViewerTimeZone, type TicketStatus, type TicketPriority } from '@/lib/api';
+import {
+  getSession,
+  getTicket,
+  getAnyTicket,
+  getUsers,
+  getViewerTimeZone,
+  type TicketStatus,
+  type TicketPriority,
+  type TicketAttachment,
+} from '@/lib/api';
 import { isTicketSlaBreached } from '@/lib/sla';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
@@ -31,6 +40,33 @@ function formatDateTime(iso: string, timeZone?: string): string {
 const inputClass =
   'mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
 const selectClass = inputClass;
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function AttachmentList({ attachments, ticketId, customerId }: { attachments: TicketAttachment[]; ticketId: string; customerId: string }) {
+  if (attachments.length === 0) return null;
+  return (
+    <ul className="mt-2 space-y-1">
+      {attachments.map((a) => (
+        <li key={a.id}>
+          <a
+            href={`/tickets/${ticketId}/attachments/${a.id}?customerId=${customerId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+          >
+            Anexo: {a.filename}
+          </a>
+          <span className="ml-1 text-xs text-ink-faint">({formatBytes(a.sizeBytes)})</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>) {
   const { id } = await props.params;
@@ -79,6 +115,7 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
         {ticket.assignedToUser && (
           <p className="mt-1 text-xs text-ink-faint">Responsável: {ticket.assignedToUser.name ?? ticket.assignedToUser.email}</p>
         )}
+        <AttachmentList attachments={ticket.attachments ?? []} ticketId={ticket.id} customerId={ticket.customerId} />
       </Panel>
 
       {isTenantWide && (
@@ -132,19 +169,44 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
         ) : (
           <div className="mb-4 space-y-3">
             {ticket.comments!.map((c) => (
-              <div key={c.id} className="rounded-lg bg-surface-2 p-3">
+              <div
+                key={c.id}
+                className={`rounded-lg p-3 ${c.internal ? 'border border-dashed border-amber-400/50 bg-amber-500/10' : 'bg-surface-2'}`}
+              >
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-ink">{c.authorUser.name ?? c.authorUser.email}</span>
+                  <span className="text-xs font-medium text-ink">
+                    {c.authorUser.name ?? c.authorUser.email}
+                    {c.internal && <Badge tone="warning" className="ml-2">Nota interna</Badge>}
+                  </span>
                   <span className="text-xs text-ink-faint">{formatDateTime(c.createdAt, tz)}</span>
                 </div>
                 <p className="whitespace-pre-line text-sm text-ink-muted">{c.body}</p>
+                <AttachmentList attachments={c.attachments} ticketId={ticket.id} customerId={ticket.customerId} />
               </div>
             ))}
           </div>
         )}
-        <form action={boundComment}>
+        <form action={boundComment} encType="multipart/form-data" className="space-y-2">
           <textarea name="body" required minLength={1} rows={3} className={inputClass} placeholder="Escreva um comentário..." />
-          <SubmitButton variant="secondary" className="mt-2" pendingLabel="Enviando...">
+          <div>
+            <label htmlFor="comment-attachment" className="block text-xs text-ink-muted">
+              Anexo (opcional) — imagem ou PDF, até 10 MB
+            </label>
+            <input
+              id="comment-attachment"
+              type="file"
+              name="attachment"
+              accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+              className="mt-1 block w-full text-xs text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-1.5 file:text-xs file:text-ink"
+            />
+          </div>
+          {isTenantWide && (
+            <label className="flex items-center gap-2 text-xs text-ink-muted">
+              <input type="checkbox" name="internal" value="true" className="rounded border-line" />
+              Nota interna (visível só para a equipe, o cliente não vê)
+            </label>
+          )}
+          <SubmitButton variant="secondary" pendingLabel="Enviando...">
             Comentar
           </SubmitButton>
         </form>

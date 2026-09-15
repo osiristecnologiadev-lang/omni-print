@@ -29,6 +29,7 @@ const TYPE_LABEL: Record<Notification['type'], string> = {
   CRITICAL_DEVICE_ALERT: 'Dispositivo',
   LOW_SUPPLY: 'Suprimento',
   UNASSIGNED_DEVICE: 'Sem cliente',
+  TICKET_SLA_BREACH: 'Chamado',
 };
 
 const TYPE_TONE: Record<Notification['type'], BadgeTone> = {
@@ -37,6 +38,7 @@ const TYPE_TONE: Record<Notification['type'], BadgeTone> = {
   CRITICAL_DEVICE_ALERT: 'critical',
   LOW_SUPPLY: 'warning',
   UNASSIGNED_DEVICE: 'warning',
+  TICKET_SLA_BREACH: 'critical',
 };
 
 const ALL_TYPES: NotificationType[] = [
@@ -45,6 +47,7 @@ const ALL_TYPES: NotificationType[] = [
   'CRITICAL_DEVICE_ALERT',
   'LOW_SUPPLY',
   'UNASSIGNED_DEVICE',
+  'TICKET_SLA_BREACH',
 ];
 
 export default async function NotificationsPage(props: PageProps<'/notifications'>) {
