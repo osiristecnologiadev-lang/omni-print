@@ -2,7 +2,13 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { syncNotificationsNow, resolveNotification, updateNotificationEmailPreferences, type NotificationType } from '@/lib/api';
+import {
+  syncNotificationsNow,
+  resolveNotification,
+  updateNotificationEmailPreferences,
+  updateTicketAutomationPreferences,
+  type NotificationType,
+} from '@/lib/api';
 
 export async function syncNowAction() {
   let hasChanges = false;
@@ -41,4 +47,17 @@ export async function updateEmailPreferencesAction(formData: FormData) {
   }
   revalidatePath('/notifications');
   redirect('/notifications?prefsSaved=1');
+}
+
+export async function updateTicketAutomationPreferencesAction(formData: FormData) {
+  const autoTicketEnabled = formData.get('autoTicketEnabled') === 'on';
+  const autoTicketTypes = formData.getAll('autoTicketTypes') as NotificationType[];
+
+  try {
+    await updateTicketAutomationPreferences({ autoTicketEnabled, autoTicketTypes });
+  } catch {
+    redirect('/notifications?ticketPrefsError=1');
+  }
+  revalidatePath('/notifications');
+  redirect('/notifications?ticketPrefsSaved=1');
 }

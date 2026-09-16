@@ -5,7 +5,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { TicketStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { computeSlaDueAt } from '../common/sla.util';
+import { computeSlaDueAt, TicketPriorityKey } from '../common/sla.util';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 
@@ -103,6 +103,36 @@ export class TicketsService {
     }
 
     return ticket;
+  }
+
+  // The system-opened equivalent of create() above - no actorUserId at all
+  // (createdByUserId is left null, see the schema comment on
+  // Ticket.createdByUserId), called only from
+  // NotificationsService.autoCreateTickets. deviceId is only ever set for
+  // the two device-rooted alert types (CRITICAL_DEVICE_ALERT/LOW_SUPPLY) -
+  // left null for the others (e.g. an overdue invoice isn't about any one
+  // printer).
+  async createAutomated(
+    tenantId: string,
+    customerId: string,
+    input: { subject: string; description: string; deviceId?: string | null; priority: TicketPriorityKey },
+  ) {
+    const customer = await this.requireCustomer(tenantId, customerId);
+    const now = new Date();
+
+    return this.prisma.ticket.create({
+      data: {
+        tenantId,
+        customerId,
+        deviceId: input.deviceId ?? null,
+        subject: input.subject,
+        description: input.description,
+        priority: input.priority,
+        createdByUserId: null,
+        slaDueAt: computeSlaDueAt(input.priority, now, customer),
+      },
+      include: TICKET_INCLUDE,
+    });
   }
 
   // customerId null (tenant-wide caller) sees every customer's tickets;
@@ -337,8 +367,8 @@ export class TicketsService {
     ticket: {
       id: string;
       subject: string;
-      createdByUserId: string;
-      createdByUser: { id: string; email: string };
+      createdByUserId: string | null;
+      createdByUser: { id: string; email: string } | null;
       assignedToUserId: string | null;
       assignedToUser: { id: string; email: string } | null;
     },
@@ -347,7 +377,11 @@ export class TicketsService {
     if (!(await this.emailEnabled(tenantId))) return;
 
     const recipients = new Set<string>();
-    if (ticket.createdByUserId !== actorUserId) recipients.add(ticket.createdByUser.email);
+    // createdByUserId is null for a system-opened ticket (see the schema
+    // comment) - nothing to notify there, falls through to the
+    // no-distinct-recipient staff-fallback below same as any other ticket
+    // with no one specific to reach yet.
+    if (ticket.createdByUserId && ticket.createdByUserId !== actorUserId) recipients.add(ticket.createdByUser!.email);
     if (ticket.assignedToUserId && ticket.assignedToUserId !== actorUserId) recipients.add(ticket.assignedToUser!.email);
 
     if (recipients.size === 0) {

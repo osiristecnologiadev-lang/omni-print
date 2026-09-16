@@ -27,13 +27,25 @@ describe('NotificationsService.syncNotifications', () => {
   };
   let invoicesService: { alerts: jest.Mock };
   let devicesService: { activeAlerts: jest.Mock; lowSupplyForecast: jest.Mock; listUnassigned: jest.Mock };
-  let ticketsService: { slaBreached: jest.Mock };
+  let ticketsService: { slaBreached: jest.Mock; createAutomated: jest.Mock };
   let emailService: { send: jest.Mock };
 
   // Default: email preferences on, listening to every type used in these
   // tests - individual tests override this to check the gating itself.
   function mockPrefs(emailEnabled: boolean, emailTypes: string[]) {
     prisma.tenant.findUniqueOrThrow.mockResolvedValue({ notifyEmailEnabled: emailEnabled, notifyEmailTypes: emailTypes });
+  }
+
+  // Same full-replace shape as mockPrefs above, for the auto-ticket
+  // preference columns instead - the two share the same mocked
+  // findUniqueOrThrow call, so a test needing both sets both explicitly.
+  function mockAutoTicketPrefs(autoTicketEnabled: boolean, autoTicketTypes: string[]) {
+    prisma.tenant.findUniqueOrThrow.mockResolvedValue({
+      notifyEmailEnabled: false,
+      notifyEmailTypes: [],
+      autoTicketEnabled,
+      autoTicketTypes,
+    });
   }
 
   beforeEach(async () => {
@@ -57,7 +69,7 @@ describe('NotificationsService.syncNotifications', () => {
       lowSupplyForecast: jest.fn().mockResolvedValue([]),
       listUnassigned: jest.fn().mockResolvedValue([]),
     };
-    ticketsService = { slaBreached: jest.fn().mockResolvedValue([]) };
+    ticketsService = { slaBreached: jest.fn().mockResolvedValue([]), createAutomated: jest.fn().mockResolvedValue({ id: 'auto-ticket-1' }) };
     emailService = { send: jest.fn().mockResolvedValue(undefined) };
 
     const moduleRef = await Test.createTestingModule({
@@ -164,8 +176,14 @@ describe('NotificationsService.syncNotifications', () => {
       const result = await service.syncNotifications('tenant-1'); // no opts - the manual-sync-endpoint shape
 
       expect(result.created).toBe(1);
-      expect(prisma.tenant.findUniqueOrThrow).not.toHaveBeenCalled();
+      // tenant.findUniqueOrThrow DOES get called once here now - by
+      // autoCreateTickets checking ticket-automation prefs, which (unlike
+      // email) legitimately runs on the manual path too. The default mock
+      // has no autoTicketEnabled set (undefined, falsy), so it's a no-op -
+      // see the 'auto-create tickets' describe block below for that path's
+      // own dedicated coverage.
       expect(emailService.send).not.toHaveBeenCalled();
+      expect(ticketsService.createAutomated).not.toHaveBeenCalled();
     });
 
     it('does not email when nothing new was created (only updates or auto-resolves)', async () => {
@@ -323,6 +341,97 @@ describe('NotificationsService.syncNotifications', () => {
     });
   });
 
+  describe('auto-create tickets', () => {
+    it('opens a ticket for an eligible newly-created alert when enabled and the type is selected', async () => {
+      mockAutoTicketPrefs(true, ['CRITICAL_DEVICE_ALERT']);
+      devicesService.activeAlerts.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'Xerox', severity: 'critical', code: 42, description: 'Atolamento de papel', customerId: 'cust-1' },
+      ]);
+
+      await service.syncNotifications('tenant-1');
+
+      expect(ticketsService.createAutomated).toHaveBeenCalledWith('tenant-1', 'cust-1', {
+        subject: 'Alerta crítico: Xerox',
+        description: expect.stringContaining('Atolamento de papel'),
+        deviceId: 'dev-1',
+        priority: 'HIGH',
+      });
+    });
+
+    it('runs on the manual sync path too, unlike email (no sendEmail opt needed)', async () => {
+      mockAutoTicketPrefs(true, ['LOW_SUPPLY']);
+      devicesService.lowSupplyForecast.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'HP', description: 'Toner preto', customerId: 'cust-1', premature: false, likelyEmptyAlready: true, daysRemaining: 0, estimatedEmptyDate: new Date() },
+      ]);
+
+      await service.syncNotifications('tenant-1'); // no opts at all
+
+      expect(ticketsService.createAutomated).toHaveBeenCalledTimes(1);
+    });
+
+    it('does nothing when the master switch is off, even with the type selected', async () => {
+      mockAutoTicketPrefs(false, ['CRITICAL_DEVICE_ALERT']);
+      devicesService.activeAlerts.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'Xerox', severity: 'critical', code: 1, customerId: 'cust-1' },
+      ]);
+
+      await service.syncNotifications('tenant-1');
+
+      expect(ticketsService.createAutomated).not.toHaveBeenCalled();
+    });
+
+    it('does nothing for a type not in the selected list, even with the master switch on', async () => {
+      mockAutoTicketPrefs(true, ['LOW_SUPPLY']); // CRITICAL_DEVICE_ALERT not selected
+      devicesService.activeAlerts.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'Xerox', severity: 'critical', code: 1, customerId: 'cust-1' },
+      ]);
+
+      await service.syncNotifications('tenant-1');
+
+      expect(ticketsService.createAutomated).not.toHaveBeenCalled();
+    });
+
+    it('never opens a ticket for UNASSIGNED_DEVICE, even if somehow selected (no customerId to open one against)', async () => {
+      mockAutoTicketPrefs(true, ['UNASSIGNED_DEVICE'] as any);
+      devicesService.listUnassigned.mockResolvedValue([
+        { id: 'dev-1', name: 'HP LaserJet', printerName: null, customLabel: null, host: '10.0.0.5', serialNumber: null },
+      ]);
+
+      await service.syncNotifications('tenant-1');
+
+      expect(ticketsService.createAutomated).not.toHaveBeenCalled();
+    });
+
+    it('does not re-open a ticket for an alert that already exists (only genuinely new ones trigger this)', async () => {
+      mockAutoTicketPrefs(true, ['CRITICAL_DEVICE_ALERT']);
+      prisma.notification.findMany.mockResolvedValue([
+        { dedupeKey: 'device-alert:dev-1:1', resolvedAt: null }, // already exists, unresolved
+      ]);
+      devicesService.activeAlerts.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'Xerox', severity: 'critical', code: 1, customerId: 'cust-1' },
+      ]);
+
+      await service.syncNotifications('tenant-1');
+
+      expect(ticketsService.createAutomated).not.toHaveBeenCalled();
+    });
+
+    it('one failing auto-create does not block another eligible alert in the same run', async () => {
+      mockAutoTicketPrefs(true, ['CRITICAL_DEVICE_ALERT', 'LOW_SUPPLY']);
+      devicesService.activeAlerts.mockResolvedValue([
+        { deviceId: 'dev-1', deviceName: 'Xerox', severity: 'critical', code: 1, customerId: 'cust-1' },
+      ]);
+      devicesService.lowSupplyForecast.mockResolvedValue([
+        { deviceId: 'dev-2', deviceName: 'HP', description: 'Toner preto', customerId: 'cust-2', premature: false, likelyEmptyAlready: true, daysRemaining: 0, estimatedEmptyDate: new Date() },
+      ]);
+      ticketsService.createAutomated.mockRejectedValueOnce(new Error('customer deleted mid-run'));
+
+      await service.syncNotifications('tenant-1');
+
+      expect(ticketsService.createAutomated).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('email preferences', () => {
     it('reads the tenant-level preference columns', async () => {
       mockPrefs(true, ['LOW_SUPPLY', 'CRITICAL_DEVICE_ALERT']);
@@ -347,6 +456,36 @@ describe('NotificationsService.syncNotifications', () => {
         select: { notifyEmailEnabled: true, notifyEmailTypes: true },
       });
       expect(prefs).toEqual({ emailEnabled: true, emailTypes: ['OVERDUE_INVOICE'] });
+    });
+  });
+
+  describe('ticket-automation preferences', () => {
+    it('reads the tenant-level preference columns', async () => {
+      mockAutoTicketPrefs(true, ['LOW_SUPPLY', 'CRITICAL_DEVICE_ALERT']);
+
+      const prefs = await service.getTicketAutomationPreferences('tenant-1');
+
+      expect(prisma.tenant.findUniqueOrThrow).toHaveBeenCalledWith({
+        where: { id: 'tenant-1' },
+        select: { autoTicketEnabled: true, autoTicketTypes: true },
+      });
+      expect(prefs).toEqual({ autoTicketEnabled: true, autoTicketTypes: ['LOW_SUPPLY', 'CRITICAL_DEVICE_ALERT'] });
+    });
+
+    it('writes both preference columns together', async () => {
+      prisma.tenant.update.mockResolvedValue({ autoTicketEnabled: true, autoTicketTypes: ['OVERDUE_INVOICE'] });
+
+      const prefs = await service.updateTicketAutomationPreferences('tenant-1', {
+        autoTicketEnabled: true,
+        autoTicketTypes: ['OVERDUE_INVOICE'],
+      });
+
+      expect(prisma.tenant.update).toHaveBeenCalledWith({
+        where: { id: 'tenant-1' },
+        data: { autoTicketEnabled: true, autoTicketTypes: ['OVERDUE_INVOICE'] },
+        select: { autoTicketEnabled: true, autoTicketTypes: true },
+      });
+      expect(prefs).toEqual({ autoTicketEnabled: true, autoTicketTypes: ['OVERDUE_INVOICE'] });
     });
   });
 });

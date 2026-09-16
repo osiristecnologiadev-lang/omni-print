@@ -85,7 +85,8 @@ export default async function TicketsPage(props: PageProps<'/tickets'>) {
                       <p className="truncate font-medium text-ink">{t.subject}</p>
                       <p className="mt-0.5 text-xs text-ink-faint">
                         {isTenantWide && `${t.customer.name} · `}
-                        Aberto por {t.createdByUser.name ?? t.createdByUser.email} em {formatDateTime(t.createdAt, tz)}
+                        Aberto {t.createdByUser ? `por ${t.createdByUser.name ?? t.createdByUser.email}` : 'automaticamente pelo sistema'} em{' '}
+                        {formatDateTime(t.createdAt, tz)}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">

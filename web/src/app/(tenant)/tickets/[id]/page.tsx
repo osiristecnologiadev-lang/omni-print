@@ -106,7 +106,8 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
       <Panel className="mb-6">
         <p className="mb-3 whitespace-pre-line text-sm text-ink">{ticket.description}</p>
         <p className="text-xs text-ink-faint">
-          Aberto por {ticket.createdByUser.name ?? ticket.createdByUser.email} em {formatDateTime(ticket.createdAt, tz)}
+          Aberto {ticket.createdByUser ? `por ${ticket.createdByUser.name ?? ticket.createdByUser.email}` : 'automaticamente pelo sistema'} em{' '}
+          {formatDateTime(ticket.createdAt, tz)}
           {ticket.device &&
             ` · Impressora: ${ticket.device.customLabel ? `${ticket.device.customLabel} — ` : ''}${
               ticket.device.printerName ?? ticket.device.name ?? 'Sem nome capturado'

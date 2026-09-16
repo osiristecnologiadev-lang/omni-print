@@ -6,6 +6,7 @@ import { InvoicesService } from '../invoices/invoices.service';
 import { DevicesService } from '../devices/devices.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { EmailService } from '../email/email.service';
+import { TicketPriorityKey } from '../common/sla.util';
 
 function fmtDate(d: Date | string | null | undefined): string {
   if (!d) return '';
@@ -27,6 +28,33 @@ const TYPE_LABEL: Record<NotificationType, string> = {
 // Customer.notifyEmail for why this boundary is fixed, not a preference.
 const CUSTOMER_NOTIFIABLE_TYPES: NotificationType[] = ['CRITICAL_DEVICE_ALERT', 'LOW_SUPPLY'];
 
+// Which NotificationType values can plausibly open a ticket - not all 6:
+// UNASSIGNED_DEVICE never carries a customerId (a ticket requires one,
+// tickets are always customer-scoped - see the Ticket model), and
+// TICKET_SLA_BREACH opening a ticket about a ticket being late would be
+// circular. Enforced both here (the admin-facing checkbox list, see
+// getTicketAutomationPreferences) and again in
+// UpdateTicketAutomationPreferencesDto (defense in depth against a raw API
+// call bypassing the frontend).
+export const AUTO_TICKETABLE_TYPES: NotificationType[] = [
+  'OVERDUE_INVOICE',
+  'EXPIRING_CONTRACT',
+  'CRITICAL_DEVICE_ALERT',
+  'LOW_SUPPLY',
+];
+
+// A device actively erroring is more urgent than a contract quietly
+// expiring next month - priorities chosen to be a reasonable starting
+// point for SLA purposes, not configurable per-type (that's more
+// complexity than this feature asked for; revisit if it turns out to
+// matter in practice).
+const AUTO_TICKET_PRIORITY: Record<string, TicketPriorityKey> = {
+  CRITICAL_DEVICE_ALERT: 'HIGH',
+  LOW_SUPPLY: 'MEDIUM',
+  OVERDUE_INVOICE: 'MEDIUM',
+  EXPIRING_CONTRACT: 'LOW',
+};
+
 interface CurrentAlert {
   type: NotificationType;
   dedupeKey: string;
@@ -38,6 +66,10 @@ interface CurrentAlert {
   // Which of the tenant's own clients this is about, if any - see the
   // schema comment on Notification.customerId.
   customerId: string | null;
+  // Only set for the two device-rooted alert types (CRITICAL_DEVICE_ALERT/
+  // LOW_SUPPLY) - lets an auto-created ticket link back to the specific
+  // printer, same as a human opening a ticket "about" a device would.
+  deviceId?: string;
 }
 
 @Injectable()
@@ -120,6 +152,7 @@ export class NotificationsService {
         body: a.description ?? 'Alerta crítico reportado pelo dispositivo.',
         linkHref: `/devices/${a.deviceId}`,
         customerId: a.customerId,
+        deviceId: a.deviceId,
       });
     }
 
@@ -136,6 +169,7 @@ export class NotificationsService {
         body: detail,
         linkHref: `/devices/${s.deviceId}`,
         customerId: s.customerId,
+        deviceId: s.deviceId,
       });
     }
 
@@ -249,6 +283,19 @@ export class NotificationsService {
       await this.sendDigestEmail(tenantId, newlyCreated);
     }
 
+    // Unlike email, this runs on EVERY sync - cron or the on-demand
+    // "Atualizar agora" button - not just the cron. Email is deliberately
+    // capped at once/day regardless of manual syncs (see
+    // syncAllTenants's comment); a ticket is the opposite case, delaying it
+    // until the next cron run would defeat the point of reacting to a new
+    // critical alert promptly. Same "only what's genuinely new" dedupe
+    // guarantee as email, for the same reason - a still-open alert never
+    // reappears in newlyCreated, so this can never double-open a ticket
+    // for the same ongoing issue.
+    if (newlyCreated.length > 0) {
+      await this.autoCreateTickets(tenantId, newlyCreated);
+    }
+
     return { created, updated, autoResolved };
   }
 
@@ -271,6 +318,56 @@ export class NotificationsService {
         select: { notifyEmailEnabled: true, notifyEmailTypes: true },
       })
       .then((t) => ({ emailEnabled: t.notifyEmailEnabled, emailTypes: t.notifyEmailTypes }));
+  }
+
+  async getTicketAutomationPreferences(tenantId: string): Promise<{ autoTicketEnabled: boolean; autoTicketTypes: NotificationType[] }> {
+    const tenant = await this.prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { autoTicketEnabled: true, autoTicketTypes: true },
+    });
+    return { autoTicketEnabled: tenant.autoTicketEnabled, autoTicketTypes: tenant.autoTicketTypes };
+  }
+
+  updateTicketAutomationPreferences(
+    tenantId: string,
+    prefs: { autoTicketEnabled: boolean; autoTicketTypes: NotificationType[] },
+  ): Promise<{ autoTicketEnabled: boolean; autoTicketTypes: NotificationType[] }> {
+    return this.prisma.tenant
+      .update({
+        where: { id: tenantId },
+        data: { autoTicketEnabled: prefs.autoTicketEnabled, autoTicketTypes: prefs.autoTicketTypes },
+        select: { autoTicketEnabled: true, autoTicketTypes: true },
+      })
+      .then((t) => ({ autoTicketEnabled: t.autoTicketEnabled, autoTicketTypes: t.autoTicketTypes }));
+  }
+
+  private async autoCreateTickets(tenantId: string, items: CurrentAlert[]): Promise<void> {
+    const prefs = await this.getTicketAutomationPreferences(tenantId);
+    if (!prefs.autoTicketEnabled) return;
+
+    // customerId !== null is required even though AUTO_TICKETABLE_TYPES
+    // already excludes the one type that's always customerId-null
+    // (UNASSIGNED_DEVICE) - kept as a real runtime guard, not just relying
+    // on that list staying correct, since a ticket without a customerId
+    // would fail at the DB level anyway.
+    const eligible = items.filter((i) => prefs.autoTicketTypes.includes(i.type) && i.customerId != null);
+
+    for (const item of eligible) {
+      try {
+        await this.ticketsService.createAutomated(tenantId, item.customerId as string, {
+          subject: item.title,
+          description: `${item.body}\n\nChamado aberto automaticamente pelo OmniPrint a partir deste alerta.`,
+          deviceId: item.deviceId ?? null,
+          priority: AUTO_TICKET_PRIORITY[item.type] ?? 'MEDIUM',
+        });
+      } catch (err) {
+        // One bad item (e.g. a customer deleted between alert-collection
+        // and here) shouldn't block tickets for every other new alert this
+        // run - same per-item try/catch posture as
+        // InvoicesService.generateDueInvoices.
+        this.logger.error(`failed to auto-create ticket for alert ${item.dedupeKey}`, err as Error);
+      }
+    }
   }
 
   private async sendDigestEmail(tenantId: string, items: CurrentAlert[]): Promise<void> {

@@ -147,6 +147,19 @@ model Tenant {
   notifyEmailEnabled Boolean            @default(false) @map("notify_email_enabled")
   notifyEmailTypes   NotificationType[] @default([]) @map("notify_email_types")
 
+  // Alert→ticket automation (NotificationsService.autoCreateTickets) - same
+  // "off and empty by default" posture as the email prefs above, same
+  // reasoning (a future NotificationType shouldn't silently start opening
+  // tickets for existing tenants). Only a NEWLY-detected alert can trigger
+  // this (the same dedupe-by-key logic that already prevents re-emailing
+  // about a still-open issue also prevents re-opening a ticket for it), and
+  // only a subset of NotificationType is ever valid here - see
+  // AUTO_TICKETABLE_TYPES in notifications.service.ts for which ones and
+  // why (UNASSIGNED_DEVICE has no customerId to open a ticket against;
+  // TICKET_SLA_BREACH opening a ticket about a ticket would be circular).
+  autoTicketEnabled Boolean            @default(false) @map("auto_ticket_enabled")
+  autoTicketTypes   NotificationType[] @default([]) @map("auto_ticket_types")
+
   agentTokens          AgentToken[]
   agentEnrollmentCodes AgentEnrollmentCode[]
   devices              Device[]
@@ -817,8 +830,14 @@ model Ticket {
   status   TicketStatus   @default(OPEN)
   priority TicketPriority @default(MEDIUM)
 
-  createdByUserId String @map("created_by_user_id")
-  createdByUser   User   @relation("TicketCreatedBy", fields: [createdByUserId], references: [id])
+  // Nullable: null means this ticket was opened by the system itself, not
+  // a human - see NotificationsService.autoCreateTickets (the alert→ticket
+  // automation, gated by Tenant.autoTicketEnabled/autoTicketTypes below).
+  // This is currently the ONLY way a ticket ends up with no creator, so
+  // `createdByUserId === null` doubles as the "was this automated" signal
+  // rather than needing a separate boolean column.
+  createdByUserId String? @map("created_by_user_id")
+  createdByUser   User?   @relation("TicketCreatedBy", fields: [createdByUserId], references: [id])
 
   // Tenant-wide staff only (see TicketsService.update's validation) - a
   // customer-scoped user is never a valid assignee, there's no one on their

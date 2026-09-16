@@ -6,6 +6,7 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
 import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
+import { UpdateTicketAutomationPreferencesDto } from './dto/update-ticket-automation-preferences.dto';
 
 @UseGuards(UserAuthGuard, SubscriptionGuard)
 @Controller('v1/notifications')
@@ -103,6 +104,31 @@ export class NotificationsController {
       actorId: req.userId,
       actorLabel: req.userEmail,
       action: 'notification.update_email_preferences',
+      targetType: 'Tenant',
+      targetId: req.tenantId,
+      metadata: prefs,
+    });
+    return prefs;
+  }
+
+  // Same permission gate as the email preferences above, for the same
+  // reason - this lives on the same /notifications screen.
+  @Get('ticket-automation-preferences')
+  getTicketAutomationPreferences(@Req() req: any) {
+    assertPermission(req, 'notifications');
+    return this.notificationsService.getTicketAutomationPreferences(req.tenantId);
+  }
+
+  @Patch('ticket-automation-preferences')
+  async updateTicketAutomationPreferences(@Req() req: any, @Body() dto: UpdateTicketAutomationPreferencesDto) {
+    assertPermission(req, 'notifications');
+    const prefs = await this.notificationsService.updateTicketAutomationPreferences(req.tenantId, dto);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'notification.update_ticket_automation_preferences',
       targetType: 'Tenant',
       targetId: req.tenantId,
       metadata: prefs,

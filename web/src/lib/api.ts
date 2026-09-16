@@ -263,6 +263,21 @@ export function getNotificationEmailPreferences(): Promise<NotificationEmailPref
   return apiFetch<NotificationEmailPreferences>('/v1/notifications/preferences');
 }
 
+export interface TicketAutomationPreferences {
+  autoTicketEnabled: boolean;
+  autoTicketTypes: NotificationType[];
+}
+
+export function getTicketAutomationPreferences(): Promise<TicketAutomationPreferences> {
+  return apiFetch<TicketAutomationPreferences>('/v1/notifications/ticket-automation-preferences');
+}
+
+export function updateTicketAutomationPreferences(
+  prefs: TicketAutomationPreferences,
+): Promise<TicketAutomationPreferences> {
+  return apiMutate<TicketAutomationPreferences>('/v1/notifications/ticket-automation-preferences', 'PATCH', prefs);
+}
+
 export function updateNotificationEmailPreferences(
   prefs: NotificationEmailPreferences,
 ): Promise<NotificationEmailPreferences> {
@@ -1210,7 +1225,10 @@ export interface Ticket {
   updatedAt: string;
   customer: { id: string; name: string };
   device: { id: string; name: string | null; printerName: string | null; customLabel: string | null; host: string } | null;
-  createdByUser: TicketPerson;
+  // Null means the ticket was opened by the system itself (the alert→
+  // ticket automation), not a human - see NotificationsService.
+  // autoCreateTickets on the backend.
+  createdByUser: TicketPerson | null;
   assignedToUser: TicketPerson | null;
   comments?: TicketComment[];
   attachments?: TicketAttachment[];

@@ -5,6 +5,7 @@ import {
   getNotifications,
   markAllNotificationsRead,
   getNotificationEmailPreferences,
+  getTicketAutomationPreferences,
   getViewerTimeZone,
   type Notification,
   type NotificationType,
@@ -14,7 +15,12 @@ import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
 import { Badge, type BadgeTone } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
-import { syncNowAction, resolveNotificationAction, updateEmailPreferencesAction } from './actions';
+import {
+  syncNowAction,
+  resolveNotificationAction,
+  updateEmailPreferencesAction,
+  updateTicketAutomationPreferencesAction,
+} from './actions';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
 
@@ -50,6 +56,13 @@ const ALL_TYPES: NotificationType[] = [
   'TICKET_SLA_BREACH',
 ];
 
+// Mirrors api's AUTO_TICKETABLE_TYPES (notifications.service.ts) exactly -
+// a subset of ALL_TYPES: UNASSIGNED_DEVICE never has a customerId (a
+// ticket requires one) and TICKET_SLA_BREACH opening a ticket about a
+// ticket being late would be circular, so neither is offered here even
+// though both appear in the email-preferences list above.
+const AUTO_TICKETABLE_TYPES: NotificationType[] = ['OVERDUE_INVOICE', 'EXPIRING_CONTRACT', 'CRITICAL_DEVICE_ALERT', 'LOW_SUPPLY'];
+
 export default async function NotificationsPage(props: PageProps<'/notifications'>) {
   const searchParams = await props.searchParams;
 
@@ -58,9 +71,10 @@ export default async function NotificationsPage(props: PageProps<'/notifications
     forbidden();
   }
 
-  const [notifications, emailPrefs, tz] = await Promise.all([
+  const [notifications, emailPrefs, ticketAutomationPrefs, tz] = await Promise.all([
     getNotifications(),
     getNotificationEmailPreferences(),
+    getTicketAutomationPreferences(),
     getViewerTimeZone(),
   ]);
 
@@ -92,6 +106,10 @@ export default async function NotificationsPage(props: PageProps<'/notifications
       {searchParams?.resolveError === '1' && <Banner tone="error">Não foi possível resolver a notificação. Tente novamente.</Banner>}
       {searchParams?.prefsSaved === '1' && <Banner tone="success">Preferências de e-mail salvas.</Banner>}
       {searchParams?.prefsError === '1' && <Banner tone="error">Não foi possível salvar as preferências. Tente novamente.</Banner>}
+      {searchParams?.ticketPrefsSaved === '1' && <Banner tone="success">Preferências de chamado automático salvas.</Banner>}
+      {searchParams?.ticketPrefsError === '1' && (
+        <Banner tone="error">Não foi possível salvar as preferências. Tente novamente.</Banner>
+      )}
 
       <Panel className="mb-6">
         <p className="mb-3 text-xs text-ink-faint">
@@ -120,6 +138,37 @@ export default async function NotificationsPage(props: PageProps<'/notifications
             {ALL_TYPES.map((t) => (
               <label key={t} className="flex items-center gap-2 text-sm text-ink-muted">
                 <input type="checkbox" name="emailTypes" value={t} defaultChecked={emailPrefs.emailTypes.includes(t)} />
+                {TYPE_LABEL[t]}
+              </label>
+            ))}
+          </div>
+          <SubmitButton variant="secondary" pendingLabel="Salvando...">
+            Salvar preferências
+          </SubmitButton>
+        </form>
+      </Panel>
+
+      <Panel className="mb-6">
+        <h2 className="mb-1 text-sm font-medium text-ink">Abrir chamado automaticamente</h2>
+        <p className="mb-4 text-xs text-ink-faint">
+          Vem desativado por padrão. Quando ativo, um alerta novo das categorias marcadas abaixo abre um chamado
+          sozinho (visível em Chamados como aberto pelo sistema), sem esperar a verificação de madrugada - funciona
+          também ao clicar em &quot;Atualizar agora&quot;.
+        </p>
+        <form action={updateTicketAutomationPreferencesAction} className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-ink">
+            <input type="checkbox" name="autoTicketEnabled" defaultChecked={ticketAutomationPrefs.autoTicketEnabled} />
+            Ativar abertura automática de chamados
+          </label>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-3">
+            {AUTO_TICKETABLE_TYPES.map((t) => (
+              <label key={t} className="flex items-center gap-2 text-sm text-ink-muted">
+                <input
+                  type="checkbox"
+                  name="autoTicketTypes"
+                  value={t}
+                  defaultChecked={ticketAutomationPrefs.autoTicketTypes.includes(t)}
+                />
                 {TYPE_LABEL[t]}
               </label>
             ))}
