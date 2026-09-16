@@ -232,3 +232,21 @@ export async function getPlatformSession(): Promise<PlatformSession | null> {
     return null;
   }
 }
+
+// Same reasoning as web/src/lib/api.ts's isAuthenticated - deliberately not
+// apiFetch/authHeaders (both redirect('/platform/login') on 401), since
+// this backs /platform/login's "already authenticated, skip the form"
+// redirect. getPlatformSession()'s decode-only check would still say
+// "logged in" for a structurally-valid-but-rejected token (e.g. after a
+// JWT_SECRET rotation), which would bounce to /platform and immediately
+// 401 back to /platform/login - forever. Backend-verified, so only a
+// session the API actually accepts short-circuits past the form.
+export async function isPlatformAuthenticated(): Promise<boolean> {
+  const token = await getToken();
+  if (!token) return false;
+  const res = await fetch(`${API_BASE_URL}/v1/platform/tenants`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  });
+  return res.ok;
+}

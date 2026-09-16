@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSession, getViewerAccess, getTenantOnboardingStatus } from "@/lib/api";
+import { getSession, getViewerAccessSafe, getTenantOnboardingStatus } from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
 import { LogoutButton } from "@/components/LogoutButton";
 import { Logo } from "@/components/Logo";
@@ -135,7 +135,20 @@ export default async function TenantLayout({ children }: { children: React.React
     return <>{children}</>;
   }
 
-  const access = await getViewerAccess();
+  // getViewerAccessSafe, not getViewerAccess - this layout wraps EVERY page
+  // under (tenant), including /login itself. getSession() above only
+  // decodes the cookie (no signature/expiry check), so it stays truthy for
+  // a revoked user or a cookie predating a JWT_SECRET rotation; if this
+  // call redirected on 401 the way getViewerAccess does, a request to
+  // /login would 401 here and redirect back to /login - forever, with no
+  // way to ever reach the form and log in fresh. Falling back to the
+  // no-sidebar render (same as a genuinely logged-out visitor) instead
+  // lets that request reach /login's own page-level check, which redirects
+  // to /dashboard only for a session the backend actually still accepts.
+  const access = await getViewerAccessSafe();
+  if (!access) {
+    return <>{children}</>;
+  }
   const isTenantWide = !session.customerId;
 
   // Only fetched for a session that could actually act on it - a

@@ -1,11 +1,20 @@
+import { redirect } from 'next/navigation';
 import { LogoMark } from '@/components/Logo';
 import { PlainSubmitButton } from '@/components/SubmitButton';
 import { PlatformBanner } from '@/components/Banner';
+import { isPlatformAuthenticated } from '@/lib/platform-api';
 import { platformLoginAction } from './actions';
 
 const inputClass = 'w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-amber-600';
 
 export default async function PlatformLoginPage(props: PageProps<'/platform/login'>) {
+  // PlatformLayout renders its header (nav + logout) around this page
+  // whenever a session cookie is present, same "sidebar chrome behind the
+  // login form" bug as the tenant /login - see that page's comment.
+  if (await isPlatformAuthenticated()) {
+    redirect('/platform');
+  }
+
   const searchParams = await props.searchParams;
   const hasError = searchParams?.error === '1';
 

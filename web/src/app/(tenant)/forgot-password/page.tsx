@@ -1,14 +1,21 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Logo } from '@/components/Logo';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
+import { isAuthenticated } from '@/lib/api';
 import { requestPasswordResetAction } from './actions';
 
 const inputClass =
   'mb-4 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
 
 export default async function ForgotPasswordPage(props: PageProps<'/forgot-password'>) {
+  // Same reasoning as /login - see that page's comment.
+  if (await isAuthenticated()) {
+    redirect('/dashboard');
+  }
+
   const searchParams = await props.searchParams;
   const sent = searchParams?.sent === '1';
 

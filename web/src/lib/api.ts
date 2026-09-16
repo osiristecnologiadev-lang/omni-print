@@ -461,6 +461,34 @@ export async function getViewerAccess(): Promise<ViewerAccess> {
   return apiFetch<ViewerAccess>('/v1/users/me');
 }
 
+// Same call as getViewerAccess, but returns null instead of redirecting on
+// 401 - TenantLayout calls this (not getViewerAccess) specifically because
+// the layout wraps EVERY page under (tenant), including /login itself. A
+// revoked user (or one whose cookie predates a JWT_SECRET rotation) still
+// passes getSession()'s decode-only check, so the layout reaches this
+// call on every request; if it redirected on 401 like getViewerAccess does,
+// a request to /login would redirect to /login again - an infinite loop
+// the visitor could never break out of to reach the form and log in fresh.
+// Returning null instead lets the layout fall back to "no session" (no
+// sidebar), same as an actually-logged-out visitor.
+export async function getViewerAccessSafe(): Promise<ViewerAccess | null> {
+  const token = await getSessionToken();
+  if (!token) return null;
+  const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// Backs the login/forgot-password pages' "already authenticated, skip the
+// form" redirect - see getViewerAccessSafe's comment for why this must be
+// the real backend-verified check, not getSession()'s decode-only one.
+export async function isAuthenticated(): Promise<boolean> {
+  return (await getViewerAccessSafe()) !== null;
+}
+
 async function authHeaders(): Promise<HeadersInit> {
   const token = await getSessionToken();
   if (!token) {

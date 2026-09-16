@@ -1,14 +1,26 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Logo } from '@/components/Logo';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
+import { isAuthenticated } from '@/lib/api';
 import { loginAction } from './actions';
 
 const inputClass =
   'mb-4 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
 
 export default async function LoginPage(props: PageProps<'/login'>) {
+  // /login lives inside the (tenant) route group, so TenantLayout renders
+  // the sidebar around this page whenever a session cookie is present -
+  // without this check, a visitor who's still logged in but lands here
+  // (stale bookmark, a link that assumes logged-out) sees the sidebar AND
+  // the login form at once. See lib/api.ts's isAuthenticated for why this
+  // isn't the cheaper getSession() decode-only check.
+  if (await isAuthenticated()) {
+    redirect('/dashboard');
+  }
+
   const searchParams = await props.searchParams;
   const hasError = searchParams?.error === '1';
   const justReset = searchParams?.reset === '1';
