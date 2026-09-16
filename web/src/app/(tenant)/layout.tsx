@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSession, getViewerAccess } from "@/lib/api";
+import { getSession, getViewerAccess, getTenantOnboardingStatus } from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
 import { LogoutButton } from "@/components/LogoutButton";
 import { Logo } from "@/components/Logo";
@@ -10,11 +10,30 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 const NAV_ROW =
   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink";
 
-function SidebarLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+// A plain dot, not a count (there's nothing to count) - signals "setup
+// pending here" on a nav item, same amber "warning" tone as Badge's
+// `warning` variant. title gives the hover explanation a screen-reader-only
+// dot alone wouldn't.
+function PendingDot({ title }: { title: string }) {
+  return <span title={title} className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />;
+}
+
+function SidebarLink({
+  href,
+  icon,
+  label,
+  badge,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+  badge?: React.ReactNode;
+}) {
   return (
     <Link href={href} className={NAV_ROW}>
       {icon}
-      <span>{label}</span>
+      <span className="flex-1">{label}</span>
+      {badge}
     </Link>
   );
 }
@@ -119,6 +138,18 @@ export default async function TenantLayout({ children }: { children: React.React
   const access = await getViewerAccess();
   const isTenantWide = !session.customerId;
 
+  // Only fetched for a session that could actually act on it - a
+  // customer-scoped login has no "Clientes"/"Baixar Agente" nav items to
+  // badge at all, and neither does a tenant-wide user holding neither
+  // permission. Same reasoning the dashboard's own onboarding empty-state
+  // already uses (see dashboard/page.tsx's canManageCustomers) - this just
+  // extends that signal to the sidebar so it doesn't vanish once the admin
+  // navigates away from the dashboard. Two indexed existence checks
+  // (TenantService.getOnboardingStatus), not the expensive live-Stripe
+  // SubscriptionStatus call, since this runs on every page in this layout.
+  const canSeeOnboardingHints = isTenantWide && (hasPermission(access, 'customers') || hasPermission(access, 'agent'));
+  const onboarding = canSeeOnboardingHints ? await getTenantOnboardingStatus() : null;
+
   // Groups the nav into "day-to-day" (Clientes/Dispositivos/Relatórios/
   // Chamados/Notificações - what an operator opens constantly) vs.
   // "administração" (Usuários/Baixar Agente/Log de auditoria/Empresa/
@@ -152,7 +183,12 @@ export default async function TenantLayout({ children }: { children: React.React
 
         <nav className="flex flex-1 flex-col gap-1">
           {hasPermission(access, 'customers') && (
-            <SidebarLink href="/customers" icon={<CustomersIcon />} label="Clientes" />
+            <SidebarLink
+              href="/customers"
+              icon={<CustomersIcon />}
+              label="Clientes"
+              badge={onboarding && !onboarding.hasCustomers && <PendingDot title="Cadastre seu primeiro cliente" />}
+            />
           )}
           {/* Same "any authenticated session, no dedicated permission gate"
               rule GET /v1/devices itself already applies (unlike the PATCH
@@ -176,7 +212,16 @@ export default async function TenantLayout({ children }: { children: React.React
                 <SidebarLink href="/users" icon={<UsersIcon />} label="Usuários" />
               )}
               {hasPermission(access, 'agent') && (
-                <SidebarLink href="/agent-download" icon={<DownloadIcon />} label="Baixar Agente" />
+                <SidebarLink
+                  href="/agent-download"
+                  icon={<DownloadIcon />}
+                  label="Baixar Agente"
+                  badge={
+                    onboarding &&
+                    onboarding.hasCustomers &&
+                    !onboarding.hasDevices && <PendingDot title="Nenhum dispositivo monitorado ainda" />
+                  }
+                />
               )}
               {hasPermission(access, 'audit_log') && (
                 <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />

@@ -84,6 +84,18 @@ export function getTenant(): Promise<Tenant> {
   return apiFetch<Tenant>('/v1/tenant');
 }
 
+export interface TenantOnboardingStatus {
+  hasCustomers: boolean;
+  hasDevices: boolean;
+}
+
+// Backs the sidebar's onboarding-incomplete badges (TenantLayout) - a cheap
+// dedicated endpoint, not SubscriptionStatus (which makes a live Stripe
+// call and is too expensive to fetch on every page's shared layout).
+export function getTenantOnboardingStatus(): Promise<TenantOnboardingStatus> {
+  return apiFetch<TenantOnboardingStatus>('/v1/tenant/onboarding-status');
+}
+
 export function updateTenant(input: {
   name?: string;
   document?: string;

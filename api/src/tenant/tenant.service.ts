@@ -24,6 +24,19 @@ export class TenantService {
     return this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
   }
 
+  // Backs the sidebar's onboarding-incomplete badges (see TenantLayout) -
+  // deliberately just two indexed existence checks (findFirst, not count),
+  // cheap enough to call on every tenant-app page load unlike
+  // SubscriptionService.getStatus (which makes a live Stripe call and would
+  // be far too expensive to run outside its own rarely-viewed page).
+  async getOnboardingStatus(tenantId: string): Promise<{ hasCustomers: boolean; hasDevices: boolean }> {
+    const [customer, device] = await Promise.all([
+      this.prisma.customer.findFirst({ where: { tenantId }, select: { id: true } }),
+      this.prisma.device.findFirst({ where: { tenantId }, select: { id: true } }),
+    ]);
+    return { hasCustomers: !!customer, hasDevices: !!device };
+  }
+
   update(tenantId: string, dto: UpdateTenantDto) {
     return this.prisma.tenant.update({ where: { id: tenantId }, data: dto });
   }

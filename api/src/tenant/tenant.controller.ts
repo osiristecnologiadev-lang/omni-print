@@ -42,6 +42,11 @@ export class TenantController {
     return this.tenantService.get(req.tenantId);
   }
 
+  @Get('onboarding-status')
+  getOnboardingStatus(@Req() req: any) {
+    return this.tenantService.getOnboardingStatus(req.tenantId);
+  }
+
   @Patch()
   async update(@Req() req: any, @Body() dto: UpdateTenantDto) {
     assertPermission(req, 'settings');

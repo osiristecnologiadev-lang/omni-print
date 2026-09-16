@@ -61,12 +61,17 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
         {tenant.subscriptionStatus === 'ACTIVE' && <> · {currency.format(tenant.mrrCents / 100)}/mês</>}
       </p>
 
+      {searchParams?.tenantCreated === '1' && (
+        <PlatformBanner tone="success">Empresa cadastrada. Agora crie o primeiro login dela abaixo.</PlatformBanner>
+      )}
+
       <section className="mb-6 rounded-xl border border-gray-800 bg-gray-900/40 p-5">
         <h2 className="mb-1 text-sm font-medium text-gray-100">Preço negociado</h2>
         <p className="mb-4 text-xs text-gray-500">
           Padrão: {currency.format(STANDARD_PRICE_PER_DEVICE_CENTS / 100)}/dispositivo/mês. Deixe em branco para usar o
-          padrão. Se esta empresa já tem assinatura ativa, o novo valor entra em vigor imediatamente (o Stripe ajusta a
-          fatura do período atual proporcionalmente).
+          padrão. Marque &quot;Cortesia&quot; para isentar esta empresa de cobrança (define o preço como R$ 0,00/dispositivo -
+          é o mesmo critério que o filtro &quot;Cortesia&quot; da lista usa). Se esta empresa já tem assinatura ativa, o novo
+          valor entra em vigor imediatamente (o Stripe ajusta a fatura do período atual proporcionalmente).
         </p>
 
         {searchParams?.priceSaved === '1' && <PlatformBanner tone="success">Preço atualizado.</PlatformBanner>}
@@ -80,24 +85,30 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
           {tenant.pricePerDeviceCentsOverride == null && <span className="text-gray-500"> (padrão)</span>}
         </p>
 
-        <form action={boundUpdatePricing} className="flex gap-2">
-          <div className="relative flex-1">
-            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-gray-500">
-              R$
-            </span>
-            <input
-              name="pricePerDevice"
-              placeholder={(STANDARD_PRICE_PER_DEVICE_CENTS / 100).toFixed(2).replace('.', ',')}
-              defaultValue={tenant.pricePerDeviceCentsOverride != null ? (tenant.pricePerDeviceCentsOverride / 100).toFixed(2).replace('.', ',') : ''}
-              className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pr-3 pl-9 text-sm text-gray-100 outline-none transition-colors focus:border-amber-600"
-            />
+        <form action={boundUpdatePricing} className="space-y-3">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-gray-500">
+                R$
+              </span>
+              <input
+                name="pricePerDevice"
+                placeholder={(STANDARD_PRICE_PER_DEVICE_CENTS / 100).toFixed(2).replace('.', ',')}
+                defaultValue={tenant.pricePerDeviceCentsOverride != null ? (tenant.pricePerDeviceCentsOverride / 100).toFixed(2).replace('.', ',') : ''}
+                className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pr-3 pl-9 text-sm text-gray-100 outline-none transition-colors focus:border-amber-600"
+              />
+            </div>
+            <PlainSubmitButton
+              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500"
+              pendingLabel="Salvando..."
+            >
+              Salvar
+            </PlainSubmitButton>
           </div>
-          <PlainSubmitButton
-            className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500"
-            pendingLabel="Salvando..."
-          >
-            Salvar
-          </PlainSubmitButton>
+          <label className="flex items-center gap-2 text-xs text-gray-400">
+            <input type="checkbox" name="comp" defaultChecked={tenant.pricePerDeviceCentsOverride === 0} />
+            Cortesia (isentar de cobrança — ignora o valor digitado acima e zera o preço)
+          </label>
         </form>
       </section>
 
