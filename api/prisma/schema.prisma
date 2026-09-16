@@ -99,18 +99,18 @@ model Tenant {
   // SubscriptionService's webhook handler, deliberately NOT derived at read
   // time from a live Stripe call (would make every gated request depend on
   // Stripe's uptime).
-  subscriptionStatus       SubscriptionStatus @default(TRIALING) @map("subscription_status")
-  trialEndsAt              DateTime           @map("trial_ends_at")
-  stripeCustomerId         String?            @map("stripe_customer_id")
-  stripeSubscriptionId     String?            @map("stripe_subscription_id")
-  stripeSubscriptionItemId String?            @map("stripe_subscription_item_id")
+  subscriptionStatus          SubscriptionStatus @default(TRIALING) @map("subscription_status")
+  trialEndsAt                 DateTime           @map("trial_ends_at")
+  stripeCustomerId            String?            @map("stripe_customer_id")
+  stripeSubscriptionId        String?            @map("stripe_subscription_id")
+  stripeSubscriptionItemId    String?            @map("stripe_subscription_item_id")
   // Negotiated per-device price for this tenant, in cents - null means "use
   // the standard PRICE_PER_DEVICE_CENTS rate" (see
   // subscription/trial.util.ts's effectivePricePerDeviceCents). Set only by
   // a platform admin (PlatformController.updateTenantPricing); applied
   // immediately (with Stripe proration) to any already-active subscription,
   // not just future checkouts - see SubscriptionService.updateTenantPricing.
-  pricePerDeviceCentsOverride Int? @map("price_per_device_cents_override")
+  pricePerDeviceCentsOverride Int?               @map("price_per_device_cents_override")
 
   // Digest-email preferences (NotificationsService.sendDigestEmail) - both
   // default to "send nothing" on purpose (a tenant that never opts in never
@@ -438,12 +438,32 @@ model User {
   // change, not a migration.
   permissions String[] @default([])
 
-  createdTickets      Ticket[]           @relation("TicketCreatedBy")
-  assignedTickets     Ticket[]           @relation("TicketAssignedTo")
+  createdTickets      Ticket[]             @relation("TicketCreatedBy")
+  assignedTickets     Ticket[]             @relation("TicketAssignedTo")
   ticketComments      TicketComment[]
   ticketAttachments   TicketAttachment[]
+  passwordResetTokens PasswordResetToken[]
 
   @@map("users")
+}
+
+// A self-service "esqueci minha senha" request. Only the hash of the raw
+// token is stored (same posture as AgentToken.tokenHash - see that model's
+// comment) since the raw value is a bearer credential for one password
+// change while it's live. Single-use (usedAt) and short-lived (expiresAt) -
+// AuthService.resetPassword also invalidates every other outstanding token
+// for the user on a successful reset, so an old unused link can't be reused
+// after a newer one succeeded.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@map("password_reset_tokens")
 }
 
 // AgentToken authenticates one agent install (see agent/config.yaml's
@@ -806,10 +826,10 @@ model TicketComment {
 // volume as AgentReleasesService's STORAGE_ROOT (see that file's comment on
 // why local disk is fine at this project's current scale).
 model TicketAttachment {
-  id       String  @id @default(uuid())
-  ticketId String  @map("ticket_id")
-  ticket   Ticket  @relation(fields: [ticketId], references: [id])
-  commentId String? @map("comment_id")
+  id        String         @id @default(uuid())
+  ticketId  String         @map("ticket_id")
+  ticket    Ticket         @relation(fields: [ticketId], references: [id])
+  commentId String?        @map("comment_id")
   comment   TicketComment? @relation(fields: [commentId], references: [id])
 
   uploadedByUserId String @map("uploaded_by_user_id")
@@ -818,9 +838,9 @@ model TicketAttachment {
   // Original filename (shown to the user), never trusted as a filesystem
   // path - storedPath is a server-generated name, see TicketsService.
   filename   String
-  storedPath String @map("stored_path")
-  sizeBytes  Int    @map("size_bytes")
-  mimeType   String @map("mime_type")
+  storedPath String   @map("stored_path")
+  sizeBytes  Int      @map("size_bytes")
+  mimeType   String   @map("mime_type")
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@index([ticketId])

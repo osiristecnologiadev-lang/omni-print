@@ -14,7 +14,7 @@ const PLATFORM_SESSION_COOKIE = 'omniprint_platform_session';
 // every route public, so '/' is deliberately its own exact check below,
 // never folded into the startsWith() list.
 const PUBLIC_EXACT_PATHS = ['/'];
-const PUBLIC_PREFIX_PATHS = ['/login'];
+const PUBLIC_PREFIX_PATHS = ['/login', '/forgot-password', '/reset-password'];
 
 // Only checks that a session cookie is present - a fast redirect for the
 // common "not logged in at all" case. It does NOT verify the JWT's

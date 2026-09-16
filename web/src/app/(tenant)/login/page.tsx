@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Logo } from '@/components/Logo';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -10,6 +11,7 @@ const inputClass =
 export default async function LoginPage(props: PageProps<'/login'>) {
   const searchParams = await props.searchParams;
   const hasError = searchParams?.error === '1';
+  const justReset = searchParams?.reset === '1';
 
   return (
     <main className="relative flex min-h-screen items-center justify-center bg-paper px-6">
@@ -25,15 +27,21 @@ export default async function LoginPage(props: PageProps<'/login'>) {
           <p className="mb-6 text-sm text-ink-muted">Acompanhe o parque de impressoras que você atende.</p>
 
           {hasError && <Banner tone="error">E-mail ou senha inválidos.</Banner>}
+          {justReset && <Banner tone="success">Senha redefinida com sucesso. Entre com a nova senha.</Banner>}
 
           <label className="mb-1 block text-sm font-medium text-ink" htmlFor="email">
             E-mail
           </label>
           <input id="email" name="email" type="email" required autoFocus className={inputClass} />
 
-          <label className="mb-1 block text-sm font-medium text-ink" htmlFor="password">
-            Senha
-          </label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-sm font-medium text-ink" htmlFor="password">
+              Senha
+            </label>
+            <Link href="/forgot-password" className="text-xs text-accent hover:underline">
+              Esqueci minha senha
+            </Link>
+          </div>
           <input
             id="password"
             name="password"
