@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { trialEndsAtFromNow } from '../subscription/trial.util';
+import { TENANT_ONLY_PERMISSION_KEYS } from '../auth/permissions.util';
 import { SignupDto } from './dto/signup.dto';
 
 // Public tenant self-registration - the first outsourcing-company user for
@@ -37,7 +38,12 @@ export class SignupService {
     // UsersService.create already hashes the password and enforces the
     // system-wide-unique email constraint (ConflictException on collision) -
     // reused rather than duplicated, same as PlatformService does.
-    const user = await this.usersService.create(tenant.id, {
+    // No real "actor" exists yet (this IS the tenant's first user, created by
+    // an unauthenticated signup request) - passed full access so the
+    // privilege-escalation check UsersService.create now runs never blocks
+    // this bootstrap case, which always grants full access anyway (see
+    // defaultPermissionsFor).
+    const user = await this.usersService.create(tenant.id, [...TENANT_ONLY_PERMISSION_KEYS], {
       email: dto.email,
       password: dto.password,
       name: dto.name,

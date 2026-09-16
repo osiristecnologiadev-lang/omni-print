@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { effectivePricePerDeviceCents, trialEndsAtFromNow } from '../subscription/trial.util';
+import { TENANT_ONLY_PERMISSION_KEYS } from '../auth/permissions.util';
 
 @Injectable()
 export class PlatformService {
@@ -58,7 +59,10 @@ export class PlatformService {
   // rather than duplicating it.
   async createTenantUser(tenantId: string, dto: { email: string; password: string; name?: string }) {
     await this.getTenant(tenantId);
-    return this.usersService.create(tenantId, { ...dto, customerId: null });
+    // A platform admin is a separate auth system entirely (see PlatformAuthGuard)
+    // with no tenant-scoped 'permissions' of its own to check against - full
+    // access passed here for the same bootstrap reasoning as SignupService.
+    return this.usersService.create(tenantId, [...TENANT_ONLY_PERMISSION_KEYS], { ...dto, customerId: null });
   }
 
   // Fleet-wide agent version visibility - which client installs are still

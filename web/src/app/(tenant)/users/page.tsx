@@ -1,6 +1,6 @@
 import { forbidden } from 'next/navigation';
 import { getCustomers, getViewerAccess, getUsers, getViewerTimeZone } from '@/lib/api';
-import { hasPermission, permissionLabel, TENANT_PERMISSION_OPTIONS } from '@/lib/permissions';
+import { hasPermission, permissionLabel } from '@/lib/permissions';
 import { createUserAction, revokeUserAction, updateUserPermissionsAction } from './actions';
 import { PermissionsFields } from './PermissionsFields';
 import { PageHeader } from '@/components/PageHeader';
@@ -8,6 +8,7 @@ import { Panel } from '@/components/Panel';
 import { Badge } from '@/components/Badge';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
+import { TenantPermissionCheckboxGrid } from '@/components/TenantPermissionCheckboxGrid';
 
 const fieldClass =
   'rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
@@ -31,7 +32,19 @@ export default async function UsersPage(props: PageProps<'/users'>) {
   const permissionsSaved = searchParams?.permissionsSaved === '1';
   const permissionsError = searchParams?.permissionsError === '1';
 
-  const [users, customers, tz] = await Promise.all([getUsers(), getCustomers(), getViewerTimeZone()]);
+  // getCustomers() 403s for a viewer who holds 'users' but not 'customers' -
+  // a real, pre-existing bug this granular-permissions work exposed: that
+  // combination is exactly what the permission model is supposed to allow,
+  // but an unconditional call here used to 403 the WHOLE page via
+  // apiFetch's fallback forbidden() redirect. Skipped entirely when the
+  // viewer can't see customers anyway - the create-user form's
+  // customer-scope dropdown just degrades to "Equipe" only, which is
+  // correct: they have no way to pick a customer to scope a new login to.
+  const [users, customers, tz] = await Promise.all([
+    getUsers(),
+    hasPermission(access, 'customers') ? getCustomers() : Promise.resolve([]),
+    getViewerTimeZone(),
+  ]);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -53,7 +66,7 @@ export default async function UsersPage(props: PageProps<'/users'>) {
           <input name="name" placeholder="Nome" className={fieldClass} />
           <input name="email" type="email" placeholder="E-mail" required className={fieldClass} />
           <input name="password" type="password" placeholder="Senha (mín. 8 caracteres)" required minLength={8} className={fieldClass} />
-          <PermissionsFields customers={customers} />
+          <PermissionsFields customers={customers} viewerPermissions={access.permissions} />
           <SubmitButton variant="primary" className="sm:col-span-2" pendingLabel="Criando...">
             Criar usuário
           </SubmitButton>
@@ -62,10 +75,6 @@ export default async function UsersPage(props: PageProps<'/users'>) {
 
       <ul className="mt-6 divide-y divide-line rounded-xl border border-line bg-surface">
         {users.map((u) => {
-          // The assignable key set is already fixed by this user's own
-          // (immutable) customerId - no client-side reactivity needed here,
-          // unlike the create form's PermissionsFields.
-          const assignableKeys: readonly string[] = u.customerId ? ['invoices_view'] : TENANT_PERMISSION_OPTIONS;
           const boundUpdatePermissions = updateUserPermissionsAction.bind(null, u.id);
           return (
             <li key={u.id} className="px-4 py-3 text-sm">
@@ -102,21 +111,28 @@ export default async function UsersPage(props: PageProps<'/users'>) {
               {!u.revokedAt && (
                 <details className="mt-2">
                   <summary className="cursor-pointer text-xs font-medium text-accent">Editar permissões</summary>
-                  <form action={boundUpdatePermissions} className="mt-2 rounded-lg border border-line p-3">
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                      {assignableKeys.map((key) => (
-                        <label key={key} className="flex items-center gap-2 text-sm text-ink">
-                          <input
-                            type="checkbox"
-                            name="permissions"
-                            value={key}
-                            defaultChecked={u.permissions.includes(key)}
-                            className="h-4 w-4"
-                          />
-                          {permissionLabel(key)}
-                        </label>
-                      ))}
-                    </div>
+                  <form action={boundUpdatePermissions} className="mt-2">
+                    {u.customerId ? (
+                      // invoices_view is the one customer-scoped key - not an
+                      // escalation vector for the (necessarily tenant-wide)
+                      // viewer editing it, so never disabled here.
+                      <label className="flex items-center gap-2 text-sm text-ink">
+                        <input
+                          type="checkbox"
+                          name="permissions"
+                          value="invoices_view"
+                          defaultChecked={u.permissions.includes('invoices_view')}
+                          className="h-4 w-4"
+                        />
+                        {permissionLabel('invoices_view')}
+                      </label>
+                    ) : (
+                      <TenantPermissionCheckboxGrid
+                        defaultChecked={u.permissions}
+                        retainable={u.permissions}
+                        viewerPermissions={access.permissions}
+                      />
+                    )}
                     <SubmitButton variant="secondary" size="sm" className="mt-3" pendingLabel="Salvando...">
                       Salvar permissões
                     </SubmitButton>

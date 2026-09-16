@@ -36,7 +36,7 @@ export class UsersController {
   @Post()
   async create(@Req() req: any, @Body() dto: CreateUserDto) {
     assertPermission(req, 'users');
-    const user = await this.usersService.create(req.tenantId, dto);
+    const user = await this.usersService.create(req.tenantId, req.permissions ?? [], dto);
     await this.auditLog.log({
       tenantId: req.tenantId,
       actorType: 'USER',
@@ -71,7 +71,7 @@ export class UsersController {
   @Patch(':id/permissions')
   async updatePermissions(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateUserPermissionsDto) {
     assertPermission(req, 'users');
-    const user = await this.usersService.updatePermissions(req.tenantId, id, dto.permissions);
+    const user = await this.usersService.updatePermissions(req.tenantId, req.permissions ?? [], id, dto.permissions);
     await this.auditLog.log({
       tenantId: req.tenantId,
       actorType: 'USER',

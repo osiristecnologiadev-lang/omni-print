@@ -61,6 +61,36 @@ export function hasPermission(req: { permissions?: string[] }, key: PermissionKe
   return req.permissions?.includes(key) ?? false;
 }
 
+// Closes the privilege-escalation hole the 'users' permission would
+// otherwise open: without this, anyone holding just 'users' (and nothing
+// else) could grant themselves - or a brand-new throwaway account they
+// just created - every other permission, since neither UsersService.create
+// nor .updatePermissions checked the ACTOR's own permissions before, only
+// that the target's scope allowed the requested keys at all.
+// Only applies to a tenant-wide target: a customer-scoped target's only
+// assignable key (invoices_view, from CUSTOMER_ONLY_PERMISSION_KEYS) isn't
+// an escalation vector for the actor, who is necessarily tenant-wide
+// themselves and structurally can never hold - or gain anything by
+// granting - a customer-scoped key.
+// oldPermissions lets an actor save an unrelated change (via the same
+// "all checkboxes" form) without being forced to also strip a permission
+// the TARGET already legitimately had but the actor themselves doesn't
+// hold - only a permission newly appearing in newPermissions that wasn't
+// already on the target is checked against the actor's own set.
+export function assertNoPrivilegeEscalation(
+  actorPermissions: string[],
+  customerId: string | null,
+  oldPermissions: string[],
+  newPermissions: string[],
+): void {
+  if (customerId) return;
+  const newlyGranted = newPermissions.filter((key) => !oldPermissions.includes(key));
+  const ungranted = newlyGranted.filter((key) => !actorPermissions.includes(key));
+  if (ungranted.length > 0) {
+    throw new ForbiddenException(`you cannot grant permission(s) you don't have yourself: ${ungranted.join(', ')}`);
+  }
+}
+
 // Replaces every assertTenantWide/inline `if (req.customerId) throw ...`
 // call site in this codebase. Safe as a single uniform check (no per-route
 // special-casing) because validatePermissionsForScope makes it structurally

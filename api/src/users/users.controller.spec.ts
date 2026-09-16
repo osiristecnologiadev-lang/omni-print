@@ -49,6 +49,11 @@ describe('UsersController', () => {
 
       await controller.create(tenantWideReq, { email: 'novo@example.com', password: 'password1', permissions: ['devices'] });
 
+      expect(usersService.create).toHaveBeenCalledWith('t1', ['users'], {
+        email: 'novo@example.com',
+        password: 'password1',
+        permissions: ['devices'],
+      });
       expect(auditLog.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'user.create',
@@ -80,7 +85,7 @@ describe('UsersController', () => {
 
       await controller.updatePermissions(tenantWideReq, 'target-1', { permissions: ['devices', 'tickets'] });
 
-      expect(usersService.updatePermissions).toHaveBeenCalledWith('t1', 'target-1', ['devices', 'tickets']);
+      expect(usersService.updatePermissions).toHaveBeenCalledWith('t1', ['users'], 'target-1', ['devices', 'tickets']);
       expect(auditLog.log).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'user.update_permissions',
