@@ -1,4 +1,5 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { BRAZIL_TIMEZONES } from '../brazil-timezones.util';
 
 // All optional and all just for display on the invoice PDF's issuer block
 // (see Tenant's schema comment) - no format validation on document (CNPJ
@@ -9,4 +10,5 @@ export class UpdateTenantDto {
   @IsOptional() @IsString() @MaxLength(300) address?: string;
   @IsOptional() @IsString() @MaxLength(32) phone?: string;
   @IsOptional() @IsString() @MaxLength(200) contactEmail?: string;
+  @IsOptional() @IsIn(BRAZIL_TIMEZONES) timezone?: string;
 }

@@ -21,6 +21,8 @@ import { AgentEnrollmentModule } from './agent-enrollment/agent-enrollment.modul
 import { SignupModule } from './signup/signup.module';
 import { StripeModule } from './stripe/stripe.module';
 import { SubscriptionModule } from './subscription/subscription.module';
+import { ApiKeysModule } from './api-keys/api-keys.module';
+import { ExternalModule } from './external/external.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -51,6 +53,8 @@ import { HealthController } from './health/health.controller';
     SignupModule,
     StripeModule,
     SubscriptionModule,
+    ApiKeysModule,
+    ExternalModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

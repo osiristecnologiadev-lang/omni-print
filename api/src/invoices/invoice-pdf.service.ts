@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'fs';
 import { Injectable } from '@nestjs/common';
 import * as PDFDocument from 'pdfkit';
 
@@ -43,6 +44,16 @@ interface InvoicePdfInput {
   };
   issuer: PartyInfo;
   customer: PartyInfo;
+  // IANA zone (Tenant.timezone) - used ONLY for the two real instants below
+  // (generatedAt/paidAt), never for periodStart/periodEnd/dueDate (see
+  // fmtDate's own comment for why those must stay UTC). Defaults to
+  // America/Sao_Paulo if omitted (every real Tenant row has this set via
+  // the schema default, so omission should only happen in tests).
+  timezone?: string;
+  // Absolute disk path (Tenant.logoFilePath) - PNG/JPEG only, read and
+  // embedded directly via pdfkit's doc.image(). Omitted/null draws no logo,
+  // not a placeholder.
+  logoFilePath?: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = { PENDING: 'Pendente', PAID: 'Paga', CANCELLED: 'Cancelada' };
@@ -68,8 +79,19 @@ const ROW_ALT = '#f9fafb';
 function money(v: unknown): string {
   return `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+// periodStart/periodEnd/dueDate are constructed as UTC-anchored PURE
+// CALENDAR DATES (see contracts.service.ts's monthRange / invoices.
+// service.ts's dueDateFor) - always interpreted in UTC here, deliberately
+// NOT the tenant's real timezone, or the displayed day would shift by up
+// to a day relative to how they were computed.
 function fmtDate(d: Date): string {
   return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+}
+// generatedAt/paidAt ARE real instants (literally `new Date()` at the
+// moment the invoice was generated/marked paid) - these show correctly in
+// the tenant's own timezone, unlike the pure calendar dates above.
+function fmtInstant(d: Date, timezone: string): string {
+  return new Date(d).toLocaleDateString('pt-BR', { timeZone: timezone });
 }
 function fmtInt(n: number): string {
   return n.toLocaleString('pt-BR');
@@ -86,7 +108,7 @@ export class InvoicePdfService {
   // Returns the open PDFKit document - caller pipes it to a response and
   // must call .end() once piping is set up (kept here so callers control
   // exactly when the stream starts flowing).
-  build({ invoice, issuer, customer }: InvoicePdfInput): PDFKit.PDFDocument {
+  build({ invoice, issuer, customer, timezone, logoFilePath }: InvoicePdfInput): PDFKit.PDFDocument {
     const doc = new PDFDocument({ size: 'A4', margin: 40 });
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
@@ -94,15 +116,32 @@ export class InvoicePdfService {
     const perDevice = (invoice.perDevice as InvoicePerDevice[] | null) ?? [];
     const hasColorSplit = (invoice.colorPages ?? 0) > 0;
     const statusColor = STATUS_COLOR[invoice.status] ?? STATUS_COLOR.PENDING;
+    const tz = timezone ?? 'America/Sao_Paulo';
 
-    // --- Header: issuer identity (left) / invoice number + status (right) ---
-    doc.fillColor(INK).font('Helvetica-Bold').fontSize(20).text(issuer.name, left, 40, { width: contentWidth * 0.62 });
+    // --- Header: logo (if any) + issuer identity (left) / invoice number + status (right) ---
+    // A fixed square box, not the logo's real aspect ratio, keeps the
+    // header height predictable regardless of what gets uploaded - `fit`
+    // scales the image down to stay inside it without distorting it.
+    const LOGO_BOX = 40;
+    let textLeft = left;
+    if (logoFilePath && existsSync(logoFilePath)) {
+      try {
+        doc.image(readFileSync(logoFilePath), left, 40, { fit: [LOGO_BOX, LOGO_BOX] });
+        textLeft = left + LOGO_BOX + 10;
+      } catch {
+        // A corrupt/unreadable file on disk shouldn't break invoice
+        // generation - just draw the header without a logo, same as if
+        // none were uploaded.
+      }
+    }
+    doc.fillColor(INK).font('Helvetica-Bold').fontSize(20).text(issuer.name, textLeft, 40, { width: contentWidth * 0.62 - (textLeft - left) });
     let contactY = doc.y + 2;
     doc.font('Helvetica').fontSize(9).fillColor(MUTED);
     for (const line of partyContactLines(issuer)) {
-      doc.text(line, left, contactY, { width: contentWidth * 0.62 });
+      doc.text(line, textLeft, contactY, { width: contentWidth * 0.62 - (textLeft - left) });
       contactY = doc.y;
     }
+    contactY = Math.max(contactY, 40 + LOGO_BOX);
 
     doc.font('Helvetica').fontSize(10).fillColor(MUTED).text('FATURA', 0, 40, { width: right, align: 'right' });
     doc
@@ -140,7 +179,7 @@ export class InvoicePdfService {
     const stripCols = [
       { label: 'PERÍODO', value: `${fmtDate(invoice.periodStart)} – ${fmtDate(invoice.periodEnd)}` },
       { label: 'VENCIMENTO', value: fmtDate(invoice.dueDate) },
-      { label: 'EMISSÃO', value: fmtDate(invoice.generatedAt) },
+      { label: 'EMISSÃO', value: fmtInstant(invoice.generatedAt, tz) },
       { label: 'MODELO', value: MODEL_LABEL[invoice.pricingModel] ?? invoice.pricingModel },
     ];
     const stripColWidth = contentWidth / stripCols.length;
@@ -271,7 +310,7 @@ export class InvoicePdfService {
     // --- Payment note ---
     doc.font('Helvetica').fontSize(9).fillColor(MUTED);
     if (invoice.status === 'PAID' && invoice.paidAt) {
-      doc.fillColor('#065f46').text(`Pagamento confirmado em ${fmtDate(invoice.paidAt)}.`, left, y);
+      doc.fillColor('#065f46').text(`Pagamento confirmado em ${fmtInstant(invoice.paidAt, tz)}.`, left, y);
     } else if (invoice.status === 'CANCELLED') {
       doc.text('Fatura cancelada - nenhum pagamento é devido.', left, y);
     } else {

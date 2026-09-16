@@ -128,6 +128,8 @@ export class InvoicesController {
         contactEmail: tenant.contactEmail,
       },
       customer: { name: customer.name, document: customer.document, address: customer.address },
+      timezone: tenant.timezone,
+      logoFilePath: tenant.logoFilePath,
     });
     doc.pipe(res);
     doc.end();

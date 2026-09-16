@@ -87,6 +87,31 @@ model Tenant {
   phone        String?
   contactEmail String? @map("contact_email")
 
+  // Local-disk path under storage/tenant-logos/ (same persistent Railway
+  // volume as ticket attachments/agent releases - see TicketsService's
+  // STORAGE_ROOT comment), null when no logo has been uploaded yet. Only
+  // PNG/JPEG accepted (TenantService.ALLOWED_LOGO_MIME_TYPES) - pdfkit's
+  // doc.image() can't embed WebP/GIF, and the invoice PDF header is the
+  // primary reason this exists.
+  logoFilePath String? @map("logo_file_path")
+
+  // IANA zone (e.g. "America/Sao_Paulo"), defaulted for every existing and
+  // new tenant - not nullable, this project's whole audience is Brazilian
+  // outsourcing companies so "no timezone set" isn't a real state worth
+  // representing. Deliberately narrow in scope: only used for real
+  // INSTANTS a server process generates with no browser/cookie available
+  // (invoice PDF's "emitida em"/"pagamento confirmado em" - see
+  // InvoicePdfService). NOT used for periodStart/periodEnd/dueDate, which
+  // are constructed as UTC-anchored pure calendar dates (see
+  // contracts.service.ts's monthRange / invoices.service.ts's dueDateFor)
+  // and must keep displaying in UTC to stay consistent with how they were
+  // computed - applying this field there would shift the displayed
+  // calendar day by up to a day. The web app's own page rendering already
+  // has a separately-working, per-browser mechanism (the omniprint_tz
+  // cookie - see lib/api.ts's getViewerTimeZone) that this does NOT
+  // replace.
+  timezone String @default("America/Sao_Paulo")
+
   // OmniPrint's own billing of this tenant (distinct from Contract/Invoice,
   // which is this tenant billing ITS OWN customers) - see SubscriptionGuard
   // for how these two fields gate access. trialEndsAt is set once at
@@ -132,8 +157,32 @@ model Tenant {
   notifications        Notification[]
   tickets              Ticket[]
   auditLogEntries      AuditLogEntry[]
+  apiKeys              ApiKey[]
 
   @@map("tenants")
+}
+
+// A read-only credential for OmniPrint's external API (api/src/external/) -
+// lets a tenant's own outside tooling (a BI dashboard, a spreadsheet macro)
+// pull its own devices/customers/invoices/usage-report data without a user
+// login. Deliberately NOT the same concept as AgentToken (that authenticates
+// the on-prem printer-monitoring agent, an entirely different, much
+// higher-volume traffic pattern) or a User session (this has no permissions
+// array, no customerId scope, no password - it's always tenant-wide and
+// always read-only, see ApiKeyGuard). Only the hash is stored - same
+// posture as AgentToken.tokenHash - the raw value is shown once at
+// creation and never persisted.
+model ApiKey {
+  id         String    @id @default(uuid())
+  tenantId   String    @map("tenant_id")
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  tokenHash  String    @unique @map("token_hash")
+  label      String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  @@map("api_keys")
 }
 
 enum AuditActorType {

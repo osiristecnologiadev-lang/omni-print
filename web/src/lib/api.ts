@@ -67,6 +67,17 @@ export interface Tenant {
   phone: string | null;
   contactEmail: string | null;
   createdAt: string;
+  // IANA zone - only affects server-generated instants with no browser
+  // cookie available (invoice PDF's "emitida em"/"pagamento confirmado
+  // em"), never the app's own page rendering (that already works via the
+  // omniprint_tz cookie - see getViewerTimeZone). See api's schema comment
+  // on Tenant.timezone for the full reasoning.
+  timezone: string;
+  // Server-local disk path, present only to let the frontend know a logo
+  // exists (truthy/falsy) - never used as a URL directly, the actual image
+  // is always fetched through the /settings/logo proxy route (see that
+  // route's comment for why a direct path can't be used).
+  logoFilePath: string | null;
 }
 
 export function getTenant(): Promise<Tenant> {
@@ -79,8 +90,52 @@ export function updateTenant(input: {
   address?: string;
   phone?: string;
   contactEmail?: string;
+  timezone?: string;
 }): Promise<Tenant> {
   return apiMutate<Tenant>('/v1/tenant', 'PATCH', input);
+}
+
+// Raw Response, not JSON - see the analogous fetchInvoicePdf's comment on
+// why this is proxied through a Route Handler (web/.../settings/logo/route.ts)
+// rather than the browser hitting the API directly: an <img src> can't
+// carry the httpOnly session cookie's bearer token.
+export async function fetchTenantLogo(): Promise<Response> {
+  const res = await fetch(`${API_BASE_URL}/v1/tenant/logo`, { headers: await authHeaders(), cache: 'no-store' });
+  if (res.status === 401) {
+    redirect('/login');
+  }
+  return res; // 404 (no logo yet) is a normal state here, not an error - let the caller/route handler pass it through as-is.
+}
+
+export function uploadTenantLogo(form: FormData): Promise<{ logoFilePath: string }> {
+  return apiSendForm<{ logoFilePath: string }>('/v1/tenant/logo', 'POST', form);
+}
+
+export function removeTenantLogo(): Promise<void> {
+  return apiDelete('/v1/tenant/logo');
+}
+
+export interface ApiKeySummary {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+export function getApiKeys(): Promise<ApiKeySummary[]> {
+  return apiFetch<ApiKeySummary[]>('/v1/api-keys');
+}
+
+// Returns the raw key exactly once, alongside the same summary getApiKeys
+// returns - it's never retrievable again after this call (only its hash is
+// stored, see api's ApiKeysService).
+export function createApiKey(label?: string): Promise<ApiKeySummary & { key: string }> {
+  return apiMutate<ApiKeySummary & { key: string }>('/v1/api-keys', 'POST', { label });
+}
+
+export function revokeApiKey(id: string): Promise<ApiKeySummary> {
+  return apiMutate<ApiKeySummary>(`/v1/api-keys/${id}/revoke`, 'POST', {});
 }
 
 // OmniPrint's own billing of this tenant (distinct from Contract/Invoice,
@@ -472,6 +527,20 @@ async function apiSendForm<T>(path: string, method: 'POST', form: FormData): Pro
     throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
   }
   return res.json();
+}
+
+async function apiDelete(path: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}${path}`, { method: 'DELETE', headers: await authHeaders(), cache: 'no-store' });
+  if (res.status === 401) {
+    redirect('/login');
+  }
+  if (res.status === 403) {
+    forbidden();
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`API DELETE ${path} failed: ${res.status} ${text}`);
+  }
 }
 
 export function getDevices(): Promise<Device[]> {
