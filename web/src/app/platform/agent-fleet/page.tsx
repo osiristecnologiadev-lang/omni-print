@@ -1,16 +1,6 @@
 import { getAgentFleet, getAgentReleases } from '@/lib/platform-api';
 import { getViewerTimeZone } from '@/lib/api';
-
-// Server Components render on Railway (UTC) - see getViewerTimeZone.
-function formatDateTime(iso: string, timeZone?: string): string {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
-}
-
-// "Stale" here just means "hasn't checked in within roughly 2 update-check
-// cycles at the default 6h interval" - a rough signal for the operator to
-// investigate (offline machine, blocked outbound traffic, uninstalled
-// agent), not a hard SLA.
-const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+import { AgentFleetList } from './AgentFleetList';
 
 export default async function AgentFleetPage() {
   const [fleet, releases, tz] = await Promise.all([getAgentFleet(), getAgentReleases(), getViewerTimeZone()]);
@@ -40,44 +30,7 @@ export default async function AgentFleetPage() {
           Nenhum agente fez check-in ainda.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-800 bg-gray-900/40">
-          <table className="w-full text-sm">
-            <thead className="border-b border-gray-800 text-left text-xs uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-4 py-2">Tenant</th>
-                <th className="px-4 py-2">Cliente</th>
-                <th className="px-4 py-2">Token</th>
-                <th className="px-4 py-2">Versão</th>
-                <th className="px-4 py-2">Último check-in</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {fleet.map((entry) => {
-                const stale =
-                  !entry.lastCheckinAt || Date.now() - new Date(entry.lastCheckinAt).getTime() > STALE_AFTER_MS;
-                return (
-                  <tr key={entry.id}>
-                    <td className="px-4 py-2 text-gray-200">{entry.tenant.name}</td>
-                    <td className="px-4 py-2 text-gray-400">{entry.customer?.name ?? '—'}</td>
-                    <td className="px-4 py-2 text-gray-400">{entry.label ?? entry.id.slice(0, 8)}</td>
-                    <td className="px-4 py-2">
-                      {entry.lastSeenVersion ? (
-                        <span className="text-gray-200">v{entry.lastSeenVersion}</span>
-                      ) : (
-                        <span className="text-gray-600">nunca</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className={stale ? 'text-red-400' : 'text-gray-400'}>
-                        {entry.lastCheckinAt ? formatDateTime(entry.lastCheckinAt, tz) : 'nunca'}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <AgentFleetList fleet={fleet} tz={tz} />
       )}
 
       {latestByPlatform.size > 0 && (

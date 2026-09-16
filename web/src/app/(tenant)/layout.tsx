@@ -119,6 +119,21 @@ export default async function TenantLayout({ children }: { children: React.React
   const access = await getViewerAccess();
   const isTenantWide = !session.customerId;
 
+  // Groups the nav into "day-to-day" (Clientes/Dispositivos/Relatórios/
+  // Chamados/Notificações - what an operator opens constantly) vs.
+  // "administração" (Usuários/Baixar Agente/Log de auditoria/Empresa/
+  // Assinatura - configured once, then rarely touched) - closes the UX
+  // audit finding that the two were visually indistinguishable in one flat
+  // list. showAdminGroup guards the section label/divider so a session
+  // with zero admin-group permissions (e.g. every one of them unchecked,
+  // or a customer-scoped login) doesn't render an empty, label-only group.
+  const showAdminGroup =
+    hasPermission(access, 'users') ||
+    hasPermission(access, 'agent') ||
+    hasPermission(access, 'audit_log') ||
+    hasPermission(access, 'settings') ||
+    hasPermission(access, 'billing');
+
   return (
     <div className="flex">
       <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-line bg-surface px-3 py-4">
@@ -148,36 +163,42 @@ export default async function TenantLayout({ children }: { children: React.React
           {hasPermission(access, 'reports') && (
             <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
           )}
-          {hasPermission(access, 'agent') && (
-            <SidebarLink href="/agent-download" icon={<DownloadIcon />} label="Baixar Agente" />
-          )}
           {/* Chamados is the one nav item both session types get - a
               customer-scoped user opens/tracks their own tickets here, a
               tenant-wide user sees the full cross-customer queue. */}
           <SidebarLink href="/tickets" icon={<TicketsIcon />} label="Chamados" />
-          {hasPermission(access, 'users') && (
-            <SidebarLink href="/users" icon={<UsersIcon />} label="Usuários" />
-          )}
-          {hasPermission(access, 'audit_log') && (
-            <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />
-          )}
-          {hasPermission(access, 'settings') && (
-            <SidebarLink href="/settings" icon={<BuildingIcon />} label="Empresa" />
-          )}
-          {/* Its own dedicated permission, deliberately NOT bundled into
-              'settings' - billing (payment method, invoices, cancel) was
-              specifically asked to be restricted to whoever the outsource
-              designates, not everyone who can edit Empresa. The backend
-              rejects a customer-scoped caller on every route here
-              regardless of permissions (see SubscriptionController.
-              requireBillingAccess). Always visible now, not only while
-              blocked - closing the audit finding that once a tenant went
-              ACTIVE there was no way back to manage payment method/
-              invoices/cancellation. */}
-          {hasPermission(access, 'billing') && (
-            <SidebarLink href="/subscribe" icon={<BillingIcon />} label="Assinatura" />
-          )}
           {hasPermission(access, 'notifications') && <NotificationBell className={NAV_ROW} />}
+
+          {showAdminGroup && (
+            <div className="mt-3 border-t border-line pt-3">
+              <p className="px-3 pb-1 text-[11px] font-medium tracking-wide text-ink-faint uppercase">Administração</p>
+              {hasPermission(access, 'users') && (
+                <SidebarLink href="/users" icon={<UsersIcon />} label="Usuários" />
+              )}
+              {hasPermission(access, 'agent') && (
+                <SidebarLink href="/agent-download" icon={<DownloadIcon />} label="Baixar Agente" />
+              )}
+              {hasPermission(access, 'audit_log') && (
+                <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />
+              )}
+              {hasPermission(access, 'settings') && (
+                <SidebarLink href="/settings" icon={<BuildingIcon />} label="Empresa" />
+              )}
+              {/* Its own dedicated permission, deliberately NOT bundled into
+                  'settings' - billing (payment method, invoices, cancel) was
+                  specifically asked to be restricted to whoever the outsource
+                  designates, not everyone who can edit Empresa. The backend
+                  rejects a customer-scoped caller on every route here
+                  regardless of permissions (see SubscriptionController.
+                  requireBillingAccess). Always visible now, not only while
+                  blocked - closing the audit finding that once a tenant went
+                  ACTIVE there was no way back to manage payment method/
+                  invoices/cancellation. */}
+              {hasPermission(access, 'billing') && (
+                <SidebarLink href="/subscribe" icon={<BillingIcon />} label="Assinatura" />
+              )}
+            </div>
+          )}
         </nav>
 
         <div className="flex flex-col gap-3 border-t border-line pt-3">
