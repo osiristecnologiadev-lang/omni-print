@@ -8,22 +8,28 @@ import (
 	"os/user"
 )
 
-// RestrictFileAcl locks a file down to only the account currently running
-// this process. Program Files' default NTFS ACL grants the built-in Users
-// group Read&Execute, so without this any other local, unprivileged
-// account could read whatever this file holds - discovered.yaml's SNMP
-// community strings, or the agent's own log content.
+// RestrictFileAcl locks a file down to Administrators, SYSTEM, and
+// whoever is currently running this process. Program Files' default NTFS
+// ACL grants the built-in Users group Read&Execute, so without this any
+// other local, unprivileged account could read whatever this file holds -
+// discovered.yaml's SNMP community strings, or the agent's own log
+// content.
 //
-// Unlike config.yaml (written once by the elevated installer, then only
-// ever read back by the service running as LocalSystem - see the
-// installer's own icacls call), discovered.yaml and the log file are
-// written AND read back by whichever identity is CURRENTLY running the
-// agent: LocalSystem for the installed service, but potentially a regular,
-// non-admin developer account for a manual foreground run (see README's
-// dev flow). Granting a hardcoded Administrators/SYSTEM pair would lock the
-// running process itself out whenever that's not who it is - os/user.Current
-// resolves to whichever of those is actually true right now, so this works
-// correctly for both. Uid on Windows is the account's SID string.
+// Real incident this got wrong once already: an earlier version of this
+// function granted ONLY the current runtime identity (reasoning: the
+// installed service runs as LocalSystem, so a hardcoded Administrators/
+// SYSTEM pair would lock the running process itself out on a non-admin
+// dev's manual foreground run). That's still true and still handled here
+// (the *u.Uid grant below) - but it missed a THIRD reader this file
+// genuinely needs: a human troubleshooting the agent by opening
+// omniprint-agent.log directly, on a machine where the agent runs as the
+// SYSTEM-owned service. A real support session hit exactly this - the log
+// existed, the service could write it, but no human account, including a
+// full local Administrator's normal (non-elevated) desktop session, could
+// open it, because SYSTEM-only doesn't cover "Administrators" at all.
+// Administrators/SYSTEM here (well-known SIDs, language-independent) lets
+// an admin read it after elevating ("Run as Administrator"), which any IT
+// staff troubleshooting a Windows service already knows to do.
 //
 // Best-effort: the caller logs a failure rather than treating it as fatal,
 // since the agent works correctly either way.
@@ -32,5 +38,6 @@ func RestrictFileAcl(path string) error {
 	if err != nil {
 		return fmt.Errorf("resolve current user: %w", err)
 	}
-	return exec.Command("icacls.exe", path, "/inheritance:r", "/grant:r", "*"+u.Uid+":F").Run()
+	return exec.Command("icacls.exe", path, "/inheritance:r", "/grant:r",
+		"*S-1-5-32-544:F", "*S-1-5-18:F", "*"+u.Uid+":F").Run()
 }
