@@ -12,6 +12,33 @@ set -euo pipefail
 : "${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}"
 : "${R2_BUCKET:?R2_BUCKET is required}"
 
+API_BASE_URL="${API_BASE_URL:-https://api.omniprint.app.br}"
+
+# Failure-only alert, reusing the exact same webhook web/'s instrumentation.ts
+# calls (api/src/ops-alerts/) - deliberately not a "backup succeeded" email
+# every night too (user's own choice: silence means it worked, an email
+# means it didn't). OPS_ALERT_SECRET is optional here on purpose - a
+# misconfigured alert must never be why a real backup failure goes
+# unnoticed, but it also must never block the backup itself, so this is
+# best-effort and silent about its own failure.
+alert_failure() {
+  local msg="$1"
+  echo "ERROR: ${msg}" >&2
+  if [ -n "${OPS_ALERT_SECRET:-}" ]; then
+    curl -sS -m 10 -X POST "${API_BASE_URL}/v1/ops/alert" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${OPS_ALERT_SECRET}" \
+      -d "{\"message\":\"${msg}\",\"path\":\"db-backup cron\"}" \
+      >/dev/null 2>&1 || true
+  fi
+}
+# set -e means an explicit `exit 1` (used below for the too-small-dump
+# case) does NOT run this trap - it only fires for a command that returns
+# non-zero on its own (pg_dump, rclone, etc.), per bash's own ERR-trap
+# semantics. The too-small-dump branch calls alert_failure directly
+# instead, before its own exit.
+trap 'alert_failure "db-backup failed at line $LINENO - check the db-backup service logs on Railway"' ERR
+
 # rclone's RCLONE_CONFIG_<REMOTE>_<KEY> env-var convention defines a
 # remote named "r2" without ever writing an rclone.conf file. Tried the
 # inline ":backend,param=value:path" connection-string syntax first, but
@@ -58,7 +85,7 @@ pg_dump "$DATABASE_URL" | gzip > "$DUMP_FILE"
 # project's own billing logic already applies elsewhere.
 SIZE="$(wc -c < "$DUMP_FILE")"
 if [ "$SIZE" -lt 1024 ]; then
-  echo "ERROR: dump is only ${SIZE} bytes - aborting, not uploading a likely-broken backup" >&2
+  alert_failure "db-backup produced a suspiciously small dump (${SIZE} bytes) - aborted, did not upload"
   exit 1
 fi
 echo "Dump OK (${SIZE} bytes), uploading to R2..."
