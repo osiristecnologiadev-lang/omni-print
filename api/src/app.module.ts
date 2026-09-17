@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -23,6 +23,8 @@ import { StripeModule } from './stripe/stripe.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { ExternalModule } from './external/external.module';
+import { OpsAlertsModule } from './ops-alerts/ops-alerts.module';
+import { AllExceptionsFilter } from './ops-alerts/all-exceptions.filter';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -55,8 +57,15 @@ import { HealthController } from './health/health.controller';
     SubscriptionModule,
     ApiKeysModule,
     ExternalModule,
+    OpsAlertsModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Alerts OPS_ALERT_EMAIL on any unhandled 5xx, api-side - see
+    // AllExceptionsFilter's own comment for why it always defers to
+    // BaseExceptionFilter for the actual response.
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+  ],
 })
 export class AppModule {}
