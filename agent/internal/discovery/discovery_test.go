@@ -21,6 +21,41 @@ func TestParseRangesEmpty(t *testing.T) {
 	}
 }
 
+// Regression test for a real incident: a customer's print server was a
+// Hyper-V/VMware VM guest, whose own primary (and only) network adapter is
+// exactly the kind of name this used to blanket-filter out ("virtual",
+// "vethernet", "hyper-v", "vmware" were all in the old pattern list) -
+// zero interfaces left to scan, zero printers ever found, even though the
+// same machine reached the printers fine (confirmed via a competing
+// product installed on the identical host). These names must now survive.
+func TestIsVirtualInterfaceNameLetsRealVMAdaptersThrough(t *testing.T) {
+	realAdapters := []string{
+		"vEthernet (Default Switch)",
+		"vEthernet (External Virtual Switch)",
+		"Microsoft Hyper-V Network Adapter",
+		"VMware VMXNET3 Ethernet Adapter",
+		"Intel(R) Virtual Function Ethernet Adapter",
+	}
+	for _, name := range realAdapters {
+		if isVirtualInterfaceName(name) {
+			t.Errorf("isVirtualInterfaceName(%q) = true, want false - this would zero out a real print-server VM's only network path", name)
+		}
+	}
+}
+
+func TestIsVirtualInterfaceNameStillSkipsKnownNonLanNetworks(t *testing.T) {
+	skipped := []string{
+		"docker0", "Docker Desktop Backend", "vEthernet (WSL)",
+		"tailscale0", "ZeroTier One [abcdef123]",
+		"OpenVPN TAP-Windows Adapter", "Loopback Pseudo-Interface 1",
+	}
+	for _, name := range skipped {
+		if !isVirtualInterfaceName(name) {
+			t.Errorf("isVirtualInterfaceName(%q) = false, want true - should still be skipped", name)
+		}
+	}
+}
+
 func TestHostsInDropsNetworkAndBroadcast(t *testing.T) {
 	_, ipnet, err := net.ParseCIDR("10.0.0.0/30")
 	if err != nil {

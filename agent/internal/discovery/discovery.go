@@ -40,9 +40,25 @@ const (
 // Explicit config.Discovery.Ranges aren't capped - the admin asked for it.
 const autoDetectMaxPrefix = 20
 
+// Deliberately NOT "virtual"/"vethernet"/"hyper-v"/"vmware"/"virtualbox" -
+// those used to be here, but a real install on a virtualized print server
+// (Hyper-V/VMware guest - common for exactly this kind of dedicated print
+// server) surfaced the bug: the guest's own primary, only, real network
+// adapter is what Windows names things like "vEthernet (...)" or shows a
+// hypervisor vendor in its description, so this filter was silently
+// discarding the ONE interface that actually reaches the printers - zero
+// subnets left to scan, zero printers ever found, with no error anywhere
+// to point at (confirmed live: the same server monitored fine with a
+// competitor's agent, ruling out a real network/VLAN separation issue).
+// A name string alone can't reliably tell "this is an isolated
+// hypervisor-internal NAT switch" apart from "this is a VM guest's real,
+// only path to the LAN" - so only patterns that are NEVER a real LAN path
+// to physical hardware stay here: container/WSL NAT networks and VPN/mesh
+// tunnel interfaces. Worst case for keeping something that isn't a printer
+// network is a few wasted probe seconds, bounded by autoDetectMaxPrefix
+// and the usual timeout/concurrency settings - not a real cost.
 var virtualNamePatterns = []string{
-	"virtual", "vethernet", "docker", "wsl", "hyper-v", "vmware",
-	"virtualbox", "loopback", "tap", "tunnel", "vpn", "zerotier", "tailscale",
+	"docker", "wsl", "loopback", "tap", "tunnel", "vpn", "zerotier", "tailscale",
 }
 
 type Options struct {
@@ -91,6 +107,21 @@ func parseRanges(ranges []string) []*net.IPNet {
 	return nets
 }
 
+// isVirtualInterfaceName reports whether an interface's name matches one of
+// virtualNamePatterns - a substring match, case-insensitive, since
+// real-world interface names vary by driver/OS ("docker0", "Docker Desktop
+// Backend", "vpn0", etc). See virtualNamePatterns' own comment for why this
+// list is deliberately short.
+func isVirtualInterfaceName(name string) bool {
+	lname := strings.ToLower(name)
+	for _, pat := range virtualNamePatterns {
+		if strings.Contains(lname, pat) {
+			return true
+		}
+	}
+	return false
+}
+
 // localSubnets enumerates the host's own network interfaces and returns the
 // IPv4 subnets worth sweeping - skipping loopback, link-local, down
 // interfaces, obviously-virtual adapters, and ranges too large to sweep
@@ -107,15 +138,7 @@ func localSubnets() []*net.IPNet {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
-		lname := strings.ToLower(iface.Name)
-		virtual := false
-		for _, pat := range virtualNamePatterns {
-			if strings.Contains(lname, pat) {
-				virtual = true
-				break
-			}
-		}
-		if virtual {
+		if isVirtualInterfaceName(iface.Name) {
 			log.Printf("discovery: skipping interface %q (looks virtual)", iface.Name)
 			continue
 		}
