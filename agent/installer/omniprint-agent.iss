@@ -344,6 +344,27 @@ begin
   end;
 end;
 
+// Program Files' default NTFS ACL grants the built-in Users group
+// Read&Execute, so any other local, unprivileged account on the same
+// machine could otherwise read this file's plaintext agent_token. Locks
+// it down to just Administrators and SYSTEM using well-known SIDs
+// (S-1-5-32-544 / S-1-5-18) rather than the localized group names, which
+// differ across Windows language editions (e.g. "Administradores" on a
+// pt-BR install) - the SIDs are the same on every edition/language.
+// Best-effort: logged, not fatal - the agent works correctly either way,
+// this only narrows who else on the machine can read the token at rest.
+procedure RestrictConfigFileAcl(const ConfigPath: String);
+var
+  ResultCode: Integer;
+begin
+  if not Exec('icacls.exe',
+    '"' + ConfigPath + '" /inheritance:r /grant:r *S-1-5-32-544:F *S-1-5-18:F',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+  begin
+    Log('Warning: failed to restrict ACL on ' + ConfigPath + ' (icacls exit code ' + IntToStr(ResultCode) + ')');
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ConfigPath, Content, TenantIdValue, AgentTokenValue, CloudUrlValue: String;
@@ -403,6 +424,8 @@ begin
 
     if not SaveStringToFile(ConfigPath, Content, False) then
       RaiseException('Falha ao gravar ' + ConfigPath);
+
+    RestrictConfigFileAcl(ConfigPath);
 
     RegisterAndStartService;
   end;
