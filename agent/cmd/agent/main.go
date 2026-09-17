@@ -77,6 +77,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to open log file: %v", err)
 		}
+		if err := config.RestrictFileAcl(logPath); err != nil {
+			log.Printf("warning: failed to restrict permissions on %s: %v", logPath, err)
+		}
 		defer f.Close()
 		log.SetOutput(f)
 	}

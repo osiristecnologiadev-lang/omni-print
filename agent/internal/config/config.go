@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -196,6 +197,12 @@ func SaveDeviceFile(path string, devices []Device) error {
 	}
 	if err := os.WriteFile(path, out, 0644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
+	}
+	// Holds real SNMP community strings ("passwords" for discovered
+	// printers) in plaintext - same exposure config.yaml's agent_token had
+	// before its own icacls lockdown, just missed the first time.
+	if err := RestrictFileAcl(path); err != nil {
+		log.Printf("warning: failed to restrict permissions on %s: %v", path, err)
 	}
 	return nil
 }
