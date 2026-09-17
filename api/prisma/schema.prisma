@@ -564,6 +564,19 @@ model AgentToken {
   lastSeenVersion String?   @map("last_seen_version")
   lastCheckinAt   DateTime? @map("last_checkin_at")
 
+  // On-demand log pull ("Buscar log agora" in the customer page) - the
+  // agent only ever polls the cloud, there's no push channel to it, so a
+  // request is just a timestamp the agent notices on its own next check
+  // (every 2 minutes, see agent/internal/svc). "Pending" = logRequestedAt
+  // is set and newer than logUploadedAt (or logUploadedAt is still null) -
+  // clicking the button again just bumps logRequestedAt, no separate
+  // "clear the request" step needed. logContent is the agent's own log
+  // file's tail (last ~200KB), not the whole file - it has no rotation/
+  // size cap today and could be very old.
+  logRequestedAt DateTime? @map("log_requested_at")
+  logContent     String?   @map("log_content")
+  logUploadedAt  DateTime? @map("log_uploaded_at")
+
   // Opposite side of AgentEnrollmentCode.agentTokenId - set only when this
   // token was minted by a code exchange (AgentEnrollmentService.exchange)
   // rather than directly via CustomersService.createToken. Audit-only.

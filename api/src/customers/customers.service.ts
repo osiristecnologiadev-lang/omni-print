@@ -74,6 +74,11 @@ export class CustomersService {
         revokedAt: true,
         lastCheckinAt: true,
         lastSeenVersion: true,
+        // NOT logContent - up to ~300KB of text, only fetched on demand by
+        // getLog() when the "Ver log" link is actually opened, not on every
+        // customer-page load.
+        logRequestedAt: true,
+        logUploadedAt: true,
       },
     });
   }
@@ -104,6 +109,34 @@ export class CustomersService {
       throw new NotFoundException('token not found');
     }
     return this.prisma.agentToken.update({ where: { id: tokenId }, data: { revokedAt: new Date() } });
+  }
+
+  // The agent notices this on its own next 2-minute check (see
+  // agent/internal/svc) and uploads its log's tail - there's no push
+  // channel to make it happen sooner. Re-requesting just bumps the
+  // timestamp; AgentLogService.hasPendingRequest treats logRequestedAt >
+  // logUploadedAt as "still pending," so nothing here needs to be cleared.
+  async requestLog(tenantId: string, customerId: string, tokenId: string) {
+    await this.requireCustomer(tenantId, customerId);
+    const token = await this.prisma.agentToken.findFirst({ where: { id: tokenId, tenantId, customerId } });
+    if (!token) {
+      throw new NotFoundException('token not found');
+    }
+    return this.prisma.agentToken.update({ where: { id: tokenId }, data: { logRequestedAt: new Date() } });
+  }
+
+  // Separate from listTokens on purpose - logContent can be up to ~300KB,
+  // only worth fetching when a human actually opens the log view.
+  async getLog(tenantId: string, customerId: string, tokenId: string) {
+    await this.requireCustomer(tenantId, customerId);
+    const token = await this.prisma.agentToken.findFirst({
+      where: { id: tokenId, tenantId, customerId },
+      select: { logContent: true, logUploadedAt: true },
+    });
+    if (!token) {
+      throw new NotFoundException('token not found');
+    }
+    return token;
   }
 
   // Codes are listed without their hash or raw value - same reasoning as

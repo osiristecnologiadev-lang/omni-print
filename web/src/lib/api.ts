@@ -784,6 +784,8 @@ export interface AgentTokenSummary {
   revokedAt: string | null;
   lastCheckinAt: string | null;
   lastSeenVersion: string | null;
+  logRequestedAt: string | null;
+  logUploadedAt: string | null;
 }
 
 export interface CreatedAgentToken {
@@ -848,6 +850,24 @@ export function createCustomerToken(customerId: string, label?: string): Promise
 
 export function revokeCustomerToken(customerId: string, tokenId: string): Promise<AgentTokenSummary> {
   return apiMutate<AgentTokenSummary>(`/v1/customers/${customerId}/agent-tokens/${tokenId}/revoke`, 'POST', {});
+}
+
+// Fire-and-forget from the agent's point of view - it notices this on its
+// own next poll (every 2 minutes, see agent/internal/svc), there's no push
+// channel to make it happen sooner.
+export function requestAgentTokenLog(customerId: string, tokenId: string): Promise<AgentTokenSummary> {
+  return apiMutate<AgentTokenSummary>(`/v1/customers/${customerId}/agent-tokens/${tokenId}/request-log`, 'POST', {});
+}
+
+export interface AgentTokenLog {
+  logContent: string | null;
+  logUploadedAt: string | null;
+}
+
+// Separate from getCustomerTokens on purpose - logContent can be up to
+// ~300KB, only fetched when the "Ver log" page is actually opened.
+export function getAgentTokenLog(customerId: string, tokenId: string): Promise<AgentTokenLog> {
+  return apiFetch<AgentTokenLog>(`/v1/customers/${customerId}/agent-tokens/${tokenId}/log`);
 }
 
 export interface AgentEnrollmentCodeSummary {

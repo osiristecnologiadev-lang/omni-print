@@ -64,12 +64,18 @@ func main() {
 		log.Fatalf("failed to resolve config path: %v", err)
 	}
 
+	// Resolved even when LogFile is unset (empty string then) so svc.New
+	// always gets a definitive answer rather than re-deriving this same
+	// relative-to-config-dir logic itself - see readLogTail's caller in
+	// internal/svc for the other consumer of this path (the "Buscar log
+	// agora" feature can't read back a log that isn't configured at all).
+	var logPath string
 	if cfg.LogFile != "" {
 		// A relative log_file is resolved against config.yaml's own directory,
 		// not the process's working directory - a Windows service doesn't run
 		// with the directory `install` was invoked from as its CWD, same
 		// reasoning as absConfigPath above.
-		logPath := cfg.LogFile
+		logPath = cfg.LogFile
 		if !filepath.IsAbs(logPath) {
 			logPath = filepath.Join(filepath.Dir(absConfigPath), logPath)
 		}
@@ -84,7 +90,7 @@ func main() {
 		log.SetOutput(f)
 	}
 
-	svcInstance, err := svc.New(cfg, version, absConfigPath)
+	svcInstance, err := svc.New(cfg, version, absConfigPath, logPath)
 	if err != nil {
 		log.Fatalf("failed to create service: %v", err)
 	}

@@ -24,6 +24,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { ExternalModule } from './external/external.module';
 import { OpsAlertsModule } from './ops-alerts/ops-alerts.module';
+import { AgentLogModule } from './agent-log/agent-log.module';
 import { AllExceptionsFilter } from './ops-alerts/all-exceptions.filter';
 import { HealthController } from './health/health.controller';
 
@@ -58,6 +59,7 @@ import { HealthController } from './health/health.controller';
     ApiKeysModule,
     ExternalModule,
     OpsAlertsModule,
+    AgentLogModule,
   ],
   controllers: [HealthController],
   providers: [

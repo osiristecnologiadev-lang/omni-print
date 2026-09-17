@@ -21,6 +21,7 @@ import (
 type program struct {
 	cfg     *config.Config
 	version string
+	logPath string // resolved absolute path to LogFile, or "" if not configured (see cmd/agent/main.go)
 	cancel  context.CancelFunc
 	done    chan struct{}
 
@@ -38,14 +39,14 @@ type program struct {
 // even though the OS starts it with an unrelated working directory (e.g.
 // System32 on Windows) rather than the directory `install` was run from -
 // without this, the started service can't find its config at all.
-func New(cfg *config.Config, version string, configPath string) (service.Service, error) {
+func New(cfg *config.Config, version string, configPath string, logPath string) (service.Service, error) {
 	svcConfig := &service.Config{
 		Name:        updater.ServiceName,
 		DisplayName: "OmniPrint Monitoring Agent",
 		Description: "Collects printer fleet metrics via SNMP and reports them to the OmniPrint cloud platform.",
 		Arguments:   []string{"-config", configPath},
 	}
-	prg := &program{cfg: cfg, version: version, done: make(chan struct{})}
+	prg := &program{cfg: cfg, version: version, logPath: logPath, done: make(chan struct{})}
 	return service.New(prg, svcConfig)
 }
 
@@ -85,6 +86,15 @@ func (p *program) run(ctx context.Context) {
 	updateTicker := time.NewTicker(p.cfg.AutoUpdate.CheckInterval.Duration())
 	defer updateTicker.Stop()
 
+	// Fixed, not config-tunable - this is a niche on-demand support feature
+	// ("Buscar log agora" in the customer page), not something that needs a
+	// knob. 2 minutes trades a bit of constant background traffic across
+	// the whole fleet for a request that actually feels responsive when
+	// someone's mid-troubleshooting, rather than piggybacking on the much
+	// slower pollTicker/updateTicker cadences.
+	logCheckTicker := time.NewTicker(2 * time.Minute)
+	defer logCheckTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -95,8 +105,40 @@ func (p *program) run(ctx context.Context) {
 			p.runDiscovery(ctx)
 		case <-updateTicker.C:
 			p.checkForUpdate(ctx)
+		case <-logCheckTicker.C:
+			p.checkLogRequest(ctx, tc)
 		}
 	}
+}
+
+// checkLogRequest asks the API whether a human requested this agent's log
+// (see api/src/agent-log/), and if so, uploads the log file's tail. A
+// missing/unconfigured log_file, or any transient network error, is logged
+// and simply retried on the next tick - never worth interrupting the
+// agent's real job (polling printers) over.
+func (p *program) checkLogRequest(ctx context.Context, tc *transport.Client) {
+	pending, err := tc.CheckLogRequest(ctx)
+	if err != nil {
+		log.Printf("log request check failed: %v", err)
+		return
+	}
+	if !pending {
+		return
+	}
+	if p.logPath == "" {
+		log.Printf("log requested, but no log_file is configured - nothing to send")
+		return
+	}
+	tail, err := readLogTail(p.logPath)
+	if err != nil {
+		log.Printf("log requested, but failed to read %s: %v", p.logPath, err)
+		return
+	}
+	if err := tc.UploadLog(ctx, tail); err != nil {
+		log.Printf("log upload failed: %v", err)
+		return
+	}
+	log.Printf("uploaded log (%d bytes) in response to a request", len(tail))
 }
 
 // checkForUpdate asks the API for the latest release and, if it's newer

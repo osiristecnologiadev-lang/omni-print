@@ -20,6 +20,7 @@ import {
   createCustomerUserAction,
   revokeCustomerUserAction,
   revokeTokenAction,
+  requestLogAction,
   revokeEnrollmentCodeAction,
   updateCustomerInfoAction,
   updateCustomerNotifyEmailAction,
@@ -54,6 +55,16 @@ function tokenStatusBadge(t: AgentTokenSummary) {
   if (!t.lastCheckinAt) return <Badge tone="warning">Nunca usado</Badge>;
   const stale = Date.now() - new Date(t.lastCheckinAt).getTime() > TOKEN_STALE_AFTER_MS;
   return stale ? <Badge tone="warning">Inativo</Badge> : <Badge tone="ok">Ativo</Badge>;
+}
+
+// "Pending" mirrors AgentLogService.hasPendingRequest on the API side
+// exactly (logRequestedAt set and not yet satisfied by a newer
+// logUploadedAt) - the agent only notices a request on its own next poll
+// (up to 2 minutes later, see agent/internal/svc), there's no way to make
+// it happen faster than that.
+function logRequestPending(t: AgentTokenSummary): boolean {
+  if (!t.logRequestedAt) return false;
+  return !t.logUploadedAt || new Date(t.logUploadedAt) < new Date(t.logRequestedAt);
 }
 
 function isEnrollmentCodeExpired(c: AgentEnrollmentCodeSummary): boolean {
@@ -113,6 +124,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
   const customerUsers = users.filter((u) => u.customerId === id);
   const customerLowSupplies = lowSupplies.filter((s) => s.customerId === id);
   const boundRevokeToken = revokeTokenAction.bind(null, id);
+  const boundRequestLog = requestLogAction.bind(null, id);
   const boundRevokeEnrollmentCode = revokeEnrollmentCodeAction.bind(null, id);
   const boundCreateUser = createCustomerUserAction.bind(null, id);
   const boundRevokeUser = revokeCustomerUserAction.bind(null, id);
@@ -420,6 +432,14 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
 
         {searchParams?.tokenRevoked === '1' && <Banner tone="success">Token revogado.</Banner>}
         {searchParams?.tokenError === '1' && <Banner tone="error">Não foi possível revogar o token. Tente novamente.</Banner>}
+        {searchParams?.logRequested === '1' && (
+          <Banner tone="success">
+            Log solicitado — o agente envia assim que perceber o pedido (até 2 minutos, se estiver online).
+          </Banner>
+        )}
+        {searchParams?.logRequestError === '1' && (
+          <Banner tone="error">Não foi possível solicitar o log. Tente novamente.</Banner>
+        )}
 
         <CreateTokenForm customerId={id} />
 
@@ -442,13 +462,28 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
                       </>
                     )}
                   </div>
+                  {!t.revokedAt && logRequestPending(t) && (
+                    <div className="text-xs text-ink-faint">Aguardando o agente enviar o log...</div>
+                  )}
+                  {!t.revokedAt && !logRequestPending(t) && t.logUploadedAt && (
+                    <Link href={`/customers/${id}/agent-tokens/${t.id}/log`} className="text-xs text-accent hover:underline">
+                      Ver log (enviado em {formatDateTime(t.logUploadedAt, tz)})
+                    </Link>
+                  )}
                 </div>
                 {t.revokedAt ? null : (
-                  <form action={boundRevokeToken.bind(null, t.id)}>
-                    <SubmitButton variant="danger" pendingLabel="Revogando...">
-                      Revogar
-                    </SubmitButton>
-                  </form>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <form action={boundRequestLog.bind(null, t.id)}>
+                      <SubmitButton variant="secondary" size="sm" pendingLabel="Solicitando...">
+                        Buscar log agora
+                      </SubmitButton>
+                    </form>
+                    <form action={boundRevokeToken.bind(null, t.id)}>
+                      <SubmitButton variant="danger" pendingLabel="Revogando...">
+                        Revogar
+                      </SubmitButton>
+                    </form>
+                  </div>
                 )}
               </li>
             ))}

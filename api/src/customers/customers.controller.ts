@@ -112,6 +112,30 @@ export class CustomersController {
     return token;
   }
 
+  @Post(':id/agent-tokens/:tokenId/request-log')
+  async requestLog(@Req() req: any, @Param('id') id: string, @Param('tokenId') tokenId: string) {
+    assertPermission(req, 'agent');
+    const token = await this.customersService.requestLog(req.tenantId, id, tokenId);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'agent_token.request_log',
+      targetType: 'AgentToken',
+      targetId: token.id,
+      targetLabel: token.label ?? 'Sem rótulo',
+      metadata: { customerId: id },
+    });
+    return token;
+  }
+
+  @Get(':id/agent-tokens/:tokenId/log')
+  getLog(@Req() req: any, @Param('id') id: string, @Param('tokenId') tokenId: string) {
+    assertPermission(req, 'agent');
+    return this.customersService.getLog(req.tenantId, id, tokenId);
+  }
+
   @Get(':id/agent-enrollment-codes')
   listEnrollmentCodes(@Req() req: any, @Param('id') id: string) {
     assertPermission(req, 'agent');

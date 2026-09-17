@@ -6,6 +6,7 @@ import {
   createCustomerToken,
   createCustomerEnrollmentCode,
   createUser,
+  requestAgentTokenLog,
   revokeCustomerToken,
   revokeCustomerEnrollmentCode,
   revokeUser,
@@ -41,6 +42,20 @@ export async function revokeTokenAction(customerId: string, tokenId: string) {
   }
   revalidatePath(`/customers/${customerId}`);
   redirect(`/customers/${customerId}?tokenRevoked=1`);
+}
+
+// Doesn't actually deliver the log - just marks the request. The agent
+// notices it on its own next check (up to 2 minutes later, see
+// agent/internal/svc) and uploads its log tail; the customer page's status
+// text ("Aguardando..." / "Ver log") reflects whichever state that's in.
+export async function requestLogAction(customerId: string, tokenId: string) {
+  try {
+    await requestAgentTokenLog(customerId, tokenId);
+  } catch {
+    redirect(`/customers/${customerId}?logRequestError=1`);
+  }
+  revalidatePath(`/customers/${customerId}`);
+  redirect(`/customers/${customerId}?logRequested=1`);
 }
 
 interface CreateEnrollmentCodeState {
