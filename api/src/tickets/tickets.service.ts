@@ -6,6 +6,7 @@ import { TicketStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { computeSlaDueAt, TicketPriorityKey } from '../common/sla.util';
+import { escapeHtml } from '../common/html.util';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 
@@ -401,7 +402,7 @@ export class TicketsService {
     await this.emailService.send({
       to: [...recipients],
       subject: `OmniPrint: novo comentário em "${ticket.subject}"`,
-      html: `<p style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;">Novo comentário no chamado <strong>${ticket.subject}</strong>.</p><p style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;"><a href="${appUrl}/tickets/${ticket.id}" style="color:#2547d0;">Ver chamado →</a></p>`,
+      html: `<p style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;">Novo comentário no chamado <strong>${escapeHtml(ticket.subject)}</strong>.</p><p style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;"><a href="${appUrl}/tickets/${ticket.id}" style="color:#2547d0;">Ver chamado →</a></p>`,
       text: `Novo comentário no chamado "${ticket.subject}".\nVer: ${appUrl}/tickets/${ticket.id}`,
     });
   }
@@ -413,7 +414,7 @@ export class TicketsService {
     await this.emailService.send({
       to: assigneeEmail,
       subject: `OmniPrint: chamado atribuído a você - "${subject}"`,
-      html: `<p style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;">O chamado <strong>${subject}</strong> foi atribuído a você.</p><p style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;"><a href="${appUrl}/tickets/${ticketId}" style="color:#2547d0;">Ver chamado →</a></p>`,
+      html: `<p style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;">O chamado <strong>${escapeHtml(subject)}</strong> foi atribuído a você.</p><p style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;"><a href="${appUrl}/tickets/${ticketId}" style="color:#2547d0;">Ver chamado →</a></p>`,
       text: `O chamado "${subject}" foi atribuído a você.\nVer: ${appUrl}/tickets/${ticketId}`,
     });
   }

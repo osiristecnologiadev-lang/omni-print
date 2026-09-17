@@ -7,6 +7,7 @@ import { DevicesService } from '../devices/devices.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { EmailService } from '../email/email.service';
 import { TicketPriorityKey } from '../common/sla.util';
+import { escapeHtml } from '../common/html.util';
 
 function fmtDate(d: Date | string | null | undefined): string {
   if (!d) return '';
@@ -429,8 +430,8 @@ export class NotificationsService {
           <tr>
             <td style="padding:10px 0;border-bottom:1px solid #e2e5eb;">
               <div style="font-size:11px;font-weight:600;color:#57606f;text-transform:uppercase;letter-spacing:.04em;">${TYPE_LABEL[i.type]}</div>
-              <div style="font-size:15px;font-weight:600;color:#14181f;margin-top:2px;">${i.title}</div>
-              <div style="font-size:13.5px;color:#57606f;margin-top:2px;">${i.body}</div>
+              <div style="font-size:15px;font-weight:600;color:#14181f;margin-top:2px;">${escapeHtml(i.title)}</div>
+              <div style="font-size:13.5px;color:#57606f;margin-top:2px;">${escapeHtml(i.body)}</div>
               ${opts.withAppLinks ? `<a href="${appUrl}${i.linkHref}" style="font-size:13px;color:#2547d0;text-decoration:none;">Ver detalhes →</a>` : ''}
             </td>
           </tr>`,
