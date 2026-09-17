@@ -105,10 +105,12 @@ export default async function NotificationsPage(props: PageProps<'/notifications
       {searchParams?.resolved === '1' && <Banner tone="success">Notificação resolvida.</Banner>}
       {searchParams?.resolveError === '1' && <Banner tone="error">Não foi possível resolver a notificação. Tente novamente.</Banner>}
       {searchParams?.prefsSaved === '1' && <Banner tone="success">Preferências de e-mail salvas.</Banner>}
-      {searchParams?.prefsError === '1' && <Banner tone="error">Não foi possível salvar as preferências. Tente novamente.</Banner>}
+      {searchParams?.prefsError === '1' && (
+        <Banner tone="error">Não foi possível salvar as preferências de e-mail. Tente novamente.</Banner>
+      )}
       {searchParams?.ticketPrefsSaved === '1' && <Banner tone="success">Preferências de chamado automático salvas.</Banner>}
       {searchParams?.ticketPrefsError === '1' && (
-        <Banner tone="error">Não foi possível salvar as preferências. Tente novamente.</Banner>
+        <Banner tone="error">Não foi possível salvar as preferências de chamado automático. Tente novamente.</Banner>
       )}
 
       <Panel className="mb-6">
