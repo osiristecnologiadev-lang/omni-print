@@ -93,8 +93,13 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
               </span>
               <input
                 name="pricePerDevice"
+                aria-label="Preço negociado por dispositivo, em reais"
                 placeholder={(STANDARD_PRICE_PER_DEVICE_CENTS / 100).toFixed(2).replace('.', ',')}
-                defaultValue={tenant.pricePerDeviceCentsOverride != null ? (tenant.pricePerDeviceCentsOverride / 100).toFixed(2).replace('.', ',') : ''}
+                defaultValue={
+                  tenant.pricePerDeviceCentsOverride != null && tenant.pricePerDeviceCentsOverride !== 0
+                    ? (tenant.pricePerDeviceCentsOverride / 100).toFixed(2).replace('.', ',')
+                    : ''
+                }
                 className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pr-3 pl-9 text-sm text-gray-100 outline-none transition-colors focus:border-amber-600"
               />
             </div>
