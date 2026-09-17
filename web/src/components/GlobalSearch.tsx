@@ -110,6 +110,7 @@ export function GlobalSearch() {
     <div ref={containerRef} className="relative px-2">
       <input
         type="text"
+        aria-label="Buscar cliente, dispositivo ou chamado"
         value={query}
         onFocus={() => {
           ensureLoaded();

@@ -76,12 +76,18 @@ export function TenantList({ tenants, tz }: { tenants: Tenant[]; tz?: string }) 
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <input
           type="text"
+          aria-label="Buscar por nome da empresa"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar por nome da empresa..."
           className={`min-w-[220px] flex-1 ${fieldClass}`}
         />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={fieldClass}>
+        <select
+          aria-label="Filtrar por status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className={fieldClass}
+        >
           <option value="all">Todos os status</option>
           <option value="TRIALING">Teste</option>
           <option value="ACTIVE">Ativo</option>
@@ -89,7 +95,12 @@ export function TenantList({ tenants, tz }: { tenants: Tenant[]; tz?: string }) 
           <option value="CANCELED">Cancelado</option>
           <option value="comp">Cortesia</option>
         </select>
-        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className={fieldClass}>
+        <select
+          aria-label="Ordenar lista"
+          value={sortKey}
+          onChange={(e) => setSortKey(e.target.value as SortKey)}
+          className={fieldClass}
+        >
           {SORT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
