@@ -1,5 +1,7 @@
 import { BadRequestException, Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiKeyGuard } from '../api-keys/api-key.guard';
+import { ApiKeyThrottlerGuard } from '../api-keys/api-key-throttler.guard';
 import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { DevicesService } from '../devices/devices.service';
 import { CustomersService } from '../customers/customers.service';
@@ -14,7 +16,13 @@ import { InvoicesService } from '../invoices/invoices.service';
 // mutating route to guard). Distinct URL prefix (v1/external/...) from
 // every other v1/... route the web app itself calls, so it's immediately
 // obvious from a URL alone which auth model a route expects.
-@UseGuards(ApiKeyGuard, SubscriptionGuard)
+// ApiKeyThrottlerGuard must come after ApiKeyGuard so req.apiKeyId is
+// already set - it tracks by key, not IP, so a leaked key rotating source
+// addresses can't just dodge the limit (see that guard's own comment).
+// Tighter than the 60/min global default: this is occasional BI/spreadsheet
+// polling, not the app's own live traffic.
+@Throttle({ default: { limit: 30, ttl: 60_000 } })
+@UseGuards(ApiKeyGuard, SubscriptionGuard, ApiKeyThrottlerGuard)
 @Controller('v1/external')
 export class ExternalController {
   constructor(

@@ -30,6 +30,9 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     req.tenantId = apiKey.tenantId;
+    // Read by ApiKeyThrottlerGuard so the external API's rate limit tracks
+    // the actual key presented, not just the caller's IP.
+    req.apiKeyId = apiKey.id;
     // Fire-and-forget: a slow/failed write here shouldn't hold up or break
     // the actual request this key was presented for. Best-effort "last
     // used" visibility for the Settings page, not an audit trail (see

@@ -14,6 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { TicketStatus } from '@prisma/client';
 import { UserAuthGuard } from '../auth/user-auth.guard';
@@ -50,7 +51,12 @@ export class TicketsController {
     return this.ticketsService.list(req.tenantId, customerId, status);
   }
 
+  // Tighter than the 60/min global default - each request can write up to
+  // MAX_ATTACHMENT_BYTES to disk, and a customer-scoped session (not just
+  // staff) can hit this route, same reasoning as ingest.controller.ts's
+  // own write-heavy override.
   @Post()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @UseInterceptors(ATTACHMENT_INTERCEPTOR)
   create(
     @Req() req: any,
@@ -75,6 +81,7 @@ export class TicketsController {
   }
 
   @Post(':id/comments')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @UseInterceptors(ATTACHMENT_INTERCEPTOR)
   addComment(
     @Req() req: any,
