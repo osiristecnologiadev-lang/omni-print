@@ -1,6 +1,14 @@
-import { IsString, MaxLength } from 'class-validator';
+import { IsString, Matches, MaxLength } from 'class-validator';
 
 export class UploadLogDto {
+  // The agent-local calendar day this content covers (agent/internal/config's
+  // DatedLogPath rotation) - lets the API keep one history row per day
+  // instead of overwriting a single blob. Plain YYYY-MM-DD, not a full
+  // ISO datetime: it's a calendar day label, not an instant.
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  date: string;
+
   // No @MinLength - a brand-new install can genuinely have an empty log
   // file if "Buscar log agora" is clicked before the agent has logged
   // anything yet (found by testing this for real, not a hypothetical: a

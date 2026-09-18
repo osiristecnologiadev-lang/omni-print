@@ -64,7 +64,7 @@ export class CustomersService {
   // itself back.
   async listTokens(tenantId: string, customerId: string) {
     await this.requireCustomer(tenantId, customerId);
-    return this.prisma.agentToken.findMany({
+    const tokens = await this.prisma.agentToken.findMany({
       where: { tenantId, customerId },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -74,13 +74,15 @@ export class CustomersService {
         revokedAt: true,
         lastCheckinAt: true,
         lastSeenVersion: true,
-        // NOT logContent - up to ~300KB of text, only fetched on demand by
-        // getLog() when the "Ver log" link is actually opened, not on every
-        // customer-page load.
         logRequestedAt: true,
-        logUploadedAt: true,
+        // NOT content - up to ~300KB of text per day, only fetched on
+        // demand by getLog() when the "Ver log" link is actually opened,
+        // not on every customer-page load. Just the latest day's upload
+        // time, to show "Ver log (enviado em ...)" / pending status.
+        logEntries: { orderBy: { uploadedAt: 'desc' }, take: 1, select: { uploadedAt: true } },
       },
     });
+    return tokens.map(({ logEntries, ...t }) => ({ ...t, logUploadedAt: logEntries[0]?.uploadedAt ?? null }));
   }
 
   async createToken(tenantId: string, customerId: string, label?: string) {
@@ -114,8 +116,9 @@ export class CustomersService {
   // The agent notices this on its own next 2-minute check (see
   // agent/internal/svc) and uploads its log's tail - there's no push
   // channel to make it happen sooner. Re-requesting just bumps the
-  // timestamp; AgentLogService.hasPendingRequest treats logRequestedAt >
-  // logUploadedAt as "still pending," so nothing here needs to be cleared.
+  // timestamp; AgentLogService.hasPendingRequest treats any AgentLogEntry
+  // upload newer than logRequestedAt as "satisfied," so nothing here needs
+  // to be cleared.
   async requestLog(tenantId: string, customerId: string, tokenId: string) {
     await this.requireCustomer(tenantId, customerId);
     const token = await this.prisma.agentToken.findFirst({ where: { id: tokenId, tenantId, customerId } });
@@ -125,18 +128,22 @@ export class CustomersService {
     return this.prisma.agentToken.update({ where: { id: tokenId }, data: { logRequestedAt: new Date() } });
   }
 
-  // Separate from listTokens on purpose - logContent can be up to ~300KB,
-  // only worth fetching when a human actually opens the log view.
-  async getLog(tenantId: string, customerId: string, tokenId: string) {
+  // Separate from listTokens on purpose - content can be up to ~300KB,
+  // only worth fetching when a human actually opens the log view. date
+  // (YYYY-MM-DD) picks a specific day's upload; omitted, defaults to the
+  // most recent one - same default as before AgentLogEntry existed.
+  async getLog(tenantId: string, customerId: string, tokenId: string, date?: string) {
     await this.requireCustomer(tenantId, customerId);
-    const token = await this.prisma.agentToken.findFirst({
-      where: { id: tokenId, tenantId, customerId },
-      select: { logContent: true, logUploadedAt: true },
-    });
+    const token = await this.prisma.agentToken.findFirst({ where: { id: tokenId, tenantId, customerId } });
     if (!token) {
       throw new NotFoundException('token not found');
     }
-    return token;
+    const entry = await this.prisma.agentLogEntry.findFirst({
+      where: { agentTokenId: tokenId, ...(date ? { date } : {}) },
+      orderBy: { uploadedAt: 'desc' },
+      select: { date: true, content: true, uploadedAt: true },
+    });
+    return { date: entry?.date ?? null, logContent: entry?.content ?? null, logUploadedAt: entry?.uploadedAt ?? null };
   }
 
   // Codes are listed without their hash or raw value - same reasoning as

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
 import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
@@ -131,9 +131,14 @@ export class CustomersController {
   }
 
   @Get(':id/agent-tokens/:tokenId/log')
-  getLog(@Req() req: any, @Param('id') id: string, @Param('tokenId') tokenId: string) {
+  getLog(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('tokenId') tokenId: string,
+    @Query('date') date?: string,
+  ) {
     assertPermission(req, 'agent');
-    return this.customersService.getLog(req.tenantId, id, tokenId);
+    return this.customersService.getLog(req.tenantId, id, tokenId, date);
   }
 
   @Get(':id/agent-enrollment-codes')

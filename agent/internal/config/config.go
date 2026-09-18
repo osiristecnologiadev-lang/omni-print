@@ -89,6 +89,18 @@ type Config struct {
 	DiscoveredFilePath string `yaml:"-"`
 }
 
+// DatedLogPath inserts t's date (YYYY-MM-DD) before path's extension, e.g.
+// "omniprint-agent.log" -> "omniprint-agent-2026-09-18.log". Used for the
+// agent's daily log rotation (see internal/svc's rotateLogIfNeeded) - added
+// after a real incident where a single ever-growing log file made it hard
+// to know which day's content a support snapshot even covered, and the
+// tenant panel had no way to browse more than "whatever's there right now".
+func DatedLogPath(path string, t time.Time) string {
+	ext := filepath.Ext(path)
+	base := path[:len(path)-len(ext)]
+	return fmt.Sprintf("%s-%s%s", base, t.Format("2006-01-02"), ext)
+}
+
 // FullRawCaptureEnabled returns the effective value, defaulting to true.
 func (c *Config) FullRawCaptureEnabled() bool {
 	return c.FullRawCapture == nil || *c.FullRawCapture

@@ -4,6 +4,7 @@ package svc
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -19,14 +20,17 @@ import (
 )
 
 type program struct {
-	cfg     *config.Config
-	version string
-	logPath string // resolved absolute path to LogFile, or "" if not configured (see cmd/agent/main.go)
-	cancel  context.CancelFunc
-	done    chan struct{}
+	cfg         *config.Config
+	version     string
+	logBasePath string // resolved absolute base path from LogFile, or "" if not configured (see cmd/agent/main.go)
+	cancel      context.CancelFunc
+	done        chan struct{}
 
 	mu      sync.Mutex
 	devices []config.Device // cfg.Devices plus anything discovery has found since startup
+	logPath string          // today's actual dated file (config.DatedLogPath(logBasePath, now)), "" if unconfigured
+	logDate string          // "YYYY-MM-DD" this logPath was opened for, drives rotateLogIfNeeded
+	logFile *os.File        // currently open handle, closed when rotating or stopping
 }
 
 // New builds the OS service wrapper. Name/description are set explicitly and
@@ -39,6 +43,13 @@ type program struct {
 // even though the OS starts it with an unrelated working directory (e.g.
 // System32 on Windows) rather than the directory `install` was run from -
 // without this, the started service can't find its config at all.
+//
+// logPath is the BASE path (undated) - New opens today's actual dated file
+// itself (rotateLogIfNeeded) rather than leaving that to the caller, since a
+// one-shot control command (install/start/stop/uninstall, handled by
+// main.go without ever calling Run()) still needs to log its one line
+// somewhere, and a long-running Run() needs the exact same open+ACL logic
+// again at every midnight - both belong in one place.
 func New(cfg *config.Config, version string, configPath string, logPath string) (service.Service, error) {
 	svcConfig := &service.Config{
 		Name:        updater.ServiceName,
@@ -46,8 +57,56 @@ func New(cfg *config.Config, version string, configPath string, logPath string) 
 		Description: "Collects printer fleet metrics via SNMP and reports them to the OmniPrint cloud platform.",
 		Arguments:   []string{"-config", configPath},
 	}
-	prg := &program{cfg: cfg, version: version, logPath: logPath, done: make(chan struct{})}
+	prg := &program{cfg: cfg, version: version, logBasePath: logPath, done: make(chan struct{})}
+	if err := prg.rotateLogIfNeeded(); err != nil {
+		return nil, fmt.Errorf("open log file: %w", err)
+	}
 	return service.New(prg, svcConfig)
+}
+
+// rotateLogIfNeeded opens today's dated log file the first time it's called
+// (from New, so even a one-shot control command gets a file to log into),
+// and again whenever the date has changed since the last call - see
+// config.DatedLogPath. The very first open's error is returned so New can
+// fail fast the same way an unopenable log file always has; every later
+// call (from run()'s periodic rotation check) is best-effort only - a
+// midnight rotation failing should never take down an otherwise-healthy
+// agent, so it just logs a warning (to whatever output is still active,
+// i.e. the file from before) and keeps using the old file.
+func (p *program) rotateLogIfNeeded() error {
+	if p.logBasePath == "" {
+		return nil
+	}
+	today := time.Now().Format("2006-01-02")
+	p.mu.Lock()
+	current := p.logDate
+	p.mu.Unlock()
+	if current == today {
+		return nil
+	}
+
+	path := config.DatedLogPath(p.logBasePath, time.Now())
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	if err := config.RestrictFileAcl(path); err != nil {
+		log.Printf("warning: failed to restrict permissions on %s: %v", path, err)
+	}
+
+	p.mu.Lock()
+	old := p.logFile
+	p.logFile = f
+	p.logPath = path
+	p.logDate = today
+	p.mu.Unlock()
+
+	log.SetOutput(f)
+	if old != nil {
+		log.Printf("log rotated to %s", path)
+		_ = old.Close()
+	}
+	return nil
 }
 
 func (p *program) Start(s service.Service) error {
@@ -72,6 +131,11 @@ func (p *program) run(ctx context.Context) {
 	}
 	p.cycle(ctx, col, tc)
 	p.checkForUpdate(ctx)
+	// Also uploaded once here, not just from dailyUploadTicker below - a
+	// service that restarts often (crash loop, an update applying) would
+	// otherwise go a full day+ without ever contributing to the per-day
+	// history if it never survives long enough for that ticker to fire.
+	p.uploadDailyLog(ctx, tc)
 
 	pollTicker := time.NewTicker(p.cfg.PollInterval.Duration())
 	defer pollTicker.Stop()
@@ -95,6 +159,17 @@ func (p *program) run(ctx context.Context) {
 	logCheckTicker := time.NewTicker(2 * time.Minute)
 	defer logCheckTicker.Stop()
 
+	// Not config-tunable, same reasoning as logCheckTicker above - this
+	// builds the per-day log history the tenant panel's Logs screen
+	// filters over, independent of whether anyone ever clicks "Buscar log
+	// agora". 24h from process start, not aligned to midnight - a service
+	// that never restarts still gets one upload a day; one that restarts
+	// often gets covered by the startup call above instead (see its
+	// comment) and the same-day upsert on the server makes any overlap
+	// between the two harmless.
+	dailyUploadTicker := time.NewTicker(24 * time.Hour)
+	defer dailyUploadTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -106,9 +181,24 @@ func (p *program) run(ctx context.Context) {
 		case <-updateTicker.C:
 			p.checkForUpdate(ctx)
 		case <-logCheckTicker.C:
+			if err := p.rotateLogIfNeeded(); err != nil {
+				log.Printf("log rotation: failed to open new log file: %v", err)
+			}
 			p.checkLogRequest(ctx, tc)
+		case <-dailyUploadTicker.C:
+			p.uploadDailyLog(ctx, tc)
 		}
 	}
+}
+
+// currentLogPath reads today's dated log path under the same mutex
+// rotateLogIfNeeded writes it with - logPath changes at every midnight
+// rotation while the service keeps running, unlike the immutable
+// logBasePath it's derived from.
+func (p *program) currentLogPath() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.logPath
 }
 
 // checkLogRequest asks the API whether a human requested this agent's log
@@ -125,20 +215,43 @@ func (p *program) checkLogRequest(ctx context.Context, tc *transport.Client) {
 	if !pending {
 		return
 	}
-	if p.logPath == "" {
+	path := p.currentLogPath()
+	if path == "" {
 		log.Printf("log requested, but no log_file is configured - nothing to send")
 		return
 	}
-	tail, err := readLogTail(p.logPath)
+	tail, err := readLogTail(path)
 	if err != nil {
-		log.Printf("log requested, but failed to read %s: %v", p.logPath, err)
+		log.Printf("log requested, but failed to read %s: %v", path, err)
 		return
 	}
-	if err := tc.UploadLog(ctx, tail); err != nil {
+	if err := tc.UploadLog(ctx, time.Now().Format("2006-01-02"), tail); err != nil {
 		log.Printf("log upload failed: %v", err)
 		return
 	}
 	log.Printf("uploaded log (%d bytes) in response to a request", len(tail))
+}
+
+// uploadDailyLog builds the tenant panel's per-day log history (the Logs
+// screen's date filter) independently of whether a human ever clicks
+// "Buscar log agora" - see dailyUploadTicker and the extra call right after
+// startup in run(), both of which land here. Same best-effort posture as
+// checkLogRequest: nothing here is worth crashing the agent's real job over.
+func (p *program) uploadDailyLog(ctx context.Context, tc *transport.Client) {
+	path := p.currentLogPath()
+	if path == "" {
+		return
+	}
+	tail, err := readLogTail(path)
+	if err != nil {
+		log.Printf("daily log upload: failed to read %s: %v", path, err)
+		return
+	}
+	if err := tc.UploadLog(ctx, time.Now().Format("2006-01-02"), tail); err != nil {
+		log.Printf("daily log upload failed: %v", err)
+		return
+	}
+	log.Printf("uploaded daily log snapshot (%d bytes)", len(tail))
 }
 
 // checkForUpdate asks the API for the latest release and, if it's newer
@@ -260,6 +373,12 @@ func (p *program) Stop(s service.Service) error {
 	select {
 	case <-p.done:
 	case <-time.After(5 * time.Second):
+	}
+	p.mu.Lock()
+	f := p.logFile
+	p.mu.Unlock()
+	if f != nil {
+		_ = f.Close()
 	}
 	return nil
 }

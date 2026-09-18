@@ -13,7 +13,6 @@ package main
 import (
 	"flag"
 	"log"
-	"os"
 	"path/filepath"
 	"strconv"
 
@@ -66,9 +65,13 @@ func main() {
 
 	// Resolved even when LogFile is unset (empty string then) so svc.New
 	// always gets a definitive answer rather than re-deriving this same
-	// relative-to-config-dir logic itself - see readLogTail's caller in
-	// internal/svc for the other consumer of this path (the "Buscar log
-	// agora" feature can't read back a log that isn't configured at all).
+	// relative-to-config-dir logic itself. This is the BASE path - svc.New
+	// derives today's actual dated filename from it (config.DatedLogPath)
+	// and owns the file's whole lifecycle (open, ACL, daily rotation)
+	// itself, since a one-shot control command below (install/start/stop/
+	// uninstall) logs a line and exits without ever reaching Run(), and a
+	// long-running Run() needs to reopen a new dated file at each midnight
+	// - both cases need the same open+ACL logic, so it lives in one place.
 	var logPath string
 	if cfg.LogFile != "" {
 		// A relative log_file is resolved against config.yaml's own directory,
@@ -79,15 +82,6 @@ func main() {
 		if !filepath.IsAbs(logPath) {
 			logPath = filepath.Join(filepath.Dir(absConfigPath), logPath)
 		}
-		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Fatalf("failed to open log file: %v", err)
-		}
-		if err := config.RestrictFileAcl(logPath); err != nil {
-			log.Printf("warning: failed to restrict permissions on %s: %v", logPath, err)
-		}
-		defer f.Close()
-		log.SetOutput(f)
 	}
 
 	svcInstance, err := svc.New(cfg, version, absConfigPath, logPath)

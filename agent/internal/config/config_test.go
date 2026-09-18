@@ -201,3 +201,21 @@ devices:
 		t.Errorf("RequestDelay = %v, want 250ms", cfg.RequestDelay.Duration())
 	}
 }
+
+func TestDatedLogPath(t *testing.T) {
+	day := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	got := DatedLogPath("omniprint-agent.log", day)
+	want := "omniprint-agent-2026-09-18.log"
+	if got != want {
+		t.Errorf("DatedLogPath = %q, want %q", got, want)
+	}
+}
+
+func TestDatedLogPathPreservesDirectory(t *testing.T) {
+	day := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	got := DatedLogPath(filepath.Join("C:", "agent", "omniprint-agent.log"), day)
+	want := filepath.Join("C:", "agent", "omniprint-agent-2026-01-02.log")
+	if got != want {
+		t.Errorf("DatedLogPath = %q, want %q", got, want)
+	}
+}

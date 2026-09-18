@@ -568,14 +568,14 @@ model AgentToken {
   // agent only ever polls the cloud, there's no push channel to it, so a
   // request is just a timestamp the agent notices on its own next check
   // (every 2 minutes, see agent/internal/svc). "Pending" = logRequestedAt
-  // is set and newer than logUploadedAt (or logUploadedAt is still null) -
-  // clicking the button again just bumps logRequestedAt, no separate
-  // "clear the request" step needed. logContent is the agent's own log
-  // file's tail (last ~200KB), not the whole file - it has no rotation/
-  // size cap today and could be very old.
-  logRequestedAt DateTime? @map("log_requested_at")
-  logContent     String?   @map("log_content")
-  logUploadedAt  DateTime? @map("log_uploaded_at")
+  // is newer than the latest AgentLogEntry.uploadedAt for this token (or
+  // there's no entry at all yet) - clicking the button again just bumps
+  // logRequestedAt, no separate "clear the request" step needed. The
+  // actual content lives in AgentLogEntry, one row per calendar day (see
+  // its own comment) - not here, since day-by-day history is the whole
+  // point of the tenant panel's Logs screen.
+  logRequestedAt DateTime?       @map("log_requested_at")
+  logEntries     AgentLogEntry[]
 
   // Opposite side of AgentEnrollmentCode.agentTokenId - set only when this
   // token was minted by a code exchange (AgentEnrollmentService.exchange)
@@ -584,6 +584,29 @@ model AgentToken {
 
   @@index([customerId])
   @@map("agent_tokens")
+}
+
+// One day's worth of an agent's local log file (see agent/internal/config's
+// DatedLogPath rotation), uploaded either on demand ("Buscar log agora") or
+// automatically once a day (agent/internal/svc's dailyUploadTicker) - the
+// tenant panel's Logs screen filters over these, by date and by customer
+// (via agentToken.customerId). Unique on (agentTokenId, date) rather than
+// append-only: re-uploading the same calendar day (a restart, a second
+// manual click, the daily ticker after an on-demand pull) updates that same
+// row instead of creating noise, and content is capped the same as the
+// agent's own tail read (~200KB, see agent/internal/svc/logtail.go) with
+// headroom (api/src/agent-log/dto/upload-log.dto.ts).
+model AgentLogEntry {
+  id           String     @id @default(uuid())
+  agentTokenId String     @map("agent_token_id")
+  agentToken   AgentToken @relation(fields: [agentTokenId], references: [id])
+  date         String     @map("date")
+  content      String     @map("content")
+  uploadedAt   DateTime   @default(now()) @map("uploaded_at")
+
+  @@unique([agentTokenId, date])
+  @@index([agentTokenId])
+  @@map("agent_log_entries")
 }
 
 // A short-lived, single-use bootstrap secret that stands in for a real

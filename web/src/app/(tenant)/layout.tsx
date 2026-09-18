@@ -87,6 +87,15 @@ function AuditLogIcon() {
   );
 }
 
+function LogsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="2.5" y="4" width="15" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5.5 8h9M5.5 11h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ReportsIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -241,6 +250,7 @@ export default async function TenantLayout({ children }: { children: React.React
                   }
                 />
               )}
+              {hasPermission(access, 'agent') && <SidebarLink href="/logs" icon={<LogsIcon />} label="Logs" />}
               {hasPermission(access, 'audit_log') && (
                 <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />
               )}

@@ -91,7 +91,20 @@ func Run(ctx context.Context, opts Options) []config.Device {
 		targets = append(targets, hosts...)
 	}
 
-	return probeAll(ctx, targets, opts)
+	found, counts := probeAll(ctx, targets, opts)
+	// Always logged, even when found is empty - a scan that silently
+	// produces nothing is exactly the ambiguous case that cost real
+	// diagnosis time on a real customer (Amecor, 2026-09): the log alone
+	// couldn't say whether that meant "no printers on this network" or
+	// "something is dropping/blocking every SNMP reply" (traced there to
+	// AV/EDR interference, confirmed via an A/B test with the antivirus
+	// toggled off, since the log had nothing decisive on its own). A high
+	// timeout count relative to hosts probed is the signature of the
+	// latter; a high notPrinter count with few timeouts means the network
+	// path is fine and there just aren't printers here.
+	log.Printf("discovery: scan complete - %d printer(s) found, %d host(s) answered SNMP but aren't printers, %d timed out (no reply), %d errored",
+		len(found), counts.notPrinter, counts.timeout, counts.errored)
+	return found
 }
 
 func parseRanges(ranges []string) []*net.IPNet {
@@ -208,10 +221,19 @@ func incIP(ip net.IP) {
 	}
 }
 
+// scanCounts tallies non-printer probe outcomes across a sweep, for the
+// scan-completion summary Run logs - see its own comment for why this
+// exists.
+type scanCounts struct {
+	notPrinter int // answered SNMP, but isn't a printer (switch, UPS, etc.)
+	timeout    int // no reply at all - the ambiguous "blocked or just not there" case
+	errored    int // any other failure (e.g. a local socket error)
+}
+
 // probeAll fans out probes across a bounded worker pool so a full sweep
 // doesn't take forever, while staying far short of "every host at once" -
 // each worker also pauses between requests.
-func probeAll(ctx context.Context, ips []net.IP, opts Options) []config.Device {
+func probeAll(ctx context.Context, ips []net.IP, opts Options) ([]config.Device, scanCounts) {
 	concurrency := opts.Concurrency
 	if concurrency <= 0 {
 		concurrency = 8
@@ -221,8 +243,14 @@ func probeAll(ctx context.Context, ips []net.IP, opts Options) []config.Device {
 		port = 161
 	}
 
+	type outcome struct {
+		device    config.Device
+		isPrinter bool
+		err       error
+	}
+
 	jobs := make(chan net.IP)
-	results := make(chan config.Device)
+	results := make(chan outcome)
 	var wg sync.WaitGroup
 
 	for w := 0; w < concurrency; w++ {
@@ -230,12 +258,11 @@ func probeAll(ctx context.Context, ips []net.IP, opts Options) []config.Device {
 		go func() {
 			defer wg.Done()
 			for ip := range jobs {
-				if d, ok := probeHost(ip.String(), port, opts.Community, opts.ProbeTimeout); ok {
-					select {
-					case results <- d:
-					case <-ctx.Done():
-						return
-					}
+				d, isPrinter, err := probeHost(ip.String(), port, opts.Community, opts.ProbeTimeout)
+				select {
+				case results <- outcome{d, isPrinter, err}:
+				case <-ctx.Done():
+					return
 				}
 				if opts.Delay > 0 {
 					time.Sleep(opts.Delay)
@@ -261,16 +288,27 @@ func probeAll(ctx context.Context, ips []net.IP, opts Options) []config.Device {
 	}()
 
 	var found []config.Device
-	for d := range results {
-		found = append(found, d)
+	var counts scanCounts
+	for o := range results {
+		switch {
+		case o.err == nil && o.isPrinter:
+			found = append(found, o.device)
+		case o.err == nil:
+			counts.notPrinter++
+		case strings.Contains(o.err.Error(), "timeout"):
+			counts.timeout++
+		default:
+			counts.errored++
+		}
 	}
-	return found
+	return found, counts
 }
 
 // probeHost sends one lightweight SNMP GET and reports whether the host
 // implements the Printer-MIB (i.e. is an actual printer, not just any
-// SNMP-speaking device on the network).
-func probeHost(host string, port uint16, community string, timeout time.Duration) (config.Device, bool) {
+// SNMP-speaking device on the network). err is nil whenever the host
+// answered at all, printer or not - only a missing/failed reply sets it.
+func probeHost(host string, port uint16, community string, timeout time.Duration) (config.Device, bool, error) {
 	g := &gosnmp.GoSNMP{
 		Target:    host,
 		Port:      port,
@@ -284,13 +322,13 @@ func probeHost(host string, port uint16, community string, timeout time.Duration
 		Retries: 1,
 	}
 	if err := g.Connect(); err != nil {
-		return config.Device{}, false
+		return config.Device{}, false, err
 	}
 	defer g.Conn.Close()
 
 	result, err := g.Get([]string{oidProbePrinterName, oidProbeSysName})
 	if err != nil {
-		return config.Device{}, false
+		return config.Device{}, false, err
 	}
 
 	isPrinter := false
@@ -313,10 +351,10 @@ func probeHost(host string, port uint16, community string, timeout time.Duration
 		}
 	}
 	if !isPrinter {
-		return config.Device{}, false
+		return config.Device{}, false, nil
 	}
 	if name == "" {
 		name = host
 	}
-	return config.Device{Name: name, Host: host, Community: community, Port: port}, true
+	return config.Device{Name: name, Host: host, Community: community, Port: port}, true, nil
 }

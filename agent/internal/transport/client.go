@@ -106,11 +106,15 @@ func (c *Client) CheckLogRequest(ctx context.Context) (bool, error) {
 }
 
 // UploadLog sends the requested log tail (see internal/svc/logtail.go for
-// how it's trimmed before this is called - never the whole file).
-func (c *Client) UploadLog(ctx context.Context, content string) error {
+// how it's trimmed before this is called - never the whole file). date is
+// the agent-local calendar day (YYYY-MM-DD) this content belongs to - see
+// internal/svc's log rotation (config.DatedLogPath) - so the API can keep a
+// separate history entry per day instead of overwriting a single blob.
+func (c *Client) UploadLog(ctx context.Context, date, content string) error {
 	body, err := json.Marshal(struct {
+		Date    string `json:"date"`
 		Content string `json:"content"`
-	}{Content: content})
+	}{Date: date, Content: content})
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)
 	}

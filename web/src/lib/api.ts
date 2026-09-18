@@ -860,14 +860,54 @@ export function requestAgentTokenLog(customerId: string, tokenId: string): Promi
 }
 
 export interface AgentTokenLog {
+  date: string | null;
   logContent: string | null;
   logUploadedAt: string | null;
 }
 
 // Separate from getCustomerTokens on purpose - logContent can be up to
-// ~300KB, only fetched when the "Ver log" page is actually opened.
-export function getAgentTokenLog(customerId: string, tokenId: string): Promise<AgentTokenLog> {
-  return apiFetch<AgentTokenLog>(`/v1/customers/${customerId}/agent-tokens/${tokenId}/log`);
+// ~300KB, only fetched when the "Ver log" page is actually opened. date
+// (YYYY-MM-DD) picks a specific day; omitted, the API defaults to the most
+// recent upload.
+export function getAgentTokenLog(customerId: string, tokenId: string, date?: string): Promise<AgentTokenLog> {
+  return apiFetch<AgentTokenLog>(
+    `/v1/customers/${customerId}/agent-tokens/${tokenId}/log${date ? `?date=${date}` : ''}`,
+  );
+}
+
+// One day's log entry, as listed on the dedicated Logs screen - deliberately
+// without `content` (up to ~300KB each), same reasoning as AgentTokenSummary
+// not including it either. See getAgentLogEntry for the full content.
+export interface AgentLogEntrySummary {
+  id: string;
+  date: string;
+  uploadedAt: string;
+  agentToken: { id: string; label: string | null; customer: { id: string; name: string } | null };
+}
+
+export interface AgentLogFilters {
+  customerId?: string;
+  date?: string;
+}
+
+export function getAgentLogs(filters: AgentLogFilters = {}): Promise<AgentLogEntrySummary[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return apiFetch<AgentLogEntrySummary[]>(`/v1/agent-logs${qs ? `?${qs}` : ''}`);
+}
+
+export interface AgentLogEntry {
+  id: string;
+  date: string;
+  content: string;
+  uploadedAt: string;
+}
+
+export function getAgentLogEntry(entryId: string): Promise<AgentLogEntry> {
+  return apiFetch<AgentLogEntry>(`/v1/agent-logs/${entryId}`);
 }
 
 export interface AgentEnrollmentCodeSummary {
