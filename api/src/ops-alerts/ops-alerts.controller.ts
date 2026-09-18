@@ -18,7 +18,7 @@ export class OpsAlertsController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async report(@Body() dto: ReportAlertDto) {
-    await this.opsAlertService.notify('web', `${dto.path ?? '?'} - ${dto.message}`);
+    await this.opsAlertService.notify(dto.source ?? 'web', `${dto.path ?? '?'} - ${dto.message}`);
     return { ok: true };
   }
 }

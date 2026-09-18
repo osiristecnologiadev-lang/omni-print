@@ -20,11 +20,13 @@ export class UsersController {
   // No permission gate at all - this is how the frontend discovers its own
   // live customerId/permissions (can't be read off the JWT alone, since
   // permissions are deliberately not embedded there - see UserAuthGuard).
+  // email/name are along for the ride so the sidebar can show who's
+  // logged in without a separate round trip.
   // Returns straight off req, already populated by the guard - no service
   // call needed.
   @Get('me')
   me(@Req() req: any) {
-    return { customerId: req.customerId, permissions: req.permissions };
+    return { customerId: req.customerId, permissions: req.permissions, email: req.userEmail, name: req.userName };
   }
 
   @Get()

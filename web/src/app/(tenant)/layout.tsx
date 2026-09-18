@@ -250,7 +250,7 @@ export default async function TenantLayout({ children }: { children: React.React
                   }
                 />
               )}
-              {hasPermission(access, 'agent') && <SidebarLink href="/logs" icon={<LogsIcon />} label="Logs" />}
+              {hasPermission(access, 'agent') && <SidebarLink href="/logs" icon={<LogsIcon />} label="Logs do Agent" />}
               {hasPermission(access, 'audit_log') && (
                 <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />
               )}
@@ -275,6 +275,9 @@ export default async function TenantLayout({ children }: { children: React.React
         </nav>
 
         <div className="flex flex-col gap-3 border-t border-line pt-3">
+          <div className="truncate px-2 text-xs text-ink-faint" title={access.email}>
+            {access.name || access.email}
+          </div>
           <div className="px-2">
             <ThemeToggle />
           </div>

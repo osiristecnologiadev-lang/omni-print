@@ -29,9 +29,25 @@ describe('OpsAlertService', () => {
     expect(emailService.send).toHaveBeenCalledTimes(1);
     const call = emailService.send.mock.calls[0][0];
     expect(call.to).toBe('ops@example.com');
-    expect(call.subject).toContain('api');
+    expect(call.subject).toContain('API');
     expect(call.text).toContain('GET /v1/devices - boom');
     expect(call.text).toContain('stack trace here');
+  });
+
+  it('explains a catalogued source in plain language', async () => {
+    await service.notify('db-backup', 'pg_dump exited non-zero');
+
+    const call = emailService.send.mock.calls[0][0];
+    expect(call.subject).toContain('Backup diário do banco de dados');
+    expect(call.text).toContain('backup noturno');
+  });
+
+  it('still sends, with a generic explanation, for an uncatalogued source', async () => {
+    await service.notify('some-new-thing', 'boom');
+
+    const call = emailService.send.mock.calls[0][0];
+    expect(call.subject).toContain('some-new-thing');
+    expect(call.text).toContain('Origem não catalogada');
   });
 
   it('suppresses a second alert within the cooldown window', async () => {

@@ -59,6 +59,7 @@ export class UserAuthGuard implements CanActivate {
     req.customerId = payload.customerId ?? null;
     req.userId = payload.sub;
     req.userEmail = user.email;
+    req.userName = user.name;
     req.permissions = user.permissions;
     return true;
   }

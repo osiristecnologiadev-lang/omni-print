@@ -17,14 +17,27 @@ describe('UsersController', () => {
   });
 
   describe('me', () => {
-    it('returns customerId/permissions straight off the request, for either session type', () => {
-      expect(controller.me({ customerId: null, permissions: ['contracts', 'devices'] })).toEqual({
+    it('returns customerId/permissions/email/name straight off the request, for either session type', () => {
+      expect(
+        controller.me({
+          customerId: null,
+          permissions: ['contracts', 'devices'],
+          userEmail: 'admin@example.com',
+          userName: 'Admin',
+        }),
+      ).toEqual({
         customerId: null,
         permissions: ['contracts', 'devices'],
+        email: 'admin@example.com',
+        name: 'Admin',
       });
-      expect(controller.me({ customerId: 'c1', permissions: ['invoices_view'] })).toEqual({
+      expect(
+        controller.me({ customerId: 'c1', permissions: ['invoices_view'], userEmail: 'user@example.com', userName: null }),
+      ).toEqual({
         customerId: 'c1',
         permissions: ['invoices_view'],
+        email: 'user@example.com',
+        name: null,
       });
     });
   });

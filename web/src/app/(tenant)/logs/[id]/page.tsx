@@ -24,7 +24,7 @@ export default async function LogEntryPage(props: PageProps<'/logs/[id]'>) {
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
-      <PageHeader title={formatDay(log.date)} subtitle="Voltar para ver todos os logs" back={{ href: '/logs', label: 'Voltar para Logs' }} />
+      <PageHeader title={formatDay(log.date)} subtitle="Voltar para ver todos os logs" back={{ href: '/logs', label: 'Voltar para Logs do Agent' }} />
 
       <Panel>
         <p className="mb-3 text-xs text-ink-faint">Enviado em {formatDateTime(log.uploadedAt, tz)}.</p>

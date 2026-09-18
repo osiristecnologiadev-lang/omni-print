@@ -28,7 +28,7 @@ alert_failure() {
     curl -sS -m 10 -X POST "${API_BASE_URL}/v1/ops/alert" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer ${OPS_ALERT_SECRET}" \
-      -d "{\"message\":\"${msg}\",\"path\":\"db-backup cron\"}" \
+      -d "{\"message\":\"${msg}\",\"path\":\"db-backup cron\",\"source\":\"db-backup\"}" \
       >/dev/null 2>&1 || true
   fi
 }

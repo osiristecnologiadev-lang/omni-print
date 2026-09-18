@@ -40,7 +40,7 @@ export default async function LogsPage(props: PageProps<'/logs'>) {
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       <PageHeader
-        title="Logs"
+        title="Logs do Agent"
         subtitle="Histórico dos logs enviados pelos agentes instalados - um snapshot por dia, automático ou via 'Buscar log agora' na página do cliente."
       />
 

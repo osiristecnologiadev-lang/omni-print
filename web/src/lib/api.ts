@@ -449,6 +449,8 @@ export async function getSession(): Promise<Session | null> {
 export interface ViewerAccess {
   customerId: string | null;
   permissions: string[];
+  email: string;
+  name: string | null;
 }
 
 // Unlike getSession() above, this is a real request to GET /v1/users/me,
