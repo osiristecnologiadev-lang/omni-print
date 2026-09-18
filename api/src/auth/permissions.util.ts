@@ -12,6 +12,10 @@ export const TENANT_ONLY_PERMISSION_KEYS = [
   'invoices',
   'customers',
   'agent',
+  // Separate from 'agent' on purpose - the user asked for the dedicated
+  // Logs screen to be gated on its own, not bundled with token/installer
+  // management (same reasoning 'billing' got split out from 'settings').
+  'agent_logs',
   'users',
   'devices',
   'tickets',

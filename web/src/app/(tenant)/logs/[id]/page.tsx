@@ -16,7 +16,7 @@ export default async function LogEntryPage(props: PageProps<'/logs/[id]'>) {
   const { id } = await props.params;
 
   const access = await getViewerAccess();
-  if (!hasPermission(access, 'agent')) {
+  if (!hasPermission(access, 'agent_logs')) {
     forbidden();
   }
 

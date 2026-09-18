@@ -184,6 +184,7 @@ export default async function TenantLayout({ children }: { children: React.React
   const showAdminGroup =
     hasPermission(access, 'users') ||
     hasPermission(access, 'agent') ||
+    hasPermission(access, 'agent_logs') ||
     hasPermission(access, 'audit_log') ||
     hasPermission(access, 'settings') ||
     hasPermission(access, 'billing');
@@ -250,7 +251,7 @@ export default async function TenantLayout({ children }: { children: React.React
                   }
                 />
               )}
-              {hasPermission(access, 'agent') && <SidebarLink href="/logs" icon={<LogsIcon />} label="Logs do Agent" />}
+              {hasPermission(access, 'agent_logs') && <SidebarLink href="/logs" icon={<LogsIcon />} label="Logs do Agent" />}
               {hasPermission(access, 'audit_log') && (
                 <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />
               )}

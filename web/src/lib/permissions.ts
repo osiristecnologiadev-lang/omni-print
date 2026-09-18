@@ -9,6 +9,7 @@ export const TENANT_PERMISSION_OPTIONS = [
   'invoices',
   'customers',
   'agent',
+  'agent_logs',
   'users',
   'devices',
   'tickets',
@@ -28,6 +29,7 @@ export const PERMISSION_LABEL: Record<string, string> = {
   invoices_view: 'Ver faturas e boletos',
   customers: 'Clientes',
   agent: 'Agente (tokens e instalação)',
+  agent_logs: 'Logs do Agent',
   users: 'Usuários',
   devices: 'Dispositivos (reatribuir, editar)',
   tickets: 'Chamados (fila da equipe)',
@@ -52,6 +54,7 @@ export const PERMISSION_DESCRIPTION: Record<string, string> = {
   invoices_view: 'Ver as próprias faturas e boletos, sem acesso a mais nada do sistema.',
   customers: 'Cadastrar, editar e remover clientes.',
   agent: 'Gerar códigos de instalação e gerenciar tokens do agente de monitoramento.',
+  agent_logs: 'Ver a tela de Logs do Agent - histórico dos logs enviados por cada agente instalado.',
   users: 'Criar, revogar e alterar as permissões de outros usuários da equipe.',
   devices: 'Reatribuir dispositivos entre clientes e editar seus dados.',
   tickets: 'Ver e responder chamados de suporte de todos os clientes.',
@@ -87,7 +90,7 @@ export const PERMISSION_PRESETS: { name: string; description: string; keys: read
   {
     name: 'Suporte técnico',
     description: 'Clientes, dispositivos e chamados - sem acesso a dados financeiros.',
-    keys: ['customers', 'devices', 'tickets', 'agent'],
+    keys: ['customers', 'devices', 'tickets', 'agent', 'agent_logs'],
   },
 ];
 

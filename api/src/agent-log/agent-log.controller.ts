@@ -42,13 +42,13 @@ export class AgentLogsController {
 
   @Get()
   list(@Req() req: any, @Query('customerId') customerId?: string, @Query('date') date?: string) {
-    assertPermission(req, 'agent');
+    assertPermission(req, 'agent_logs');
     return this.agentLog.listForTenant(req.tenantId, { customerId, date });
   }
 
   @Get(':id')
   async get(@Req() req: any, @Param('id') id: string) {
-    assertPermission(req, 'agent');
+    assertPermission(req, 'agent_logs');
     const entry = await this.agentLog.getEntry(req.tenantId, id);
     if (!entry) {
       throw new NotFoundException('log entry not found');

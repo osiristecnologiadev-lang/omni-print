@@ -27,7 +27,7 @@ export default async function LogsPage(props: PageProps<'/logs'>) {
   const date = str(searchParams?.date);
 
   const access = await getViewerAccess();
-  if (!hasPermission(access, 'agent')) {
+  if (!hasPermission(access, 'agent_logs')) {
     forbidden();
   }
 
