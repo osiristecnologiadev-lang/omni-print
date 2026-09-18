@@ -275,8 +275,11 @@ export default async function TenantLayout({ children }: { children: React.React
         </nav>
 
         <div className="flex flex-col gap-3 border-t border-line pt-3">
-          <div className="truncate px-2 text-xs text-ink-faint" title={access.email}>
-            {access.name || access.email}
+          <div className="px-2">
+            {access.name && <div className="truncate text-xs font-medium text-ink-muted">{access.name}</div>}
+            <div className="truncate text-xs text-ink-faint" title={access.email}>
+              {access.email}
+            </div>
           </div>
           <div className="px-2">
             <ThemeToggle />
