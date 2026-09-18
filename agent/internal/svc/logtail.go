@@ -6,20 +6,27 @@ import (
 	"os"
 )
 
-// maxLogTailBytes bounds how much of the log file readLogTail returns -
-// the file has no rotation or size cap (O_APPEND-only since the agent was
-// first opened, see cmd/agent/main.go), so it could be months old and much
-// larger than anything worth uploading for a single troubleshooting
-// snapshot. Comfortably under UploadLogDto's 300_000-char server-side cap
+// maxLogFileBytes is a defense-in-depth ceiling, not the normal case - now
+// that logs rotate daily (see config.DatedLogPath), one day's file is
+// expected to stay far under this. Only kicks in for a genuinely
+// pathological day (a crash loop logging far more than usual); when it
+// does, keeps the most recent bytes rather than the oldest, same
+// reasoning this file's old tail-only design always had. Comfortably
+// under UploadLogDto's 2_000_000-char server-side cap
 // (api/src/agent-log/dto/upload-log.dto.ts).
-const maxLogTailBytes = 200_000
+const maxLogFileBytes = 2_000_000
 
-// readLogTail returns up to the last maxLogTailBytes of path, trimmed
-// forward to the next newline so the result never starts mid-line (unless
-// the whole file is smaller than the cap, in which case it's returned in
-// full). A missing/unreadable file returns an error - the caller decides
-// whether that's worth surfacing.
-func readLogTail(path string) (string, error) {
+// readLogFile returns the log file's full content - the whole day's log,
+// not just a tail. A tail-only read used to be the norm here (the file had
+// no rotation, so the tail was the only sane thing to ship), but that made
+// real troubleshooting harder once daily rotation shipped: a human
+// analyzing "Buscar log agora"/the daily-upload snapshot wants everything
+// that happened that day, not an arbitrarily-cut recent slice. Falls back
+// to the last maxLogFileBytes (trimmed to a clean line boundary) only if
+// the file exceeds that ceiling - expected to be rare now. A
+// missing/unreadable file returns an error - the caller decides whether
+// that's worth surfacing.
+func readLogFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -33,8 +40,8 @@ func readLogTail(path string) (string, error) {
 
 	size := info.Size()
 	start := int64(0)
-	if size > maxLogTailBytes {
-		start = size - maxLogTailBytes
+	if size > maxLogFileBytes {
+		start = size - maxLogFileBytes
 	}
 
 	if _, err := f.Seek(start, 0); err != nil {
@@ -47,7 +54,7 @@ func readLogTail(path string) (string, error) {
 
 	if start > 0 {
 		// Don't ship a truncated first line - skip up to (and including)
-		// the first newline so the tail always starts cleanly.
+		// the first newline so a trimmed result still starts cleanly.
 		if idx := bytes.IndexByte(buf, '\n'); idx >= 0 {
 			buf = buf[idx+1:]
 		}

@@ -14,12 +14,15 @@ export class UploadLogDto {
   // anything yet (found by testing this for real, not a hypothetical: a
   // just-started local agent's log was still 0 bytes when its first
   // 2-minute check fired). An empty string is a legitimate, honest answer
-  // here, not an error. @MaxLength matches the agent's own ~200KB tail
-  // read (agent/internal/svc/logtail.go) with headroom - a hard ceiling
-  // regardless of what any given agent build actually sends, same
-  // defense-in-depth posture as the global 10mb JSON body limit in
-  // main.ts.
+  // here, not an error. @MaxLength matches the agent's own whole-file read
+  // (agent/internal/svc/logtail.go's readLogFile, capped at
+  // maxLogFileBytes) with headroom - a hard ceiling regardless of what any
+  // given agent build actually sends, same defense-in-depth posture as the
+  // global 10mb JSON body limit in main.ts. Raised from the old 300_000
+  // (a ~200KB-tail-only design) once the agent started sending the WHOLE
+  // day's rotated log instead of just a tail - a user complained the tail
+  // cut made real analysis harder.
   @IsString()
-  @MaxLength(300_000)
+  @MaxLength(2_000_000)
   content: string;
 }

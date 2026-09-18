@@ -202,7 +202,7 @@ func (p *program) currentLogPath() string {
 }
 
 // checkLogRequest asks the API whether a human requested this agent's log
-// (see api/src/agent-log/), and if so, uploads the log file's tail. A
+// (see api/src/agent-log/), and if so, uploads the whole day's log file. A
 // missing/unconfigured log_file, or any transient network error, is logged
 // and simply retried on the next tick - never worth interrupting the
 // agent's real job (polling printers) over.
@@ -220,16 +220,16 @@ func (p *program) checkLogRequest(ctx context.Context, tc *transport.Client) {
 		log.Printf("log requested, but no log_file is configured - nothing to send")
 		return
 	}
-	tail, err := readLogTail(path)
+	content, err := readLogFile(path)
 	if err != nil {
 		log.Printf("log requested, but failed to read %s: %v", path, err)
 		return
 	}
-	if err := tc.UploadLog(ctx, time.Now().Format("2006-01-02"), tail); err != nil {
+	if err := tc.UploadLog(ctx, time.Now().Format("2006-01-02"), content); err != nil {
 		log.Printf("log upload failed: %v", err)
 		return
 	}
-	log.Printf("uploaded log (%d bytes) in response to a request", len(tail))
+	log.Printf("uploaded log (%d bytes) in response to a request", len(content))
 }
 
 // uploadDailyLog builds the tenant panel's per-day log history (the Logs
@@ -242,16 +242,16 @@ func (p *program) uploadDailyLog(ctx context.Context, tc *transport.Client) {
 	if path == "" {
 		return
 	}
-	tail, err := readLogTail(path)
+	content, err := readLogFile(path)
 	if err != nil {
 		log.Printf("daily log upload: failed to read %s: %v", path, err)
 		return
 	}
-	if err := tc.UploadLog(ctx, time.Now().Format("2006-01-02"), tail); err != nil {
+	if err := tc.UploadLog(ctx, time.Now().Format("2006-01-02"), content); err != nil {
 		log.Printf("daily log upload failed: %v", err)
 		return
 	}
-	log.Printf("uploaded daily log snapshot (%d bytes)", len(tail))
+	log.Printf("uploaded daily log snapshot (%d bytes)", len(content))
 }
 
 // checkForUpdate asks the API for the latest release and, if it's newer

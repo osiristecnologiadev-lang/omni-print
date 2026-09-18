@@ -594,8 +594,11 @@ model AgentToken {
 // append-only: re-uploading the same calendar day (a restart, a second
 // manual click, the daily ticker after an on-demand pull) updates that same
 // row instead of creating noise, and content is capped the same as the
-// agent's own tail read (~200KB, see agent/internal/svc/logtail.go) with
-// headroom (api/src/agent-log/dto/upload-log.dto.ts).
+// agent's own whole-file read (2MB safety ceiling, see
+// agent/internal/svc/logtail.go's readLogFile) with headroom
+// (api/src/agent-log/dto/upload-log.dto.ts) - the whole day's rotated log,
+// not just a tail, so a human analyzing it isn't missing the start of the
+// day's events.
 model AgentLogEntry {
   id           String     @id @default(uuid())
   agentTokenId String     @map("agent_token_id")
