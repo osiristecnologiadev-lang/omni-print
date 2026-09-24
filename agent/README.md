@@ -181,6 +181,11 @@ Como funciona:
   maiores que `/20` (mais de ~4096 endereços) são ignoradas automaticamente
   nessa detecção — se você precisa varrer algo maior, configure `ranges`
   explicitamente (aí sim é decisão consciente do admin, sem limite).
+- **Em servidor de impressão Windows**, o agente também lê as portas de
+  impressora de rede já cadastradas no Windows (registro,
+  `Control\Print\Monitors\*\Ports` — Standard TCP/IP, HP, LPR) e testa cada
+  IP, **em qualquer sub-rede/VLAN**, sem precisar configurar `ranges`. Se a
+  porta tem community SNMP própria, ela é usada no lugar da padrão.
 - Cada host candidato recebe uma consulta SNMP leve testando se ele
   implementa a Printer-MIB — switch, roteador, nobreak com SNMP habilitado
   não respondem a isso, só impressoras de verdade respondem.

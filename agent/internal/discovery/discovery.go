@@ -74,21 +74,28 @@ type Options struct {
 // that answers SNMP with a Printer-MIB, i.e. an actual printer - not just
 // any device that happens to speak SNMP (switches, UPSes, etc. don't
 // implement prtGeneralTable, so they're excluded).
+//
+// On a Windows print server, every network printer port it has configured
+// is probed too, whatever subnet it's on - see printports.go for why.
 func Run(ctx context.Context, opts Options) []config.Device {
 	nets := parseRanges(opts.Ranges)
 	if len(nets) == 0 {
 		nets = localSubnets()
 	}
-	if len(nets) == 0 {
-		log.Printf("discovery: no subnets to scan (nothing configured, nothing auto-detected)")
-		return nil
-	}
 
-	var targets []net.IP
+	var targets []target
 	for _, n := range nets {
 		hosts := hostsIn(n)
 		log.Printf("discovery: scanning %s (%d hosts)", n.String(), len(hosts))
-		targets = append(targets, hosts...)
+		for _, ip := range hosts {
+			targets = append(targets, target{IP: ip, Community: opts.Community})
+		}
+	}
+	targets = mergeTargets(targets, printServerTargets(ctx, opts.Community))
+
+	if len(targets) == 0 {
+		log.Printf("discovery: nothing to scan (no subnets configured or auto-detected, no print-server ports)")
+		return nil
 	}
 
 	found, counts := probeAll(ctx, targets, opts)
@@ -233,7 +240,7 @@ type scanCounts struct {
 // probeAll fans out probes across a bounded worker pool so a full sweep
 // doesn't take forever, while staying far short of "every host at once" -
 // each worker also pauses between requests.
-func probeAll(ctx context.Context, ips []net.IP, opts Options) ([]config.Device, scanCounts) {
+func probeAll(ctx context.Context, targets []target, opts Options) ([]config.Device, scanCounts) {
 	concurrency := opts.Concurrency
 	if concurrency <= 0 {
 		concurrency = 8
@@ -249,7 +256,7 @@ func probeAll(ctx context.Context, ips []net.IP, opts Options) ([]config.Device,
 		err       error
 	}
 
-	jobs := make(chan net.IP)
+	jobs := make(chan target)
 	results := make(chan outcome)
 	var wg sync.WaitGroup
 
@@ -257,8 +264,8 @@ func probeAll(ctx context.Context, ips []net.IP, opts Options) ([]config.Device,
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for ip := range jobs {
-				d, isPrinter, err := probeHost(ip.String(), port, opts.Community, opts.ProbeTimeout)
+			for t := range jobs {
+				d, isPrinter, err := probeHost(t.IP.String(), port, t.Community, opts.ProbeTimeout)
 				select {
 				case results <- outcome{d, isPrinter, err}:
 				case <-ctx.Done():
@@ -273,9 +280,9 @@ func probeAll(ctx context.Context, ips []net.IP, opts Options) ([]config.Device,
 
 	go func() {
 		defer close(jobs)
-		for _, ip := range ips {
+		for _, t := range targets {
 			select {
-			case jobs <- ip:
+			case jobs <- t:
 			case <-ctx.Done():
 				return
 			}
