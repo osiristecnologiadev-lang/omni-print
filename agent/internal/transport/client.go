@@ -105,6 +105,75 @@ func (c *Client) CheckLogRequest(ctx context.Context) (bool, error) {
 	return result.Pending, nil
 }
 
+// Command is a remote command requested from the tenant panel (see
+// api/src/agent-command). RequestedAt identifies the request and must be
+// echoed back verbatim in AckCommand.
+type Command struct {
+	Type        string `json:"command"` // "RESTART", "UPDATE" or "DISCOVER"
+	RequestedAt string `json:"requestedAt"`
+}
+
+// CheckCommand returns the pending remote command, or nil if there's none.
+// Single attempt, same reasoning as CheckLogRequest.
+func (c *Client) CheckCommand(ctx context.Context) (*Command, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/agent/command", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("check command: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status checking command: %s", resp.Status)
+	}
+
+	var cmd Command
+	if err := json.NewDecoder(resp.Body).Decode(&cmd); err != nil {
+		return nil, fmt.Errorf("parsing response: %w", err)
+	}
+	if cmd.Type == "" {
+		return nil, nil
+	}
+	return &cmd, nil
+}
+
+// AckCommand reports a command's outcome, shown as-is in the tenant panel.
+// Can be called more than once for the same request (e.g. "started", then
+// the final result) - the latest result wins.
+func (c *Client) AckCommand(ctx context.Context, requestedAt, result string) error {
+	body, err := json.Marshal(struct {
+		RequestedAt string `json:"requestedAt"`
+		Result      string `json:"result"`
+	}{RequestedAt: requestedAt, Result: result})
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/agent/command/ack", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("ack command: %w", err)
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("unexpected status acking command: %s", resp.Status)
+	}
+	return nil
+}
+
 // UploadLog sends the requested log tail (see internal/svc/logtail.go for
 // how it's trimmed before this is called - never the whole file). date is
 // the agent-local calendar day (YYYY-MM-DD) this content belongs to - see

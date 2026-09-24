@@ -51,10 +51,24 @@ describe('CustomersService log pull', () => {
 
       await service.requestLog('t1', 'c1', 'tok1');
 
-      expect(prisma.agentToken.update).toHaveBeenCalledWith({
-        where: { id: 'tok1' },
-        data: { logRequestedAt: new Date('2026-09-17T21:00:00Z') },
-      });
+      expect(prisma.agentToken.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'tok1' },
+          data: { logRequestedAt: new Date('2026-09-17T21:00:00Z') },
+        }),
+      );
+    });
+
+    it('never returns tokenHash to the tenant (a 16-digit token hash is brute-forceable)', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'c1', tenantId: 't1' });
+      prisma.agentToken.findFirst.mockResolvedValue({ id: 'tok1', tenantId: 't1', customerId: 'c1' });
+      prisma.agentToken.update.mockResolvedValue({ id: 'tok1' });
+
+      await service.requestLog('t1', 'c1', 'tok1');
+
+      const { select } = prisma.agentToken.update.mock.calls[0][0];
+      expect(select).toBeDefined();
+      expect(select.tokenHash).toBeUndefined();
     });
   });
 

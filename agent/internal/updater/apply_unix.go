@@ -39,6 +39,21 @@ func Apply(ctx context.Context, downloadedPath, ownExePath string) error {
 	return nil
 }
 
+// RestartService asks the service manager (systemd etc.) to restart the
+// agent - unlike Windows, it restarts us itself, no helper needed.
+func RestartService() error {
+	svc, err := service.New(noopProgram{}, &service.Config{Name: ServiceName})
+	if err != nil {
+		return fmt.Errorf("build service handle: %w", err)
+	}
+	return service.Control(svc, "restart")
+}
+
+// RunRestartHelper is Windows-only, see RunHelper below.
+func RunRestartHelper(oldPID int) error {
+	return fmt.Errorf("restart-service helper mode is not used on this platform")
+}
+
 // RunHelper is Windows-only machinery (see apply_windows.go's detached-
 // helper dance) - Apply above already does the whole swap+restart inline,
 // so -apply-update should never be invoked on this platform.

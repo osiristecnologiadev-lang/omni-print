@@ -7,7 +7,9 @@ import {
   createCustomerEnrollmentCode,
   createUser,
   requestAgentTokenLog,
+  requestAgentCommand,
   revokeCustomerToken,
+  type AgentCommandType,
   revokeCustomerEnrollmentCode,
   revokeUser,
   updateCustomer,
@@ -56,6 +58,18 @@ export async function requestLogAction(customerId: string, tokenId: string) {
   }
   revalidatePath(`/customers/${customerId}`);
   redirect(`/customers/${customerId}?logRequested=1`);
+}
+
+// Same poll-only delivery as requestLogAction - the page's per-token
+// status line shows whether the agent has picked it up and what it said.
+export async function requestCommandAction(customerId: string, tokenId: string, command: AgentCommandType) {
+  try {
+    await requestAgentCommand(customerId, tokenId, command);
+  } catch {
+    redirect(`/customers/${customerId}?commandError=1`);
+  }
+  revalidatePath(`/customers/${customerId}`);
+  redirect(`/customers/${customerId}?commandRequested=1`);
 }
 
 interface CreateEnrollmentCodeState {

@@ -788,7 +788,14 @@ export interface AgentTokenSummary {
   lastSeenVersion: string | null;
   logRequestedAt: string | null;
   logUploadedAt: string | null;
+  // Remote command slot - see AgentToken.commandType in the API schema.
+  commandType: AgentCommandType | null;
+  commandRequestedAt: string | null;
+  commandAckedAt: string | null;
+  commandResult: string | null;
 }
+
+export type AgentCommandType = 'RESTART' | 'UPDATE' | 'DISCOVER';
 
 export interface CreatedAgentToken {
   id: string;
@@ -859,6 +866,14 @@ export function revokeCustomerToken(customerId: string, tokenId: string): Promis
 // channel to make it happen sooner.
 export function requestAgentTokenLog(customerId: string, tokenId: string): Promise<AgentTokenSummary> {
   return apiMutate<AgentTokenSummary>(`/v1/customers/${customerId}/agent-tokens/${tokenId}/request-log`, 'POST', {});
+}
+
+export function requestAgentCommand(
+  customerId: string,
+  tokenId: string,
+  command: AgentCommandType,
+): Promise<AgentTokenSummary> {
+  return apiMutate<AgentTokenSummary>(`/v1/customers/${customerId}/agent-tokens/${tokenId}/command`, 'POST', { command });
 }
 
 export interface AgentTokenLog {

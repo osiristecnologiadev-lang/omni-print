@@ -7,6 +7,7 @@ import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CreateTokenDto } from './dto/create-token.dto';
 import { CreateEnrollmentCodeDto } from './dto/create-enrollment-code.dto';
+import { RequestCommandDto } from './dto/request-command.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 // Customer management is tenant-wide only - a customer-scoped user has no
@@ -126,6 +127,29 @@ export class CustomersController {
       targetId: token.id,
       targetLabel: token.label ?? 'Sem rótulo',
       metadata: { customerId: id },
+    });
+    return token;
+  }
+
+  @Post(':id/agent-tokens/:tokenId/command')
+  async requestCommand(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('tokenId') tokenId: string,
+    @Body() dto: RequestCommandDto,
+  ) {
+    assertPermission(req, 'agent');
+    const token = await this.customersService.requestCommand(req.tenantId, id, tokenId, dto.command);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'agent_token.command',
+      targetType: 'AgentToken',
+      targetId: token.id,
+      targetLabel: token.label ?? 'Sem rótulo',
+      metadata: { customerId: id, command: dto.command },
     });
     return token;
   }

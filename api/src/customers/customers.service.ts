@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { AgentCommandType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { generateAgentTokenDigits, formatAgentTokenDigits } from '../auth/agent-token.util';
 import { generateEnrollmentCode, formatEnrollmentCode } from '../auth/enrollment-code.util';
@@ -10,6 +11,21 @@ import { hashToken } from '../auth/token.util';
 // instalar amanhã de manhã" still works, short enough to bound how long a
 // leaked code stays exploitable.
 const ENROLLMENT_CODE_TTL_MS = 24 * 60 * 60 * 1000;
+
+// What a tenant-facing token mutation (revoke / request log / command)
+// returns - never tokenHash: the raw token is only 16 digits, so its
+// SHA-256 is brute-forceable offline, and handing it to any logged-in user
+// would undo the whole point of storing only the hash.
+const TOKEN_MUTATION_SELECT = {
+  id: true,
+  label: true,
+  revokedAt: true,
+  logRequestedAt: true,
+  commandType: true,
+  commandRequestedAt: true,
+  commandAckedAt: true,
+  commandResult: true,
+} as const;
 
 @Injectable()
 export class CustomersService {
@@ -75,6 +91,10 @@ export class CustomersService {
         lastCheckinAt: true,
         lastSeenVersion: true,
         logRequestedAt: true,
+        commandType: true,
+        commandRequestedAt: true,
+        commandAckedAt: true,
+        commandResult: true,
         // NOT content - up to ~300KB of text per day, only fetched on
         // demand by getLog() when the "Ver log" link is actually opened,
         // not on every customer-page load. Just the latest day's upload
@@ -110,7 +130,7 @@ export class CustomersService {
     if (!token) {
       throw new NotFoundException('token not found');
     }
-    return this.prisma.agentToken.update({ where: { id: tokenId }, data: { revokedAt: new Date() } });
+    return this.prisma.agentToken.update({ where: { id: tokenId }, data: { revokedAt: new Date() }, select: TOKEN_MUTATION_SELECT });
   }
 
   // The agent notices this on its own next 2-minute check (see
@@ -125,7 +145,23 @@ export class CustomersService {
     if (!token) {
       throw new NotFoundException('token not found');
     }
-    return this.prisma.agentToken.update({ where: { id: tokenId }, data: { logRequestedAt: new Date() } });
+    return this.prisma.agentToken.update({ where: { id: tokenId }, data: { logRequestedAt: new Date() }, select: TOKEN_MUTATION_SELECT });
+  }
+
+  // Same poll-only delivery as requestLog - see AgentToken.commandType and
+  // api/src/agent-command. A new request replaces whatever was there
+  // (acked or not), resetting the ack/result so the page shows this one.
+  async requestCommand(tenantId: string, customerId: string, tokenId: string, command: AgentCommandType) {
+    await this.requireCustomer(tenantId, customerId);
+    const token = await this.prisma.agentToken.findFirst({ where: { id: tokenId, tenantId, customerId, revokedAt: null } });
+    if (!token) {
+      throw new NotFoundException('token not found');
+    }
+    return this.prisma.agentToken.update({
+      where: { id: tokenId },
+      data: { commandType: command, commandRequestedAt: new Date(), commandAckedAt: null, commandResult: null },
+      select: TOKEN_MUTATION_SELECT,
+    });
   }
 
   // Separate from listTokens on purpose - content can be up to ~300KB,

@@ -119,6 +119,42 @@ func RunHelper(oldExePath string, oldPID int) error {
 	return nil
 }
 
+// RestartService restarts the running agent service in place (the remote
+// "Reiniciar agente" command) - same detached-helper trick as Apply, for
+// the same reason: this process can't start the service again after the
+// SCM has stopped it. The helper is this very same exe (no file swap), run
+// with the hidden -restart-service flag - see RunRestartHelper.
+func RestartService() error {
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve own exe path: %w", err)
+	}
+	cmd := exec.Command(self, "-restart-service", strconv.Itoa(os.Getpid()))
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.DETACHED_PROCESS,
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("spawn restart helper: %w", err)
+	}
+	time.Sleep(500 * time.Millisecond) // same race as Apply's
+	if err := controlService("stop"); err != nil {
+		return fmt.Errorf("stop service for restart: %w", err)
+	}
+	return nil
+}
+
+// RunRestartHelper waits for the old service process to exit, then starts
+// the service again.
+func RunRestartHelper(oldPID int) error {
+	if !waitForProcessExit(oldPID, 30*time.Second) {
+		return fmt.Errorf("old process (pid %d) did not exit within timeout, not restarting", oldPID)
+	}
+	if err := controlService("start"); err != nil {
+		return fmt.Errorf("start service: %w", err)
+	}
+	return nil
+}
+
 // waitForProcessExit polls via OpenProcess/GetExitCodeProcess rather than
 // os.Process.Signal - Windows only supports os.Kill/SIGTERM through that
 // API, not a "still alive?" probe like Unix's kill(pid, 0).

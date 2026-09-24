@@ -25,6 +25,7 @@ import { ApiKeysModule } from './api-keys/api-keys.module';
 import { ExternalModule } from './external/external.module';
 import { OpsAlertsModule } from './ops-alerts/ops-alerts.module';
 import { AgentLogModule } from './agent-log/agent-log.module';
+import { AgentCommandModule } from './agent-command/agent-command.module';
 import { AllExceptionsFilter } from './ops-alerts/all-exceptions.filter';
 import { HealthController } from './health/health.controller';
 
@@ -60,6 +61,7 @@ import { HealthController } from './health/health.controller';
     ExternalModule,
     OpsAlertsModule,
     AgentLogModule,
+    AgentCommandModule,
   ],
   controllers: [HealthController],
   providers: [

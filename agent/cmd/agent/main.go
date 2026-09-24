@@ -32,6 +32,9 @@ func main() {
 	// ever invoked by Apply() itself, spawning the freshly-downloaded
 	// binary as a detached helper. See internal/updater/apply_windows.go.
 	applyUpdate := flag.Bool("apply-update", false, "internal: apply a downloaded update (do not run directly)")
+	// Same idea, spawned by updater.RestartService for the remote restart
+	// command - see internal/updater/apply_windows.go.
+	restartService := flag.Bool("restart-service", false, "internal: restart the service after the given pid exits (do not run directly)")
 	flag.Parse()
 
 	if *showVersion {
@@ -47,6 +50,17 @@ func main() {
 		}
 		if err := updater.RunHelper(oldExePath, oldPID); err != nil {
 			log.Fatalf("apply update failed: %v", err)
+		}
+		return
+	}
+
+	if *restartService {
+		oldPID, err := strconv.Atoi(flag.Arg(0))
+		if err != nil {
+			log.Fatalf("-restart-service requires an <oldPID> argument")
+		}
+		if err := updater.RunRestartHelper(oldPID); err != nil {
+			log.Fatalf("restart service failed: %v", err)
 		}
 		return
 	}

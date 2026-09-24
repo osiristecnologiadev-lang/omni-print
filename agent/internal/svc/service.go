@@ -130,7 +130,7 @@ func (p *program) run(ctx context.Context) {
 		p.runDiscovery(ctx)
 	}
 	p.cycle(ctx, col, tc)
-	p.checkForUpdate(ctx)
+	p.checkForUpdate(ctx, false, nil)
 	// Also uploaded once here, not just from dailyUploadTicker below - a
 	// service that restarts often (crash loop, an update applying) would
 	// otherwise go a full day+ without ever contributing to the per-day
@@ -179,12 +179,13 @@ func (p *program) run(ctx context.Context) {
 		case <-discoveryC:
 			p.runDiscovery(ctx)
 		case <-updateTicker.C:
-			p.checkForUpdate(ctx)
+			p.checkForUpdate(ctx, false, nil)
 		case <-logCheckTicker.C:
 			if err := p.rotateLogIfNeeded(); err != nil {
 				log.Printf("log rotation: failed to open new log file: %v", err)
 			}
 			p.checkLogRequest(ctx, tc)
+			p.checkCommand(ctx, col, tc)
 		case <-dailyUploadTicker.C:
 			p.uploadDailyLog(ctx, tc)
 		}
@@ -262,26 +263,32 @@ func (p *program) uploadDailyLog(ctx context.Context, tc *transport.Client) {
 // doubles as the fleet-version check-in (see AgentReleasesController.latest
 // on the API side), and a disabled tenant should still be visible as
 // "behind on updates", not silent.
-func (p *program) checkForUpdate(ctx context.Context) {
+//
+// force (the remote "Verificar atualização agora" command) also skips the
+// auto_update opt-out: a human explicitly asked for this update. The
+// returned string is a human-readable outcome for that command's ack;
+// beforeApply, if set, receives it right before Apply - Apply stops this
+// process, so anything reported afterwards would never be sent.
+func (p *program) checkForUpdate(ctx context.Context, force bool, beforeApply func(outcome string)) string {
 	release, err := updater.CheckLatest(ctx, p.cfg.CloudURL, p.cfg.AgentToken, p.version)
 	if err != nil {
 		log.Printf("update check failed: %v", err)
-		return
+		return fmt.Sprintf("Falha ao verificar atualização: %v", err)
 	}
 	if release == nil || !updater.IsNewer(p.version, release.Version) {
-		return
+		return fmt.Sprintf("Já está na versão mais recente (v%s)", p.version)
 	}
-	if !p.cfg.AutoUpdateEnabled() && !release.Mandatory {
+	if !force && !p.cfg.AutoUpdateEnabled() && !release.Mandatory {
 		log.Printf("update: version %s available but auto_update is disabled and this release isn't mandatory - skipping", release.Version)
-		return
+		return ""
 	}
 
-	log.Printf("update: applying version %s (mandatory=%v)", release.Version, release.Mandatory)
+	log.Printf("update: applying version %s (mandatory=%v, forced=%v)", release.Version, release.Mandatory, force)
 
 	exePath, err := os.Executable()
 	if err != nil {
 		log.Printf("update: failed to resolve own executable path: %v", err)
-		return
+		return fmt.Sprintf("Falha ao atualizar: %v", err)
 	}
 	// Same directory as the running exe: apply_unix.go's os.Rename needs to
 	// be on the same filesystem to be atomic, and apply_windows.go's helper
@@ -290,17 +297,21 @@ func (p *program) checkForUpdate(ctx context.Context) {
 	sha, err := updater.Download(ctx, p.cfg.CloudURL, release.DownloadURL, p.cfg.AgentToken, downloadPath)
 	if err != nil {
 		log.Printf("update: download failed: %v", err)
-		return
+		return fmt.Sprintf("Falha ao baixar a v%s: %v", release.Version, err)
 	}
 	if sha != release.SHA256 {
 		log.Printf("update: checksum mismatch (got %s, expected %s) - discarding download", sha, release.SHA256)
 		_ = os.Remove(downloadPath)
-		return
+		return fmt.Sprintf("Download da v%s corrompido (checksum não confere) - descartado", release.Version)
 	}
 
+	outcome := fmt.Sprintf("Atualizando de v%s para v%s - o agente reinicia sozinho", p.version, release.Version)
+	if beforeApply != nil {
+		beforeApply(outcome)
+	}
 	if err := updater.Apply(ctx, downloadPath, exePath); err != nil {
 		log.Printf("update: apply failed: %v", err)
-		return
+		return fmt.Sprintf("Falha ao aplicar a v%s: %v", release.Version, err)
 	}
 	// Windows: Apply() just told the SCM to stop this service, so Stop()
 	// below is about to be invoked by the OS - no need to cancel ourselves.
@@ -309,27 +320,88 @@ func (p *program) checkForUpdate(ctx context.Context) {
 	// binary rather than keep running until the OS gets around to it.
 	log.Printf("update: applied, shutting down for restart")
 	p.cancel()
+	return outcome
 }
 
-func (p *program) runDiscovery(ctx context.Context) {
-	found := discovery.Run(ctx, discovery.Options{
+// checkCommand runs a remote command requested from the tenant panel
+// (restart / update now / discover now - see api/src/agent-command), polled
+// on the same 2-minute tick as checkLogRequest. Every outcome is acked back
+// as a short Portuguese sentence the customer page shows as-is. RESTART and
+// UPDATE ack BEFORE acting, since both end with this process being stopped.
+func (p *program) checkCommand(ctx context.Context, col *collector.Collector, tc *transport.Client) {
+	cmd, err := tc.CheckCommand(ctx)
+	if err != nil {
+		log.Printf("command check failed: %v", err)
+		return
+	}
+	if cmd == nil {
+		return
+	}
+	log.Printf("remote command received: %s (requested at %s)", cmd.Type, cmd.RequestedAt)
+
+	ack := func(result string) {
+		if err := tc.AckCommand(ctx, cmd.RequestedAt, result); err != nil {
+			log.Printf("command %s: ack failed: %v", cmd.Type, err)
+		}
+	}
+
+	switch cmd.Type {
+	case "DISCOVER":
+		ack("Buscando impressoras...")
+		found, added := p.runDiscovery(ctx)
+		if added > 0 {
+			// Collect the new ones right away instead of waiting up to a
+			// full poll interval for them to show up in the panel.
+			p.cycle(ctx, col, tc)
+		}
+		ack(fmt.Sprintf("Busca concluída: %d impressora(s) respondendo, %d nova(s)", found, added))
+	case "UPDATE":
+		ack(p.checkForUpdate(ctx, true, ack))
+	case "RESTART":
+		ack("Reiniciando o serviço do agente")
+		log.Printf("command RESTART: restarting service")
+		if err := updater.RestartService(); err != nil {
+			log.Printf("command RESTART failed: %v", err)
+			ack(fmt.Sprintf("Falha ao reiniciar: %v", err))
+			return
+		}
+		p.cancel()
+	default:
+		ack(fmt.Sprintf("Comando %q não é suportado pela v%s do agente", cmd.Type, p.version))
+	}
+}
+
+// runDiscovery returns how many printers answered this sweep and how many
+// of those were new. The fallbacks matter only for the remote "Buscar
+// impressoras agora" command on an install with discovery disabled -
+// config.validate only fills these defaults in when discovery is enabled.
+func (p *program) runDiscovery(ctx context.Context) (found, added int) {
+	community := p.cfg.Discovery.Community
+	if community == "" {
+		community = "public"
+	}
+	timeout := p.cfg.Discovery.ProbeTimeout.Duration()
+	if timeout <= 0 {
+		timeout = 800 * time.Millisecond
+	}
+	devices := discovery.Run(ctx, discovery.Options{
 		Ranges:       p.cfg.Discovery.Ranges,
-		Community:    p.cfg.Discovery.Community,
+		Community:    community,
 		Port:         161,
 		Concurrency:  p.cfg.Discovery.Concurrency,
-		ProbeTimeout: p.cfg.Discovery.ProbeTimeout.Duration(),
+		ProbeTimeout: timeout,
 		Delay:        100 * time.Millisecond,
 	})
-	p.addDiscovered(found)
+	return len(devices), p.addDiscovered(devices)
 }
 
 // addDiscovered merges newly found devices into the in-memory poll list and
 // persists just the newly-added ones to the discovered.yaml sidecar file, so
 // they're picked up immediately without waiting for a restart, and survive
-// one if it happens.
-func (p *program) addDiscovered(found []config.Device) {
+// one if it happens. Returns how many were new.
+func (p *program) addDiscovered(found []config.Device) int {
 	if len(found) == 0 {
-		return
+		return 0
 	}
 
 	p.mu.Lock()
@@ -338,7 +410,7 @@ func (p *program) addDiscovered(found []config.Device) {
 	p.mu.Unlock()
 
 	if len(added) == 0 {
-		return
+		return 0
 	}
 	for _, d := range added {
 		log.Printf("discovery: found new printer %q at %s", d.Name, d.Host)
@@ -349,6 +421,7 @@ func (p *program) addDiscovered(found []config.Device) {
 	if err := config.SaveDeviceFile(p.cfg.DiscoveredFilePath, persisted); err != nil {
 		log.Printf("discovery: failed to persist discovered devices: %v", err)
 	}
+	return len(added)
 }
 
 func (p *program) activeDevices() []config.Device {

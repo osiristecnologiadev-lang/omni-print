@@ -21,6 +21,8 @@ const ACTION_LABEL: Record<string, string> = {
   'customer.update': 'Dados do cliente editados',
   'agent_token.create': 'Token de agente gerado',
   'agent_token.revoke': 'Token de agente revogado',
+  'agent_token.request_log': 'Log do agente solicitado',
+  'agent_token.command': 'Comando remoto enviado ao agente',
   'enrollment_code.create': 'Código de instalação gerado',
   'enrollment_code.revoke': 'Código de instalação revogado',
   'user.create': 'Usuário criado',

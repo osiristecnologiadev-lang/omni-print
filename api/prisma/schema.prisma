@@ -30,6 +30,13 @@ enum AgentPlatform {
   LINUX
 }
 
+// See AgentToken.commandType.
+enum AgentCommandType {
+  RESTART
+  UPDATE
+  DISCOVER
+}
+
 // A published build of the on-prem agent binary (agent/, not this API).
 // Global, not tenant-scoped - same reasoning as PlatformAdmin above: every
 // tenant's agents check against the same release catalog, published only by
@@ -576,6 +583,20 @@ model AgentToken {
   // point of the tenant panel's Logs screen.
   logRequestedAt DateTime?       @map("log_requested_at")
   logEntries     AgentLogEntry[]
+
+  // Remote command slot (restart / check for update now / discover now,
+  // buttons in the customer page) - same poll-only delivery as
+  // logRequestedAt above: the agent picks it up on its next 2-minute check
+  // (see api/src/agent-command). One slot, latest request wins. Pending =
+  // commandRequestedAt set, commandAckedAt null, and not yet older than
+  // AgentCommandService's expiry. The agent acks with the same
+  // commandRequestedAt it received, so a stale ack can never mark a newer
+  // request done. commandResult is the agent's own human-readable outcome,
+  // possibly updated more than once (e.g. "buscando..." then the count).
+  commandType        AgentCommandType? @map("command_type")
+  commandRequestedAt DateTime?         @map("command_requested_at")
+  commandAckedAt     DateTime?         @map("command_acked_at")
+  commandResult      String?           @map("command_result")
 
   // Opposite side of AgentEnrollmentCode.agentTokenId - set only when this
   // token was minted by a code exchange (AgentEnrollmentService.exchange)

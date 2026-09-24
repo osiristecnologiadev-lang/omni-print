@@ -12,6 +12,7 @@ import {
   getViewerTimeZone,
   type AgentTokenSummary,
   type AgentEnrollmentCodeSummary,
+  type AgentCommandType,
 } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
 import { CreateTokenForm } from './CreateTokenForm';
@@ -21,6 +22,7 @@ import {
   revokeCustomerUserAction,
   revokeTokenAction,
   requestLogAction,
+  requestCommandAction,
   revokeEnrollmentCodeAction,
   updateCustomerInfoAction,
   updateCustomerNotifyEmailAction,
@@ -65,6 +67,44 @@ function tokenStatusBadge(t: AgentTokenSummary) {
 function logRequestPending(t: AgentTokenSummary): boolean {
   if (!t.logRequestedAt) return false;
   return !t.logUploadedAt || new Date(t.logUploadedAt) < new Date(t.logRequestedAt);
+}
+
+// Remote commands (restart / update now / discover now) - first shipped in
+// agent v0.1.13; an older agent never polls for them, so the buttons would
+// only ever produce "não recebido". Hidden until the token has checked in
+// on a version that understands them.
+const REMOTE_COMMANDS_MIN_VERSION = [0, 1, 13];
+
+function supportsRemoteCommands(version: string | null): boolean {
+  if (!version) return false;
+  const parts = version.split('.').map(Number);
+  for (let i = 0; i < REMOTE_COMMANDS_MIN_VERSION.length; i++) {
+    const have = parts[i] ?? 0;
+    if (have !== REMOTE_COMMANDS_MIN_VERSION[i]) return have > REMOTE_COMMANDS_MIN_VERSION[i];
+  }
+  return true;
+}
+
+const COMMAND_LABEL: Record<AgentCommandType, string> = {
+  RESTART: 'Reiniciar agente',
+  UPDATE: 'Verificar atualização agora',
+  DISCOVER: 'Buscar impressoras agora',
+};
+
+// Must match COMMAND_EXPIRY_MS in api/src/agent-command - past this, the API
+// stops handing the request to the agent at all.
+const COMMAND_EXPIRY_MS = 30 * 60 * 1000;
+
+function commandStatus(t: AgentTokenSummary, tz?: string): string | null {
+  if (!t.commandType || !t.commandRequestedAt) return null;
+  const label = COMMAND_LABEL[t.commandType];
+  if (t.commandAckedAt) {
+    return `${label} (${formatDateTime(t.commandAckedAt, tz)}): ${t.commandResult ?? 'recebido'}`;
+  }
+  if (Date.now() - new Date(t.commandRequestedAt).getTime() > COMMAND_EXPIRY_MS) {
+    return `${label}: não recebido - o agente não ficou online em até 30 minutos. Envie de novo quando ele voltar.`;
+  }
+  return `${label}: aguardando o agente (até 2 minutos, se estiver online)...`;
 }
 
 function isEnrollmentCodeExpired(c: AgentEnrollmentCodeSummary): boolean {
@@ -125,6 +165,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
   const customerLowSupplies = lowSupplies.filter((s) => s.customerId === id);
   const boundRevokeToken = revokeTokenAction.bind(null, id);
   const boundRequestLog = requestLogAction.bind(null, id);
+  const boundRequestCommand = requestCommandAction.bind(null, id);
   const boundRevokeEnrollmentCode = revokeEnrollmentCodeAction.bind(null, id);
   const boundCreateUser = createCustomerUserAction.bind(null, id);
   const boundRevokeUser = revokeCustomerUserAction.bind(null, id);
@@ -440,13 +481,24 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
         {searchParams?.logRequestError === '1' && (
           <Banner tone="error">Não foi possível solicitar o log. Tente novamente.</Banner>
         )}
+        {searchParams?.commandRequested === '1' && (
+          <Banner tone="success">
+            Comando enviado — o agente executa assim que perceber o pedido (até 2 minutos, se estiver online).
+          </Banner>
+        )}
+        {searchParams?.commandError === '1' && (
+          <Banner tone="error">Não foi possível enviar o comando. Tente novamente.</Banner>
+        )}
 
         <CreateTokenForm customerId={id} />
 
         {tokens.length > 0 && (
           <ul className="mt-4 divide-y divide-line border-t border-line">
-            {tokens.map((t) => (
-              <li key={t.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+            {tokens.map((t) => {
+              const status = t.revokedAt ? null : commandStatus(t, tz);
+              return (
+              <li key={t.id} className="py-2.5 text-sm">
+                <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-ink">{t.label || 'Sem rótulo'}</span>
@@ -485,8 +537,29 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
                     </form>
                   </div>
                 )}
+                </div>
+                {!t.revokedAt && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {supportsRemoteCommands(t.lastSeenVersion) ? (
+                      (Object.keys(COMMAND_LABEL) as AgentCommandType[]).map((c) => (
+                        <form key={c} action={boundRequestCommand.bind(null, t.id, c)}>
+                          <SubmitButton variant="secondary" size="sm" pendingLabel="Enviando...">
+                            {COMMAND_LABEL[c]}
+                          </SubmitButton>
+                        </form>
+                      ))
+                    ) : (
+                      <span className="text-xs text-ink-faint">
+                        Comandos remotos (reiniciar, atualizar, buscar impressoras) ficam disponíveis quando este
+                        agente estiver na v0.1.13 ou mais nova — ele se atualiza sozinho em até 6 horas.
+                      </span>
+                    )}
+                  </div>
+                )}
+                {status && <div className="mt-1 text-xs text-ink-faint">{status}</div>}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </Panel>
