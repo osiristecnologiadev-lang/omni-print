@@ -45,8 +45,24 @@ function Sign-Artifact([string]$Path) {
 
 Sign-Artifact "dist/omniprint-agent.exe"
 
-if (Get-Command iscc -ErrorAction SilentlyContinue) {
-	iscc "/DMyAppVersion=$Version" installer/omniprint-agent.iss
+# PATH first, then Inno Setup's default install locations - its installer
+# doesn't add itself to PATH, and a per-user install (no admin) lands under
+# LOCALAPPDATA, which is how it's installed on the machine that builds the
+# real releases.
+$iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+if (-not $iscc) {
+	$iscc = @(
+		"$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+		"${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+		"$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+	) | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+
+if ($iscc) {
+	& $iscc "/DMyAppVersion=$Version" installer/omniprint-agent.iss
+	if ($LASTEXITCODE -ne 0) {
+		throw "iscc failed compiling the installer"
+	}
 	Sign-Artifact "dist/OmniPrintAgentSetup-$Version.exe"
 } else {
 	Write-Warning "iscc (Inno Setup Compiler) not found - skipping installer build."

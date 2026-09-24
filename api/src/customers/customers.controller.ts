@@ -5,7 +5,6 @@ import { assertPermission } from '../auth/permissions.util';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
-import { CreateTokenDto } from './dto/create-token.dto';
 import { CreateEnrollmentCodeDto } from './dto/create-enrollment-code.dto';
 import { RequestCommandDto } from './dto/request-command.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -75,24 +74,6 @@ export class CustomersController {
   listTokens(@Req() req: any, @Param('id') id: string) {
     assertPermission(req, 'agent');
     return this.customersService.listTokens(req.tenantId, id);
-  }
-
-  @Post(':id/agent-tokens')
-  async createToken(@Req() req: any, @Param('id') id: string, @Body() dto: CreateTokenDto) {
-    assertPermission(req, 'agent');
-    const token = await this.customersService.createToken(req.tenantId, id, dto.label);
-    await this.auditLog.log({
-      tenantId: req.tenantId,
-      actorType: 'USER',
-      actorId: req.userId,
-      actorLabel: req.userEmail,
-      action: 'agent_token.create',
-      targetType: 'AgentToken',
-      targetId: token.id,
-      targetLabel: token.label ?? 'Sem rótulo',
-      metadata: { customerId: id },
-    });
-    return token;
   }
 
   @Post(':id/agent-tokens/:tokenId/revoke')

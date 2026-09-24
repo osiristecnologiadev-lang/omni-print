@@ -65,9 +65,9 @@ export default async function AgentDownloadPage() {
           código pelos dados reais sozinho.
         </p>
         <p className="mt-3 text-xs text-ink-faint">
-          Instalação manual (avançado): se a máquina de destino não tiver acesso à internet no momento da
-          instalação, o assistente oferece um modo manual com Tenant ID, token e URL da API — gere um token
-          de agente na mesma tela do cliente, seção &ldquo;Tokens de agente (avançado)&rdquo;.
+          A máquina precisa de acesso à internet durante a instalação: o assistente confere o código com o
+          OmniPrint antes de instalar qualquer coisa. Código expirado, já usado, revogado ou digitado errado
+          não deixa a instalação continuar — gere um novo código e tente de novo.
         </p>
       </Panel>
     </main>

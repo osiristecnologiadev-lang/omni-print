@@ -42,15 +42,19 @@ explicitamente em `devices`, encontradas automaticamente via `discovery`
 
 ## Instalar
 
-**Windows, via instalador (recomendado para clientes reais)**: rode
+**Windows, via instalador (único caminho para clientes reais)**: rode
 `OmniPrintAgentSetup-<versão>.exe` (gerado pelo `build.ps1`, ver "Build"
-acima). O wizard pede Tenant ID, token do agente e a URL da API, escreve o
+acima). O wizard pede só o **código de instalação** (gerado no painel, na
+página do cliente — vale 24h, uso único) e o troca pelos dados reais com a
+API antes de instalar qualquer coisa: código expirado, já usado, revogado ou
+errado não deixa o wizard avançar. Não existe mais modo manual com Tenant
+ID/token, e o painel não gera mais tokens crus. Depois escreve o
 `config.yaml` sozinho (com `discovery.enabled: true` e `auto_update.enabled:
 true` por padrão) e já registra/inicia o serviço Windows. Precisa rodar como
 administrador (instalar um serviço exige isso). O desinstalador para e
 remove o serviço antes de apagar os arquivos.
 
-**Manual (qualquer plataforma, ou para testar)**:
+**Manual (só desenvolvimento/teste)** — exige um token que já exista:
 
 ```
 cp config.example.yaml config.yaml   # edite tenant_id/agent_token/cloud_url

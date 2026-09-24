@@ -6,7 +6,7 @@ import { buttonClasses } from '@/components/Button';
 
 const initialState = { code: null, label: null, error: null };
 
-// Same reasoning as CreateTokenForm.tsx: the raw code only ever exists in
+// The raw code only ever exists in
 // this one response (only its hash is stored), so it needs to stay on
 // screen after submit without a redirect - hence useActionState instead of
 // the plain <form action={serverAction}> pattern used everywhere else.

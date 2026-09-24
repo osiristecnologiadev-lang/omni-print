@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  createCustomerToken,
   createCustomerEnrollmentCode,
   createUser,
   requestAgentTokenLog,
@@ -14,27 +13,6 @@ import {
   revokeUser,
   updateCustomer,
 } from '@/lib/api';
-
-interface CreateTokenState {
-  token: string | null;
-  label: string | null;
-  error: string | null;
-}
-
-export async function createTokenAction(
-  customerId: string,
-  _prevState: CreateTokenState,
-  formData: FormData,
-): Promise<CreateTokenState> {
-  const label = String(formData.get('label') ?? '').trim() || undefined;
-  try {
-    const result = await createCustomerToken(customerId, label);
-    revalidatePath(`/customers/${customerId}`);
-    return { token: result.token, label: result.label, error: null };
-  } catch {
-    return { token: null, label: null, error: 'Não foi possível gerar o token. Tente novamente.' };
-  }
-}
 
 export async function revokeTokenAction(customerId: string, tokenId: string) {
   try {

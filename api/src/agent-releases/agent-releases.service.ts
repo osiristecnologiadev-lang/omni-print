@@ -106,6 +106,18 @@ export class AgentReleasesService {
     });
   }
 
+  // What a tenant downloads for a first install - the newest release that
+  // actually has an installer attached, not simply the newest release:
+  // many releases ship only the auto-update binary (no Inno Setup on the
+  // build machine), and pointing the download page at getLatest made it
+  // say "no installer available" for every tenant from v0.1.7 onward.
+  getLatestWithInstaller(platform: AgentPlatform) {
+    return this.prisma.agentRelease.findFirst({
+      where: { platform, installerFilePath: { not: null } },
+      orderBy: [{ majorVersion: 'desc' }, { minorVersion: 'desc' }, { patchVersion: 'desc' }],
+    });
+  }
+
   // Observational only (see AgentToken.lastSeenVersion's schema comment) -
   // called from AgentReleasesController.latest on every version-check an
   // agent makes.

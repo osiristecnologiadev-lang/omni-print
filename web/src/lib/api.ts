@@ -797,13 +797,6 @@ export interface AgentTokenSummary {
 
 export type AgentCommandType = 'RESTART' | 'UPDATE' | 'DISCOVER';
 
-export interface CreatedAgentToken {
-  id: string;
-  label: string | null;
-  createdAt: string;
-  token: string; // raw value - only ever present in this one response
-}
-
 export function getCustomers(): Promise<Customer[]> {
   return apiFetch<Customer[]>('/v1/customers');
 }
@@ -851,10 +844,6 @@ export function revokeUser(userId: string): Promise<DashboardUser> {
 
 export function updateUserPermissions(userId: string, permissions: string[]): Promise<DashboardUser> {
   return apiMutate<DashboardUser>(`/v1/users/${userId}/permissions`, 'PATCH', { permissions });
-}
-
-export function createCustomerToken(customerId: string, label?: string): Promise<CreatedAgentToken> {
-  return apiMutate<CreatedAgentToken>(`/v1/customers/${customerId}/agent-tokens`, 'POST', { label });
 }
 
 export function revokeCustomerToken(customerId: string, tokenId: string): Promise<AgentTokenSummary> {

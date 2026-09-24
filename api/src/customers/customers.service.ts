@@ -1,7 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AgentCommandType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { generateAgentTokenDigits, formatAgentTokenDigits } from '../auth/agent-token.util';
 import { generateEnrollmentCode, formatEnrollmentCode } from '../auth/enrollment-code.util';
 import { hashToken } from '../auth/token.util';
 
@@ -105,24 +104,11 @@ export class CustomersService {
     return tokens.map(({ logEntries, ...t }) => ({ ...t, logUploadedAt: logEntries[0]?.uploadedAt ?? null }));
   }
 
-  async createToken(tenantId: string, customerId: string, label?: string) {
-    await this.requireCustomer(tenantId, customerId);
-
-    const digits = generateAgentTokenDigits();
-    const agentToken = await this.prisma.agentToken.create({
-      data: { tenantId, customerId, tokenHash: hashToken(digits), label },
-    });
-
-    return {
-      id: agentToken.id,
-      label: agentToken.label,
-      createdAt: agentToken.createdAt,
-      // Shown once - the caller must copy this into the client's
-      // agent/config.yaml now. It cannot be retrieved again after this
-      // response (only its hash is persisted).
-      token: formatAgentTokenDigits(digits),
-    };
-  }
+  // No createToken here on purpose: an agent token is only ever minted by
+  // redeeming an enrollment code (AgentEnrollmentService.exchange) - the
+  // raw-token "manual install" path was removed so every install goes
+  // through a short-lived, single-use code the tenant generated for that
+  // exact customer. Tokens minted before that change keep working.
 
   async revokeToken(tenantId: string, customerId: string, tokenId: string) {
     await this.requireCustomer(tenantId, customerId);
@@ -221,8 +207,8 @@ export class CustomersService {
       label: record.label,
       createdAt: record.createdAt,
       expiresAt: record.expiresAt,
-      // Shown once - only its hash is persisted, same invariant as
-      // createToken's raw token.
+      // Shown once - only its hash is persisted, same invariant as the
+      // agent token it's later exchanged for.
       code: formatEnrollmentCode(code),
     };
   }

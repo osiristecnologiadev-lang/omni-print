@@ -22,7 +22,10 @@ export class AgentDownloadController {
   @Get('latest')
   async latest(@Req() req: any, @Query('platform') platform: AgentPlatform) {
     assertPermission(req, 'agent');
-    const release = await this.releases.getLatest(platform);
+    // The installer is self-updating after install, so an older installer
+    // is fine to hand out - the agent moves to the latest version on its
+    // own first update check.
+    const release = await this.releases.getLatestWithInstaller(platform);
     if (!release) {
       return null;
     }

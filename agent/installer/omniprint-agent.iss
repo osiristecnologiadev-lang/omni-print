@@ -16,8 +16,7 @@
 #define MyAppExeName "omniprint-agent.exe"
 ; Real production API domain - api.omniprint.app.br is live and verified
 ; (custom domain cert valid since 2026-09-11). Used everywhere cloud_url is
-; needed: the enrollment HTTP call, ManualPage's prefilled URL field, and
-; the non-manual branch of CurStepChanged's config.yaml Content.
+; needed: the enrollment HTTP call and CurStepChanged's config.yaml Content.
 #define CloudURL "https://api.omniprint.app.br"
 
 [Setup]
@@ -69,40 +68,23 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "-config ""{app}\config.yaml"" un
 [Code]
 var
   CodePage: TInputQueryWizardPage;
-  ManualPage: TInputQueryWizardPage;
   ResolvedTenantID, ResolvedAgentToken: String;
-  ManualMode: Boolean;
 
+// The enrollment code is the ONLY way to install: the wizard can't get past
+// this page (see NextButtonClick) until the server accepts the code, and
+// nothing is copied or installed before that - Inno only starts writing
+// files after the last wizard page. There used to be a "manual install"
+// fallback (raw Tenant ID + token typed in) - removed on purpose so every
+// install goes through a short-lived, single-use code generated in the
+// panel for that exact customer.
 procedure InitializeWizard;
 begin
-  ManualMode := False;
-
   CodePage := CreateInputQueryPage(wpSelectDir,
     'Conexao com o OmniPrint', 'Codigo de instalacao',
     'Informe o codigo de instalacao (8 caracteres) gerado no painel do OmniPrint, na ' +
     'pagina do cliente onde este agente sera instalado. O codigo vale por 24 horas e ' +
-    'so pode ser usado uma vez.');
+    'so pode ser usado uma vez. Esta maquina precisa de acesso a internet agora.');
   CodePage.Add('Codigo de instalacao:', False);
-
-  // Escape hatch, only ever shown if the automatic exchange fails and the
-  // user chooses to continue manually - see NextButtonClick/ShouldSkipPage.
-  // Kept as a real second page (not an always-visible toggle) to minimize
-  // new always-on Pascal Script UI surface, matching this file's own
-  // compile-error history: less new code path shown by default, less to
-  // get subtly wrong.
-  ManualPage := CreateInputQueryPage(CodePage.ID,
-    'Instalacao manual', 'Dados fornecidos pela sua conta OmniPrint',
-    'Informe o Tenant ID e o token de agente exibidos ao criar um token para este ' +
-    'cliente no painel do OmniPrint.');
-  ManualPage.Add('Tenant ID:', False);
-  ManualPage.Add('Token do agente:', False);
-  ManualPage.Add('URL da API (cloud_url):', False);
-  ManualPage.Values[2] := '{#CloudURL}';
-end;
-
-function ShouldSkipPage(PageID: Integer): Boolean;
-begin
-  Result := (PageID = ManualPage.ID) and (not ManualMode);
 end;
 
 // Defensive even though the code alphabet
@@ -177,6 +159,34 @@ begin
   Result := Value <> '';
 end;
 
+// Turns the API's refusal (api/src/agent-enrollment - English messages, a
+// deliberately generic one for "no such code") into what the person at the
+// keyboard actually needs to do next. Matched on the server's exact
+// specific phrases - NOT on a bare "expired": the generic unknown-code
+// message is "invalid or expired code", which a bare match would turn into
+// "este codigo expirou" for a simple typo. Anything unmatched degrades to
+// the generic "invalido" text rather than to nothing.
+function EnrollErrorMessage(Status: Integer; const Body: String): String;
+var
+  Lower: String;
+begin
+  Lower := Lowercase(Body);
+  if Pos('this code has expired', Lower) > 0 then
+    Result := 'Este codigo expirou (ele vale por 24 horas). Gere um novo codigo no painel do OmniPrint.'
+  else if Pos('already been used', Lower) > 0 then
+    Result := 'Este codigo ja foi usado em outra instalacao. Cada codigo funciona uma unica vez - gere um novo no painel do OmniPrint.'
+  else if Pos('has been revoked', Lower) > 0 then
+    Result := 'Este codigo foi revogado no painel do OmniPrint. Gere um novo codigo.'
+  else if Status = 429 then
+    Result := 'Muitas tentativas seguidas. Aguarde um minuto e tente novamente.'
+  else if Status = 409 then
+    Result := 'Este codigo acabou de ser usado por outra instalacao. Gere um novo codigo no painel do OmniPrint.'
+  else if (Status = 400) or (Status = 401) or (Status = 404) then
+    Result := 'Codigo invalido. Confira se digitou exatamente o codigo mostrado no painel do OmniPrint.'
+  else
+    Result := 'O servidor OmniPrint nao conseguiu validar o codigo agora (HTTP ' + IntToStr(Status) + '). Tente novamente em alguns minutos.';
+end;
+
 // Synchronous by design (Open's 3rd param False) - the wizard's message
 // loop stops pumping for the duration, so the user sees a frozen wizard,
 // not a broken one. Short explicit timeouts keep a hard network failure
@@ -215,7 +225,7 @@ begin
     end
     else
     begin
-      ErrorMsg := 'O servidor recusou o codigo (HTTP ' + IntToStr(Http.Status) + ').';
+      ErrorMsg := EnrollErrorMessage(Http.Status, Http.ResponseText);
     end;
   except
     ErrorMsg := 'Nao foi possivel conectar ao servidor OmniPrint. Verifique a conexao ' +
@@ -223,14 +233,18 @@ begin
   end;
 end;
 
+// Result False keeps the wizard on the code page - there is no way forward
+// without a code the server accepted (see InitializeWizard's comment).
+// Once exchanged, the code is spent: going Back and Next again would try
+// to redeem it a second time and fail as "already used", so a successful
+// exchange is remembered and not repeated.
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   Code, TenantID, AgentToken, ErrorMsg: String;
-  Answer: Integer;
 begin
   Result := True;
 
-  if CurPageID = CodePage.ID then
+  if (CurPageID = CodePage.ID) and (ResolvedAgentToken = '') then
   begin
     Code := Trim(CodePage.Values[0]);
     if Code = '' then
@@ -248,30 +262,11 @@ begin
     begin
       ResolvedTenantID := TenantID;
       ResolvedAgentToken := AgentToken;
-      ManualMode := False;
     end
     else
     begin
-      Answer := MsgBox(ErrorMsg + #13#10#13#10 +
-        'Deseja instalar manualmente informando Tenant ID, token e URL da API?',
-        mbError, MB_YESNO);
-      if Answer = IDYES then
-      begin
-        ManualMode := True;
-        Result := True;
-      end
-      else
-      begin
-        Result := False;
-      end;
-    end;
-  end
-  else if CurPageID = ManualPage.ID then
-  begin
-    if (Trim(ManualPage.Values[0]) = '') or (Trim(ManualPage.Values[1]) = '') then
-    begin
-      MsgBox('Tenant ID e Token do agente sao obrigatorios.', mbError, MB_OK);
-      Result := False;
+      MsgBox(ErrorMsg + #13#10#13#10 + 'A instalacao nao pode continuar sem um codigo valido.',
+        mbError, MB_OK);
     end;
   end;
 end;
@@ -373,18 +368,9 @@ begin
   begin
     ConfigPath := ExpandConstant('{app}\config.yaml');
 
-    if ManualMode then
-    begin
-      TenantIdValue := Trim(ManualPage.Values[0]);
-      AgentTokenValue := Trim(ManualPage.Values[1]);
-      CloudUrlValue := Trim(ManualPage.Values[2]);
-    end
-    else
-    begin
-      TenantIdValue := ResolvedTenantID;
-      AgentTokenValue := ResolvedAgentToken;
-      CloudUrlValue := '{#CloudURL}';
-    end;
+    TenantIdValue := ResolvedTenantID;
+    AgentTokenValue := ResolvedAgentToken;
+    CloudUrlValue := '{#CloudURL}';
 
     // Every line here starts with a string literal, never a bare #13#10 -
     // Inno Setup's preprocessor treats a line whose first non-whitespace

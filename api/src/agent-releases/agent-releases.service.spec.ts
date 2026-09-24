@@ -102,6 +102,22 @@ describe('AgentReleasesService', () => {
     });
   });
 
+  // Regression: the download page used getLatest, so once a binary-only
+  // release (no installer) became the newest, every tenant saw "no
+  // installer available" even though older releases had one.
+  describe('getLatestWithInstaller', () => {
+    it('only considers releases that have an installer, newest version first', async () => {
+      prisma.agentRelease.findFirst.mockResolvedValue({ id: 'r1', version: '0.1.6' });
+
+      await service.getLatestWithInstaller('WINDOWS' as any);
+
+      expect(prisma.agentRelease.findFirst).toHaveBeenCalledWith({
+        where: { platform: 'WINDOWS', installerFilePath: { not: null } },
+        orderBy: [{ majorVersion: 'desc' }, { minorVersion: 'desc' }, { patchVersion: 'desc' }],
+      });
+    });
+  });
+
   describe('get', () => {
     it('throws NotFoundException for an unknown id', async () => {
       prisma.agentRelease.findUnique.mockResolvedValue(null);

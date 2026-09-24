@@ -59,7 +59,7 @@ interface CreateApiKeyState {
   error: string | null;
 }
 
-// Mirrors customers/[id]/actions.ts's createTokenAction - the raw key only
+// Mirrors customers/[id]/actions.ts's createEnrollmentCodeAction - the raw key only
 // ever exists in this one response (only its hash is stored), so it has to
 // stay on screen after submit without a redirect, hence useActionState
 // instead of this file's usual plain <form action={serverAction}> +

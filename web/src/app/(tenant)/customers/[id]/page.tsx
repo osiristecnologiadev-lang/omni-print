@@ -15,7 +15,6 @@ import {
   type AgentCommandType,
 } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
-import { CreateTokenForm } from './CreateTokenForm';
 import { CreateEnrollmentCodeForm } from './CreateEnrollmentCodeForm';
 import {
   createCustomerUserAction,
@@ -54,7 +53,7 @@ const TOKEN_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 function tokenStatusBadge(t: AgentTokenSummary) {
   if (t.revokedAt) return <Badge tone="neutral">Revogado</Badge>;
-  if (!t.lastCheckinAt) return <Badge tone="warning">Nunca usado</Badge>;
+  if (!t.lastCheckinAt) return <Badge tone="warning">Nunca conectou</Badge>;
   const stale = Date.now() - new Date(t.lastCheckinAt).getTime() > TOKEN_STALE_AFTER_MS;
   return stale ? <Badge tone="warning">Inativo</Badge> : <Badge tone="ok">Ativo</Badge>;
 }
@@ -463,16 +462,15 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
       </Panel>
 
       <Panel className="mt-6">
-        <h2 className="mb-1 text-sm font-medium text-ink">Tokens de agente (avançado)</h2>
+        <h2 className="mb-1 text-sm font-medium text-ink">Agentes instalados</h2>
         <p className="mb-4 text-xs text-ink-faint">
-          Tenant ID e token de agente crus, para instalação manual — use apenas se o instalador não conseguir
-          trocar um código de instalação automaticamente (ex: máquina sem acesso à internet no momento da
-          instalação). Toda impressora que aquele agente encontrar já chega marcada como &ldquo;{customer.name}
-          &rdquo; automaticamente.
+          Cada instalação feita com um código de instalação aparece aqui. Toda impressora que o agente encontrar
+          já chega marcada como &ldquo;{customer.name}&rdquo; automaticamente. Revogar desliga aquele agente
+          de vez — para reinstalar, gere um novo código.
         </p>
 
-        {searchParams?.tokenRevoked === '1' && <Banner tone="success">Token revogado.</Banner>}
-        {searchParams?.tokenError === '1' && <Banner tone="error">Não foi possível revogar o token. Tente novamente.</Banner>}
+        {searchParams?.tokenRevoked === '1' && <Banner tone="success">Agente revogado.</Banner>}
+        {searchParams?.tokenError === '1' && <Banner tone="error">Não foi possível revogar o agente. Tente novamente.</Banner>}
         {searchParams?.logRequested === '1' && (
           <Banner tone="success">
             Log solicitado — o agente envia assim que perceber o pedido (até 2 minutos, se estiver online).
@@ -490,10 +488,10 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           <Banner tone="error">Não foi possível enviar o comando. Tente novamente.</Banner>
         )}
 
-        <CreateTokenForm customerId={id} />
-
-        {tokens.length > 0 && (
-          <ul className="mt-4 divide-y divide-line border-t border-line">
+        {tokens.length === 0 ? (
+          <p className="text-sm text-ink-faint">Nenhum agente instalado para este cliente ainda.</p>
+        ) : (
+          <ul className="divide-y divide-line border-t border-line">
             {tokens.map((t) => {
               const status = t.revokedAt ? null : commandStatus(t, tz);
               return (

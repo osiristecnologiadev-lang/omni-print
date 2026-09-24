@@ -6,7 +6,7 @@ import { buttonClasses } from '@/components/Button';
 
 const initialState = { key: null, error: null };
 
-// Same "show the secret exactly once" pattern as customers/[id]/CreateTokenForm.tsx -
+// Same "show the secret exactly once" pattern as customers/[id]/CreateEnrollmentCodeForm.tsx -
 // see that file's comment for why useActionState instead of a plain
 // <form action={serverAction}> + redirect.
 export function CreateApiKeyForm() {
