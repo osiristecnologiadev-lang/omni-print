@@ -17,6 +17,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 interface NormalizedMetric {
   online: boolean;
+  errorMessage: string | null;
   errorState: Record<string, boolean> | null;
   alerts: Alert[] | null;
   supplies: Supply[] | null;
@@ -31,6 +32,7 @@ function normalize(metric: LatestMetric | Metric): NormalizedMetric {
   if ('printer_status' in metric) {
     return {
       online: metric.online,
+      errorMessage: metric.error_message ?? null,
       errorState: metric.error_state,
       alerts: metric.alerts,
       supplies: metric.supplies,
@@ -39,6 +41,7 @@ function normalize(metric: LatestMetric | Metric): NormalizedMetric {
   }
   return {
     online: metric.online,
+    errorMessage: metric.errorMessage ?? null,
     errorState: metric.errorState,
     alerts: metric.alerts,
     supplies: metric.supplies,
@@ -57,6 +60,13 @@ export function deriveHealth(metric: LatestMetric | Metric | null | undefined): 
   const m = normalize(metric);
 
   if (!m.online) {
+    // A printer the agent knows is up on the network (Active Directory or a
+    // print server named it, and it answers on a printing port) but that
+    // doesn't answer SNMP - not down, just not monitorable yet. The prefix
+    // must match agent/internal/collector's NoSNMPError.
+    if (m.errorMessage?.startsWith('Sem resposta SNMP')) {
+      return { tone: 'warning', label: 'Sem SNMP' };
+    }
     return { tone: 'critical', label: 'Offline' };
   }
 

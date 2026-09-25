@@ -230,6 +230,18 @@ func (c *Collector) PollAll(ctx context.Context, devices []config.Device) []Metr
 	return results
 }
 
+// NoSNMPError is the error reported for a config.Device.NoSNMP printer that
+// (still) doesn't answer. The panel keys on this exact prefix to show "Sem
+// SNMP" instead of "Offline" - keep web/src/lib/health.ts in sync.
+const NoSNMPError = "Sem resposta SNMP: a impressora está ligada na rede, mas o SNMP não responde (desativado, bloqueado ou com community diferente)"
+
+func pollError(d config.Device, detail string) string {
+	if d.NoSNMP {
+		return NoSNMPError + " - " + detail
+	}
+	return detail
+}
+
 func (c *Collector) pollDevice(d config.Device) Metric {
 	m := Metric{DeviceName: d.Name, Host: d.Host, CollectedAt: time.Now().UTC()}
 
@@ -243,7 +255,7 @@ func (c *Collector) pollDevice(d config.Device) Metric {
 	}
 
 	if err := g.Connect(); err != nil {
-		m.Error = fmt.Sprintf("connect: %v", err)
+		m.Error = pollError(d, fmt.Sprintf("connect: %v", err))
 		return m
 	}
 	defer g.Conn.Close()
@@ -256,7 +268,7 @@ func (c *Collector) pollDevice(d config.Device) Metric {
 	}
 	result, err := g.Get(scalarOIDs)
 	if err != nil {
-		m.Error = fmt.Sprintf("get: %v", err)
+		m.Error = pollError(d, fmt.Sprintf("get: %v", err))
 		return m
 	}
 	m.Online = true

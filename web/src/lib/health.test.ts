@@ -36,6 +36,19 @@ describe('deriveHealth', () => {
     expect(deriveHealth(m)).toEqual({ tone: 'critical', label: 'Offline' });
   });
 
+  it('a printer that is up but has no SNMP shows "Sem SNMP", not Offline', () => {
+    const m = metric({
+      online: false,
+      error_message:
+        'Sem resposta SNMP: a impressora está ligada na rede, mas o SNMP não responde (desativado, bloqueado ou com community diferente) - get: request timeout',
+    });
+    expect(deriveHealth(m)).toEqual({ tone: 'warning', label: 'Sem SNMP' });
+    expect(deriveHealth(metric({ online: false, error_message: 'get: request timeout' }))).toEqual({
+      tone: 'critical',
+      label: 'Offline',
+    });
+  });
+
   it('an active error flag beats alerts and low supply', () => {
     const m = metric({
       error_state: { lowToner: false, jammed: true },

@@ -63,7 +63,7 @@ func directoryTargets(ctx context.Context, community string) []target {
 		usable := false
 		for _, p := range q.Ports {
 			if h := portNameHost(p); h != "" {
-				ports = append(ports, printPort{Name: p + " (" + q.Printer + " on " + q.Server + ")", Host: h})
+				ports = append(ports, printPort{Name: p + " (" + q.Printer + " on " + q.Server + ")", Label: q.Printer, Host: h})
 				usable = true
 			}
 		}

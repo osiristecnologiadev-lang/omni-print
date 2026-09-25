@@ -98,7 +98,7 @@ func queuePorts(root registry.Key, where string) []printPort {
 	var out []printPort
 	for _, q := range queues {
 		if host := portNameHost(q.port); host != "" {
-			out = append(out, printPort{Name: q.port + " (" + q.name + " on " + where + ")", Host: host})
+			out = append(out, printPort{Name: q.port + " (" + q.name + " on " + where + ")", Label: q.name, Host: host})
 		}
 	}
 	log.Printf("discovery: %d of %d queue(s) on %s have a port named after an address", len(out), len(queues), where)

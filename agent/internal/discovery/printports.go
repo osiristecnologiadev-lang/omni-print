@@ -20,6 +20,7 @@ import (
 // sweeping any extra range.
 type printPort struct {
 	Name      string // the port's own name, for logging only
+	Label     string // human name for the printer (an AD queue's name), "" = use Name
 	Host      string // IP or hostname, as configured on the port
 	Community string // the port's SNMP community, "" if not set
 }
@@ -128,6 +129,11 @@ func portNameHost(name string) string {
 type target struct {
 	IP        net.IP
 	Community string
+	// Label is set only for a target a specific source named (a print
+	// server port, an AD printer) - never for a subnet sweep address. Those
+	// named ones are known to be printers, so when they don't answer SNMP
+	// it's worth finding out why (see aliveWithoutSNMP).
+	Label string
 }
 
 // printServerTargets resolves the host's configured printer ports into probe
@@ -155,7 +161,11 @@ func portTargets(ctx context.Context, ports []printPort, defaultCommunity string
 		if community == "" {
 			community = defaultCommunity
 		}
-		out = mergeTargets(out, []target{{IP: ip, Community: community}})
+		label := p.Label
+		if label == "" {
+			label = p.Name
+		}
+		out = mergeTargets(out, []target{{IP: ip, Community: community, Label: label}})
 	}
 	return out
 }
@@ -188,6 +198,9 @@ func mergeTargets(base, extra []target) []target {
 	for _, t := range extra {
 		if i, ok := index[t.IP.String()]; ok {
 			base[i].Community = t.Community
+			if t.Label != "" {
+				base[i].Label = t.Label
+			}
 			continue
 		}
 		index[t.IP.String()] = len(base)

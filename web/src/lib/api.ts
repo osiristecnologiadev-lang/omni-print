@@ -358,6 +358,8 @@ export interface LatestMetric {
   error_state: Record<string, boolean> | null;
   alerts: Alert[] | null;
   supplies: Supply[] | null;
+  // Why the last poll failed, when it did - see health.ts's "Sem SNMP".
+  error_message?: string | null;
 }
 
 export interface Device {

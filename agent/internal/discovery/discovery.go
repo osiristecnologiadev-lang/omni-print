@@ -135,7 +135,7 @@ func Run(ctx context.Context, opts Options) []config.Device {
 		return nil
 	}
 
-	found, counts := probeAll(ctx, targets, opts)
+	found, counts, silent := probeAll(ctx, targets, opts)
 	// Always logged, even when found is empty - a scan that silently
 	// produces nothing is exactly the ambiguous case that cost real
 	// diagnosis time on a real customer (Amecor, 2026-09): the log alone
@@ -148,6 +148,10 @@ func Run(ctx context.Context, opts Options) []config.Device {
 	// path is fine and there just aren't printers here.
 	log.Printf("discovery: scan complete - %d printer(s) found, %d host(s) answered SNMP but aren't printers, %d timed out (no reply), %d errored",
 		len(found), counts.notPrinter, counts.timeout, counts.errored)
+
+	if len(silent) > 0 {
+		found = append(found, aliveWithoutSNMP(ctx, silent)...)
+	}
 	return found
 }
 
@@ -281,7 +285,9 @@ type scanCounts struct {
 // probeAll fans out probes across a bounded worker pool so a full sweep
 // doesn't take forever, while staying far short of "every host at once" -
 // each worker also pauses between requests.
-func probeAll(ctx context.Context, targets []target, opts Options) ([]config.Device, scanCounts) {
+// silent returns the named targets (target.Label set) that never answered
+// - see aliveWithoutSNMP.
+func probeAll(ctx context.Context, targets []target, opts Options) (found []config.Device, counts scanCounts, silent []target) {
 	concurrency := opts.Concurrency
 	if concurrency <= 0 {
 		concurrency = 8
@@ -292,6 +298,7 @@ func probeAll(ctx context.Context, targets []target, opts Options) ([]config.Dev
 	}
 
 	type outcome struct {
+		target    target
 		device    config.Device
 		isPrinter bool
 		err       error
@@ -308,7 +315,7 @@ func probeAll(ctx context.Context, targets []target, opts Options) ([]config.Dev
 			for t := range jobs {
 				d, isPrinter, err := probeHost(t.IP.String(), port, t.Community, opts.ProbeTimeout)
 				select {
-				case results <- outcome{d, isPrinter, err}:
+				case results <- outcome{t, d, isPrinter, err}:
 				case <-ctx.Done():
 					return
 				}
@@ -335,8 +342,6 @@ func probeAll(ctx context.Context, targets []target, opts Options) ([]config.Dev
 		close(results)
 	}()
 
-	var found []config.Device
-	var counts scanCounts
 	for o := range results {
 		switch {
 		case o.err == nil && o.isPrinter:
@@ -345,11 +350,17 @@ func probeAll(ctx context.Context, targets []target, opts Options) ([]config.Dev
 			counts.notPrinter++
 		case strings.Contains(o.err.Error(), "timeout"):
 			counts.timeout++
+			if o.target.Label != "" {
+				silent = append(silent, o.target)
+			}
 		default:
 			counts.errored++
+			if o.target.Label != "" {
+				silent = append(silent, o.target)
+			}
 		}
 	}
-	return found, counts
+	return found, counts, silent
 }
 
 // probeHost sends one lightweight SNMP GET and reports whether the host

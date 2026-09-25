@@ -38,6 +38,12 @@ type Device struct {
 	Host      string `yaml:"host"`
 	Community string `yaml:"community"`
 	Port      uint16 `yaml:"port"`
+	// NoSNMP marks a printer discovery knows exists (named by Active
+	// Directory or a print server's port, and up on the network) but that
+	// never answered SNMP - it's still polled every cycle (SNMP may get
+	// enabled later), and a failed poll is reported as "sem SNMP" instead of
+	// a plain offline. See discovery's aliveWithoutSNMP.
+	NoSNMP bool `yaml:"no_snmp,omitempty"`
 }
 
 // Discovery sweeps the local network for printers instead of requiring every

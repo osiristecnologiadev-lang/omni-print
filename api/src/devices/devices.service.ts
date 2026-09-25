@@ -33,6 +33,7 @@ interface LatestMetricRow {
   error_state: unknown;
   alerts: unknown;
   supplies: unknown;
+  error_message: string | null;
 }
 
 @Injectable()
@@ -60,7 +61,7 @@ export class DevicesService {
     const latest = await this.prisma.$queryRaw<LatestMetricRow[]>`
       SELECT DISTINCT ON (device_id)
         id, device_id, collected_at, online, printer_status, device_status,
-        page_count, mono_page_count, color_page_count, error_state, alerts, supplies
+        page_count, mono_page_count, color_page_count, error_state, alerts, supplies, error_message
       FROM metrics
       WHERE device_id = ANY(${deviceIds})
       ORDER BY device_id, collected_at DESC
