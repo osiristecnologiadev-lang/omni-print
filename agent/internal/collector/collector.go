@@ -17,9 +17,11 @@ package collector
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gosnmp/gosnmp"
@@ -211,23 +213,55 @@ func New(requestDelay, timeout time.Duration, retries int, fullRawCapture bool) 
 	}
 }
 
-// PollAll queries every configured device one at a time, pausing requestDelay
-// between them. The pause is deliberate: bursting SNMP requests at many hosts
-// back-to-back is exactly the pattern IDS/EDR heuristics flag as a port scan.
+// pollConcurrency is how many devices are polled at once. Used to be one at
+// a time, which was fine for a single site's handful of printers - until a
+// real customer (Sabin, 2026-09) with ~60 printers across remote subnets
+// took ~1 minute per device (the full Printer-MIB walk over a WAN link), so
+// one cycle outlasted the 30-minute poll interval. Still a small, fixed
+// number of hosts in flight, each worker pausing requestDelay between its
+// devices - nothing like the burst pattern IDS/EDR heuristics flag as a scan.
+const pollConcurrency = 8
+
+// PollAll queries every configured device, pollConcurrency at a time.
+// Results keep the devices' order; a cancelled ctx stops handing out new
+// devices and returns what finished.
 func (c *Collector) PollAll(ctx context.Context, devices []config.Device) []Metric {
-	results := make([]Metric, 0, len(devices))
-	for i, d := range devices {
+	results := make([]*Metric, len(devices))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < pollConcurrency && w < len(devices); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			first := true
+			for i := range jobs {
+				if !first {
+					time.Sleep(c.requestDelay)
+				}
+				first = false
+				m := c.pollDevice(ctx, devices[i])
+				results[i] = &m
+			}
+		}()
+	}
+feed:
+	for i := range devices {
 		select {
+		case jobs <- i:
 		case <-ctx.Done():
-			return results
-		default:
-		}
-		results = append(results, c.pollDevice(d))
-		if i < len(devices)-1 {
-			time.Sleep(c.requestDelay)
+			break feed
 		}
 	}
-	return results
+	close(jobs)
+	wg.Wait()
+
+	out := make([]Metric, 0, len(devices))
+	for _, m := range results {
+		if m != nil {
+			out = append(out, *m)
+		}
+	}
+	return out
 }
 
 // NoSNMPError is the error reported for a config.Device.NoSNMP printer that
@@ -242,8 +276,24 @@ func pollError(d config.Device, detail string) string {
 	return detail
 }
 
-func (c *Collector) pollDevice(d config.Device) Metric {
+// Per-device time limits. A real customer's printers on remote subnets
+// (Sabin, 2026-09 - and reproduced here over a lossy VPN link) answered the
+// first GET fine but then crawled through every walk, each lost packet
+// costing a full timeout x retries: one device held a poll worker for 10+
+// minutes. deviceTimeout is a hard cap on everything for one device (gosnmp
+// honors the context between requests); rawCaptureBudget skips the big
+// full-MIB capture - the most expensive part, and only diagnostic - once
+// the essential reads alone took that long.
+const (
+	deviceTimeout    = 2 * time.Minute
+	rawCaptureBudget = 40 * time.Second
+)
+
+func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 	m := Metric{DeviceName: d.Name, Host: d.Host, CollectedAt: time.Now().UTC()}
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(ctx, deviceTimeout)
+	defer cancel()
 
 	g := &gosnmp.GoSNMP{
 		Target:    d.Host,
@@ -252,6 +302,7 @@ func (c *Collector) pollDevice(d config.Device) Metric {
 		Version:   gosnmp.Version2c,
 		Timeout:   c.timeout,
 		Retries:   c.retries,
+		Context:   ctx,
 	}
 
 	if err := g.Connect(); err != nil {
@@ -301,7 +352,14 @@ func (c *Collector) pollDevice(d config.Device) Metric {
 	m.Alerts = c.walkAlerts(g)
 
 	if c.fullRawCapture {
-		m.Raw = c.walkRaw(g, oidPrinterMIB)
+		if elapsed := time.Since(start); elapsed < rawCaptureBudget {
+			m.Raw = c.walkRaw(g, oidPrinterMIB)
+		} else {
+			log.Printf("poll: %s is slow (%s for the essential reads) - skipping the full OID capture this cycle", d.Host, elapsed.Round(time.Second))
+		}
+	}
+	if ctx.Err() != nil {
+		log.Printf("poll: %s hit the %s per-device limit - sending what was read", d.Host, deviceTimeout)
 	}
 
 	return m

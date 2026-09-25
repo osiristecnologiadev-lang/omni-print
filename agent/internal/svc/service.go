@@ -42,6 +42,8 @@ type program struct {
 	discovering   atomic.Bool
 	discoveryDone chan int
 	extraRanges   []string // last ranges fetched from the panel, reused when the fetch fails (guarded by mu)
+
+	updating sync.Mutex // see checkForUpdate
 }
 
 // New builds the OS service wrapper. Name/description are set explicitly and
@@ -137,16 +139,24 @@ func (p *program) run(ctx context.Context) {
 	col := collector.New(p.cfg.RequestDelay.Duration(), 5*time.Second, 2, p.cfg.FullRawCaptureEnabled())
 	tc := transport.New(p.cfg.CloudURL, p.cfg.AgentToken)
 
+	// Remote commands and log requests get their own loop, started before
+	// anything slow: they used to share the select below with poll cycles,
+	// and a real customer's cycle (Sabin, ~60 printers on remote subnets)
+	// ran for over 20 minutes - a "Reiniciar" clicked meanwhile was never
+	// picked up at all. See controlLoop.
+	go p.controlLoop(ctx, tc)
+
 	if p.cfg.Discovery.Enabled {
 		p.startDiscovery(ctx, tc, nil)
 	}
-	p.cycle(ctx, col, tc)
+	// Both before the first cycle, which can take minutes on a big fleet.
 	p.checkForUpdate(ctx, false, nil)
 	// Also uploaded once here, not just from dailyUploadTicker below - a
 	// service that restarts often (crash loop, an update applying) would
 	// otherwise go a full day+ without ever contributing to the per-day
 	// history if it never survives long enough for that ticker to fire.
 	p.uploadDailyLog(ctx, tc)
+	p.cycle(ctx, col, tc)
 
 	pollTicker := time.NewTicker(p.cfg.PollInterval.Duration())
 	defer pollTicker.Stop()
@@ -160,15 +170,6 @@ func (p *program) run(ctx context.Context) {
 
 	updateTicker := time.NewTicker(p.cfg.AutoUpdate.CheckInterval.Duration())
 	defer updateTicker.Stop()
-
-	// Fixed, not config-tunable - this is a niche on-demand support feature
-	// ("Buscar log agora" in the customer page), not something that needs a
-	// knob. 2 minutes trades a bit of constant background traffic across
-	// the whole fleet for a request that actually feels responsive when
-	// someone's mid-troubleshooting, rather than piggybacking on the much
-	// slower pollTicker/updateTicker cadences.
-	logCheckTicker := time.NewTicker(2 * time.Minute)
-	defer logCheckTicker.Stop()
 
 	// Not config-tunable, same reasoning as logCheckTicker above - this
 	// builds the per-day log history the tenant panel's Logs screen
@@ -199,14 +200,30 @@ func (p *program) run(ctx context.Context) {
 			}
 		case <-updateTicker.C:
 			p.checkForUpdate(ctx, false, nil)
-		case <-logCheckTicker.C:
+		case <-dailyUploadTicker.C:
+			p.uploadDailyLog(ctx, tc)
+		}
+	}
+}
+
+// controlLoop answers the tenant panel: log rotation, "Buscar log agora" and
+// remote commands, every 2 minutes, independent of how long a poll cycle
+// or discovery sweep takes. Fixed, not config-tunable - 2 minutes trades a
+// bit of constant background traffic across the whole fleet for a request
+// that actually feels responsive when someone's mid-troubleshooting.
+func (p *program) controlLoop(ctx context.Context, tc *transport.Client) {
+	ticker := time.NewTicker(2 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 			if err := p.rotateLogIfNeeded(); err != nil {
 				log.Printf("log rotation: failed to open new log file: %v", err)
 			}
 			p.checkLogRequest(ctx, tc)
 			p.checkCommand(ctx, tc)
-		case <-dailyUploadTicker.C:
-			p.uploadDailyLog(ctx, tc)
 		}
 	}
 }
@@ -289,6 +306,13 @@ func (p *program) uploadDailyLog(ctx context.Context, tc *transport.Client) {
 // beforeApply, if set, receives it right before Apply - Apply stops this
 // process, so anything reported afterwards would never be sent.
 func (p *program) checkForUpdate(ctx context.Context, force bool, beforeApply func(outcome string)) string {
+	// The scheduled check (main loop) and the remote UPDATE command
+	// (controlLoop) run on different goroutines - never download/apply twice.
+	if !p.updating.TryLock() {
+		return "Já existe uma verificação de atualização em andamento"
+	}
+	defer p.updating.Unlock()
+
 	release, err := updater.CheckLatest(ctx, p.cfg.CloudURL, p.cfg.AgentToken, p.version)
 	if err != nil {
 		log.Printf("update check failed: %v", err)
@@ -490,7 +514,17 @@ func (p *program) activeDevices() []config.Device {
 }
 
 func (p *program) cycle(ctx context.Context, col *collector.Collector, tc *transport.Client) {
+	start := time.Now()
 	metrics := col.PollAll(ctx, p.activeDevices())
+	online := 0
+	for _, m := range metrics {
+		if m.Online {
+			online++
+		}
+	}
+	// Logged every cycle: a cycle's duration was invisible until a real
+	// customer's ran for 20+ minutes and nothing in the log said so.
+	log.Printf("poll: %d device(s) polled in %s, %d answered", len(metrics), time.Since(start).Round(time.Second), online)
 	if err := tc.SendMetrics(ctx, p.cfg.TenantID, metrics); err != nil {
 		log.Printf("failed to send metrics: %v", err)
 	}
