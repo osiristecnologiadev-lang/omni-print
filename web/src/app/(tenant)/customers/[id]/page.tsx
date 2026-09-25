@@ -95,6 +95,13 @@ const COMMAND_LABEL: Record<AgentCommandType, string> = {
 // stops handing the request to the agent at all.
 const COMMAND_EXPIRY_MS = 30 * 60 * 1000;
 
+// Mirrors the API's own check (CustomersService.requestCommand refuses a
+// new command while this is true) - one command slot per agent.
+function commandPending(t: AgentTokenSummary): boolean {
+  if (!t.commandType || !t.commandRequestedAt || t.commandAckedAt) return false;
+  return Date.now() - new Date(t.commandRequestedAt).getTime() <= COMMAND_EXPIRY_MS;
+}
+
 function commandStatus(t: AgentTokenSummary, tz?: string): string | null {
   if (!t.commandType || !t.commandRequestedAt) return null;
   const label = COMMAND_LABEL[t.commandType];
@@ -488,6 +495,12 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
         {searchParams?.commandError === '1' && (
           <Banner tone="error">Não foi possível enviar o comando. Tente novamente.</Banner>
         )}
+        {searchParams?.commandError === 'busy' && (
+          <Banner tone="error">
+            O agente ainda não recebeu o comando anterior. Aguarde ele ser recebido (até 2 minutos) antes de enviar
+            outro.
+          </Banner>
+        )}
 
         {tokens.length === 0 ? (
           <p className="text-sm text-ink-faint">Nenhum agente instalado para este cliente ainda.</p>
@@ -540,13 +553,26 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
                 {!t.revokedAt && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {supportsRemoteCommands(t.lastSeenVersion) ? (
-                      (Object.keys(COMMAND_LABEL) as AgentCommandType[]).map((c) => (
-                        <form key={c} action={boundRequestCommand.bind(null, t.id, c)}>
-                          <SubmitButton variant="secondary" size="sm" pendingLabel="Enviando...">
-                            {COMMAND_LABEL[c]}
-                          </SubmitButton>
-                        </form>
-                      ))
+                      <>
+                        {(Object.keys(COMMAND_LABEL) as AgentCommandType[]).map((c) => (
+                          <form key={c} action={boundRequestCommand.bind(null, t.id, c)}>
+                            <SubmitButton
+                              variant="secondary"
+                              size="sm"
+                              pendingLabel="Enviando..."
+                              disabled={commandPending(t)}
+                            >
+                              {COMMAND_LABEL[c]}
+                            </SubmitButton>
+                          </form>
+                        ))}
+                        {commandPending(t) && (
+                          <span className="text-xs text-ink-faint">
+                            Aguarde o agente receber o comando atual para enviar outro. Depois de atualizar, o agente
+                            já busca impressoras sozinho.
+                          </span>
+                        )}
+                      </>
                     ) : (
                       <span className="text-xs text-ink-faint">
                         Comandos remotos (reiniciar, atualizar, buscar impressoras) ficam disponíveis quando este

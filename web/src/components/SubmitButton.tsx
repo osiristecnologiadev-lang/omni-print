@@ -16,12 +16,13 @@ interface SubmitButtonProps {
   className?: string;
   children: React.ReactNode;
   pendingLabel?: string;
+  disabled?: boolean;
 }
 
-export function SubmitButton({ variant, size, className, children, pendingLabel }: SubmitButtonProps) {
+export function SubmitButton({ variant, size, className, children, pendingLabel, disabled }: SubmitButtonProps) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant={variant} size={size} className={className} disabled={pending}>
+    <Button type="submit" variant={variant} size={size} className={className} disabled={pending || disabled}>
       {pending && pendingLabel ? pendingLabel : children}
     </Button>
   );

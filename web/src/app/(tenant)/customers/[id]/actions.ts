@@ -44,8 +44,10 @@ export async function requestLogAction(customerId: string, tokenId: string) {
 export async function requestCommandAction(customerId: string, tokenId: string, command: AgentCommandType) {
   try {
     await requestAgentCommand(customerId, tokenId, command);
-  } catch {
-    redirect(`/customers/${customerId}?commandError=1`);
+  } catch (err) {
+    unstable_rethrow(err);
+    const busy = err instanceof Error && err.message.includes('failed: 409');
+    redirect(`/customers/${customerId}?commandError=${busy ? 'busy' : '1'}`);
   }
   revalidatePath(`/customers/${customerId}`);
   redirect(`/customers/${customerId}?commandRequested=1`);

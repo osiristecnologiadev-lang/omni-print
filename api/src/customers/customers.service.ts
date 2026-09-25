@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { generateEnrollmentCode, formatEnrollmentCode } from '../auth/enrollment-code.util';
 import { hashToken } from '../auth/token.util';
 import { normalizeDiscoveryRanges } from './discovery-ranges.util';
+import { COMMAND_EXPIRY_MS } from '../agent-command/agent-command.service';
 
 // How long a generated enrollment code stays redeemable - see
 // AgentEnrollmentCode's schema comment for why the real AgentToken isn't
@@ -152,6 +153,19 @@ export class CustomersService {
     const token = await this.prisma.agentToken.findFirst({ where: { id: tokenId, tenantId, customerId, revokedAt: null } });
     if (!token) {
       throw new NotFoundException('token not found');
+    }
+    // One command slot per agent: a second click before the agent picked up
+    // the first used to silently replace it (real incident, Sabin
+    // 2026-09-25: "Verificar atualização" then "Buscar impressoras" 37s
+    // later - the update never happened). Refuse instead; the panel
+    // disables the buttons meanwhile, this is the backstop.
+    const pending =
+      token.commandType &&
+      token.commandRequestedAt &&
+      !token.commandAckedAt &&
+      Date.now() - token.commandRequestedAt.getTime() <= COMMAND_EXPIRY_MS;
+    if (pending) {
+      throw new ConflictException('another command is still waiting for the agent');
     }
     return this.prisma.agentToken.update({
       where: { id: tokenId },
