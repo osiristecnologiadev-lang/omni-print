@@ -141,6 +141,38 @@ func (c *Client) CheckCommand(ctx context.Context) (*Command, error) {
 	return &cmd, nil
 }
 
+// DiscoveryRanges fetches the extra ranges configured for this agent's
+// customer in the tenant panel ("Redes adicionais") - swept in addition to
+// whatever the agent finds on its own. An API that predates the endpoint
+// answers 404, which just means "none".
+func (c *Client) DiscoveryRanges(ctx context.Context) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/agent/discovery-config", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch discovery config: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status fetching discovery config: %s", resp.Status)
+	}
+
+	var cfg struct {
+		Ranges []string `json:"ranges"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("parsing response: %w", err)
+	}
+	return cfg.Ranges, nil
+}
+
 // AckCommand reports a command's outcome, shown as-is in the tenant panel.
 // Can be called more than once for the same request (e.g. "started", then
 // the final result) - the latest result wins.

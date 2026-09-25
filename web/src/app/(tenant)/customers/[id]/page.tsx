@@ -16,6 +16,7 @@ import {
 } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
 import { CreateEnrollmentCodeForm } from './CreateEnrollmentCodeForm';
+import { DiscoveryRangesForm } from './DiscoveryRangesForm';
 import {
   createCustomerUserAction,
   revokeCustomerUserAction,
@@ -560,6 +561,18 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
             })}
           </ul>
         )}
+      </Panel>
+
+      <Panel className="mt-6">
+        <h2 className="mb-1 text-sm font-medium text-ink">Redes adicionais para busca de impressoras</h2>
+        <p className="mb-4 text-xs text-ink-faint">
+          O agente já encontra sozinho as impressoras da rede em que está instalado, as portas do servidor de
+          impressão e as impressoras publicadas no Active Directory. Se alguma impressora de
+          &ldquo;{customer.name}&rdquo; está em outra rede (outra filial, andar ou VLAN), informe aqui a faixa ou o IP - uma por linha,
+          por exemplo <code>10.80.40.0/24</code> ou <code>10.80.50.12</code>. Só redes internas, até /16. Faixas
+          grandes (/16) podem levar até uma hora para serem varridas.
+        </p>
+        <DiscoveryRangesForm customerId={id} ranges={customer.discoveryRanges ?? []} />
       </Panel>
       </>
       )}

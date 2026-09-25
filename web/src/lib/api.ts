@@ -42,6 +42,9 @@ export interface Customer {
   slaHoursMedium: number | null;
   slaHoursHigh: number | null;
   slaHoursUrgent: number | null;
+  // Extra network ranges this customer's agents sweep for printers, on top
+  // of what they find by themselves - see the API's Customer.discoveryRanges.
+  discoveryRanges: string[];
 }
 
 export function updateCustomer(
@@ -57,6 +60,12 @@ export function updateCustomer(
   },
 ): Promise<Customer> {
   return apiMutate<Customer>(`/v1/customers/${customerId}`, 'PATCH', input);
+}
+
+// Replaces the whole list. The API normalizes/validates each entry and
+// answers 400 with a Portuguese message naming the first bad one.
+export function updateCustomerDiscoveryRanges(customerId: string, ranges: string[]): Promise<Customer> {
+  return apiMutate<Customer>(`/v1/customers/${customerId}/discovery-ranges`, 'PUT', { ranges });
 }
 
 export interface Tenant {
@@ -532,7 +541,7 @@ async function apiFetch<T>(path: string): Promise<T> {
   return text ? JSON.parse(text) : (null as T);
 }
 
-async function apiMutate<T>(path: string, method: 'POST' | 'PATCH', body: unknown): Promise<T> {
+async function apiMutate<T>(path: string, method: 'POST' | 'PATCH' | 'PUT', body: unknown): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers: await authHeaders(),

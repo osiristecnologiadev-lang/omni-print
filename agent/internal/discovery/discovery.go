@@ -40,6 +40,12 @@ const (
 // Explicit config.Discovery.Ranges aren't capped - the admin asked for it.
 const autoDetectMaxPrefix = 20
 
+// See Run's concurrency bump for why.
+const (
+	largeSweepTargets     = 2048
+	largeSweepConcurrency = 32
+)
+
 // Deliberately NOT "virtual"/"vethernet"/"hyper-v"/"vmware"/"virtualbox" -
 // those used to be here, but a real install on a virtualized print server
 // (Hyper-V/VMware guest - common for exactly this kind of dedicated print
@@ -62,7 +68,13 @@ var virtualNamePatterns = []string{
 }
 
 type Options struct {
-	Ranges       []string // CIDRs to scan; empty = auto-detect the host's own subnet(s)
+	Ranges []string // CIDRs to scan; empty = auto-detect the host's own subnet(s)
+	// ExtraRanges are swept IN ADDITION to Ranges/the auto-detected
+	// subnets, never instead of them - they come from the tenant panel
+	// ("Redes adicionais" on the customer page), for printers on other
+	// routed subnets/VLANs the agent can't find on its own. CIDRs or bare
+	// IPv4 addresses.
+	ExtraRanges  []string
 	Community    string
 	Port         uint16
 	Concurrency  int
@@ -75,8 +87,14 @@ type Options struct {
 // any device that happens to speak SNMP (switches, UPSes, etc. don't
 // implement prtGeneralTable, so they're excluded).
 //
-// On a Windows print server, every network printer port it has configured
-// is probed too, whatever subnet it's on - see printports.go for why.
+// Every source below is additive - each one exists because a real customer
+// had printers the others couldn't see:
+//   - the host's own subnet(s) (or config.yaml's explicit ranges);
+//   - ranges configured in the tenant panel (Options.ExtraRanges);
+//   - on a Windows print server, every network printer port it has
+//     configured, whatever subnet it's on - see printports.go;
+//   - printers published in Active Directory, plus the ports of the print
+//     servers hosting them - see directory.go.
 func Run(ctx context.Context, opts Options) []config.Device {
 	nets := parseRanges(opts.Ranges)
 	if len(nets) == 0 {
@@ -91,7 +109,26 @@ func Run(ctx context.Context, opts Options) []config.Device {
 			targets = append(targets, target{IP: ip, Community: opts.Community})
 		}
 	}
+	for _, n := range parseRanges(opts.ExtraRanges) {
+		hosts := hostsIn(n)
+		log.Printf("discovery: scanning %s (%d hosts, configured in the panel)", n.String(), len(hosts))
+		extra := make([]target, 0, len(hosts))
+		for _, ip := range hosts {
+			extra = append(extra, target{IP: ip, Community: opts.Community})
+		}
+		targets = mergeTargets(targets, extra)
+	}
 	targets = mergeTargets(targets, printServerTargets(ctx, opts.Community))
+	targets = mergeTargets(targets, directoryTargets(ctx, opts.Community))
+
+	// The default 8 workers sweep ~5 hosts/s (most addresses on a big range
+	// never answer, and each silent one costs a full timeout + retry) - fine
+	// for a /24, but a /16 configured in the panel would take ~4 hours. Still
+	// one lightweight read-only GET per host, just more of them in flight.
+	if len(targets) > largeSweepTargets && opts.Concurrency < largeSweepConcurrency {
+		log.Printf("discovery: %d addresses to probe - raising concurrency from %d to %d", len(targets), opts.Concurrency, largeSweepConcurrency)
+		opts.Concurrency = largeSweepConcurrency
+	}
 
 	if len(targets) == 0 {
 		log.Printf("discovery: nothing to scan (no subnets configured or auto-detected, no print-server ports)")
@@ -117,6 +154,10 @@ func Run(ctx context.Context, opts Options) []config.Device {
 func parseRanges(ranges []string) []*net.IPNet {
 	var nets []*net.IPNet
 	for _, r := range ranges {
+		r = strings.TrimSpace(r)
+		if !strings.Contains(r, "/") {
+			r += "/32" // a single address, e.g. one printer typed in the panel
+		}
 		_, ipnet, err := net.ParseCIDR(r)
 		if err != nil {
 			log.Printf("discovery: ignoring invalid range %q: %v", r, err)

@@ -19,6 +19,15 @@ export class AgentCommandController {
     return pending ?? { command: null, requestedAt: null };
   }
 
+  // Fetched at the start of every discovery sweep (daily, plus "Buscar
+  // impressoras agora") - the ranges set in the customer page's "Redes
+  // adicionais". A token with no customer has nothing to configure.
+  @Get('discovery-config')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async discoveryConfig(@Req() req: any) {
+    return { ranges: await this.commands.discoveryRangesFor(req.customerId) };
+  }
+
   @Post('command/ack')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   async ack(@Req() req: any, @Body() dto: AckCommandDto) {

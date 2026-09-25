@@ -118,3 +118,13 @@ func TestIncIP(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRangesAcceptsBareAddress(t *testing.T) {
+	nets := parseRanges([]string{" 10.80.40.5 ", "10.80.41.0/24"})
+	if len(nets) != 2 {
+		t.Fatalf("expected 2 nets, got %d", len(nets))
+	}
+	if nets[0].String() != "10.80.40.5/32" || len(hostsIn(nets[0])) != 1 {
+		t.Errorf("bare address parsed as %s with %d host(s), want 10.80.40.5/32 with 1", nets[0], len(hostsIn(nets[0])))
+	}
+}

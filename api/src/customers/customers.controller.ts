@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserAuthGuard } from '../auth/user-auth.guard';
 import { SubscriptionGuard } from '../subscription/subscription.guard';
 import { assertPermission } from '../auth/permissions.util';
@@ -8,6 +8,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CreateEnrollmentCodeDto } from './dto/create-enrollment-code.dto';
 import { RequestCommandDto } from './dto/request-command.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { UpdateDiscoveryRangesDto } from './dto/update-discovery-ranges.dto';
 
 // Customer management is tenant-wide only - a customer-scoped user has no
 // business seeing or creating sibling customers, or minting agent tokens.
@@ -66,6 +67,26 @@ export class CustomersController {
       targetId: customer.id,
       targetLabel: customer.name,
       metadata: dto as Record<string, unknown>,
+    });
+    return customer;
+  }
+
+  // 'agent' permission, not 'customers': this configures what the agent
+  // does on the customer's network, alongside the other agent controls.
+  @Put(':id/discovery-ranges')
+  async updateDiscoveryRanges(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateDiscoveryRangesDto) {
+    assertPermission(req, 'agent');
+    const customer = await this.customersService.updateDiscoveryRanges(req.tenantId, id, dto.ranges);
+    await this.auditLog.log({
+      tenantId: req.tenantId,
+      actorType: 'USER',
+      actorId: req.userId,
+      actorLabel: req.userEmail,
+      action: 'customer.discovery_ranges',
+      targetType: 'Customer',
+      targetId: customer.id,
+      targetLabel: customer.name,
+      metadata: { ranges: customer.discoveryRanges },
     });
     return customer;
   }

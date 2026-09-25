@@ -302,6 +302,14 @@ model Customer {
   slaHoursHigh   Int? @map("sla_hours_high")
   slaHoursUrgent Int? @map("sla_hours_urgent")
 
+  // Extra network ranges this customer's agents sweep for printers, IN
+  // ADDITION to what they find on their own (own subnet, print-server
+  // ports, Active Directory) - for printers on routed subnets/VLANs no
+  // automatic route reaches. Normalized CIDRs or single IPv4 addresses,
+  // private space only, see customers/discovery-ranges.util.ts. Served to
+  // agents by GET /v1/agent/discovery-config.
+  discoveryRanges String[] @default([]) @map("discovery_ranges")
+
   devices              Device[]
   users                User[]
   agentTokens          AgentToken[]

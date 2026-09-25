@@ -49,3 +49,34 @@ func TestMergeTargetsDedupesAndPrefersPortCommunity(t *testing.T) {
 		t.Errorf("third target = %s, want 10.9.0.7", got[2].IP)
 	}
 }
+
+func TestPortHostDuplicateSuffix(t *testing.T) {
+	// Windows names a second port to the same printer "<ip>_1".
+	for _, name := range []string{"10.80.40.5_1", "IP_10.80.40.5_2"} {
+		if got := portHost(name, nil); got != "10.80.40.5" {
+			t.Errorf("portHost(%q) = %q, want 10.80.40.5", name, got)
+		}
+	}
+}
+
+func TestPortNameHost(t *testing.T) {
+	tests := map[string]string{
+		"10.80.40.5":                "10.80.40.5",
+		"IP_10.80.40.5":             "10.80.40.5",
+		"impressora-rh.sabin.local": "impressora-rh.sabin.local",
+		"WSD-2f6c1a1e-0000":         "",
+		"USB001":                    "",
+		"LPT1:":                     "",
+		"COM1":                      "",
+		"PORTPROMPT:":               "",
+		"nul:":                      "",
+		"TS001":                     "",
+		"Microsoft Print to PDF":    "",
+		`\srv-print\Recepcao`:       "",
+	}
+	for name, want := range tests {
+		if got := portNameHost(name); got != want {
+			t.Errorf("portNameHost(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

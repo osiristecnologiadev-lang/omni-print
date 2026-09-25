@@ -3,6 +3,7 @@ import { AgentCommandType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { generateEnrollmentCode, formatEnrollmentCode } from '../auth/enrollment-code.util';
 import { hashToken } from '../auth/token.util';
+import { normalizeDiscoveryRanges } from './discovery-ranges.util';
 
 // How long a generated enrollment code stays redeemable - see
 // AgentEnrollmentCode's schema comment for why the real AgentToken isn't
@@ -61,6 +62,15 @@ export class CustomersService {
   ) {
     await this.requireCustomer(tenantId, customerId);
     return this.prisma.customer.update({ where: { id: customerId }, data });
+  }
+
+  // Replaces the whole list - the panel edits it as one textarea.
+  async updateDiscoveryRanges(tenantId: string, customerId: string, ranges: string[]) {
+    await this.requireCustomer(tenantId, customerId);
+    return this.prisma.customer.update({
+      where: { id: customerId },
+      data: { discoveryRanges: normalizeDiscoveryRanges(ranges) },
+    });
   }
 
   private async requireCustomer(tenantId: string, customerId: string) {

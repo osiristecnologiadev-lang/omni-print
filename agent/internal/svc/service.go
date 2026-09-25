@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kardianos/service"
@@ -31,6 +32,16 @@ type program struct {
 	logPath string          // today's actual dated file (config.DatedLogPath(logBasePath, now)), "" if unconfigured
 	logDate string          // "YYYY-MM-DD" this logPath was opened for, drives rotateLogIfNeeded
 	logFile *os.File        // currently open handle, closed when rotating or stopping
+
+	// Discovery runs in the background (see startDiscovery): a sweep of a
+	// big range configured in the panel can take an hour, and polling
+	// printers must not stop meanwhile. discovering keeps it to one sweep at
+	// a time; discoveryDone hands each sweep's "new printers" count back to
+	// run()'s loop, which polls them right away - from the loop itself, so
+	// two poll cycles never overlap.
+	discovering   atomic.Bool
+	discoveryDone chan int
+	extraRanges   []string // last ranges fetched from the panel, reused when the fetch fails (guarded by mu)
 }
 
 // New builds the OS service wrapper. Name/description are set explicitly and
@@ -57,7 +68,7 @@ func New(cfg *config.Config, version string, configPath string, logPath string) 
 		Description: "Collects printer fleet metrics via SNMP and reports them to the OmniPrint cloud platform.",
 		Arguments:   []string{"-config", configPath},
 	}
-	prg := &program{cfg: cfg, version: version, logBasePath: logPath, done: make(chan struct{})}
+	prg := &program{cfg: cfg, version: version, logBasePath: logPath, done: make(chan struct{}), discoveryDone: make(chan int, 1)}
 	if err := prg.rotateLogIfNeeded(); err != nil {
 		return nil, fmt.Errorf("open log file: %w", err)
 	}
@@ -127,7 +138,7 @@ func (p *program) run(ctx context.Context) {
 	tc := transport.New(p.cfg.CloudURL, p.cfg.AgentToken)
 
 	if p.cfg.Discovery.Enabled {
-		p.runDiscovery(ctx)
+		p.startDiscovery(ctx, tc, nil)
 	}
 	p.cycle(ctx, col, tc)
 	p.checkForUpdate(ctx, false, nil)
@@ -177,7 +188,15 @@ func (p *program) run(ctx context.Context) {
 		case <-pollTicker.C:
 			p.cycle(ctx, col, tc)
 		case <-discoveryC:
-			p.runDiscovery(ctx)
+			if !p.startDiscovery(ctx, tc, nil) {
+				log.Printf("discovery: previous sweep still running - skipping this scheduled one")
+			}
+		case added := <-p.discoveryDone:
+			if added > 0 {
+				// Collect the new ones right away instead of waiting up to a
+				// full poll interval for them to show up in the panel.
+				p.cycle(ctx, col, tc)
+			}
 		case <-updateTicker.C:
 			p.checkForUpdate(ctx, false, nil)
 		case <-logCheckTicker.C:
@@ -185,7 +204,7 @@ func (p *program) run(ctx context.Context) {
 				log.Printf("log rotation: failed to open new log file: %v", err)
 			}
 			p.checkLogRequest(ctx, tc)
-			p.checkCommand(ctx, col, tc)
+			p.checkCommand(ctx, tc)
 		case <-dailyUploadTicker.C:
 			p.uploadDailyLog(ctx, tc)
 		}
@@ -328,7 +347,7 @@ func (p *program) checkForUpdate(ctx context.Context, force bool, beforeApply fu
 // on the same 2-minute tick as checkLogRequest. Every outcome is acked back
 // as a short Portuguese sentence the customer page shows as-is. RESTART and
 // UPDATE ack BEFORE acting, since both end with this process being stopped.
-func (p *program) checkCommand(ctx context.Context, col *collector.Collector, tc *transport.Client) {
+func (p *program) checkCommand(ctx context.Context, tc *transport.Client) {
 	cmd, err := tc.CheckCommand(ctx)
 	if err != nil {
 		log.Printf("command check failed: %v", err)
@@ -347,14 +366,13 @@ func (p *program) checkCommand(ctx context.Context, col *collector.Collector, tc
 
 	switch cmd.Type {
 	case "DISCOVER":
-		ack("Buscando impressoras...")
-		found, added := p.runDiscovery(ctx)
-		if added > 0 {
-			// Collect the new ones right away instead of waiting up to a
-			// full poll interval for them to show up in the panel.
-			p.cycle(ctx, col, tc)
+		ack("Buscando impressoras... (redes adicionais grandes podem levar vários minutos)")
+		started := p.startDiscovery(ctx, tc, func(found, added int) {
+			ack(fmt.Sprintf("Busca concluída: %d impressora(s) respondendo, %d nova(s)", found, added))
+		})
+		if !started {
+			ack("Já existe uma busca em andamento - as impressoras novas aparecem quando ela terminar")
 		}
-		ack(fmt.Sprintf("Busca concluída: %d impressora(s) respondendo, %d nova(s)", found, added))
 	case "UPDATE":
 		ack(p.checkForUpdate(ctx, true, ack))
 	case "RESTART":
@@ -371,11 +389,49 @@ func (p *program) checkCommand(ctx context.Context, col *collector.Collector, tc
 	}
 }
 
+// startDiscovery runs one sweep in the background, unless one is already
+// running (returns false then). onDone, if set, gets the sweep's outcome.
+func (p *program) startDiscovery(ctx context.Context, tc *transport.Client, onDone func(found, added int)) bool {
+	if !p.discovering.CompareAndSwap(false, true) {
+		return false
+	}
+	go func() {
+		defer p.discovering.Store(false)
+		found, added := p.runDiscovery(ctx, tc)
+		if onDone != nil {
+			onDone(found, added)
+		}
+		select {
+		case p.discoveryDone <- added:
+		default: // loop hasn't drained the previous one yet - it'll poll anyway
+		}
+	}()
+	return true
+}
+
+// panelRanges fetches the customer's extra ranges from the panel, falling
+// back to the last ones fetched when the API is unreachable (this has hit a
+// real customer whose DNS intermittently fails to resolve the API).
+func (p *program) panelRanges(ctx context.Context, tc *transport.Client) []string {
+	ranges, err := tc.DiscoveryRanges(ctx)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err != nil {
+		log.Printf("discovery: couldn't fetch extra ranges from the panel, using the last known %d: %v", len(p.extraRanges), err)
+		return p.extraRanges
+	}
+	p.extraRanges = ranges
+	if len(ranges) > 0 {
+		log.Printf("discovery: %d extra range(s) configured in the panel: %v", len(ranges), ranges)
+	}
+	return ranges
+}
+
 // runDiscovery returns how many printers answered this sweep and how many
 // of those were new. The fallbacks matter only for the remote "Buscar
 // impressoras agora" command on an install with discovery disabled -
 // config.validate only fills these defaults in when discovery is enabled.
-func (p *program) runDiscovery(ctx context.Context) (found, added int) {
+func (p *program) runDiscovery(ctx context.Context, tc *transport.Client) (found, added int) {
 	community := p.cfg.Discovery.Community
 	if community == "" {
 		community = "public"
@@ -386,6 +442,7 @@ func (p *program) runDiscovery(ctx context.Context) (found, added int) {
 	}
 	devices := discovery.Run(ctx, discovery.Options{
 		Ranges:       p.cfg.Discovery.Ranges,
+		ExtraRanges:  p.panelRanges(ctx, tc),
 		Community:    community,
 		Port:         161,
 		Concurrency:  p.cfg.Discovery.Concurrency,

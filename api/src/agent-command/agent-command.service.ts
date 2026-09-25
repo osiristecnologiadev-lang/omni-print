@@ -27,6 +27,15 @@ export class AgentCommandService {
     return { command: token.commandType, requestedAt: token.commandRequestedAt.toISOString() };
   }
 
+  async discoveryRangesFor(customerId: string | null): Promise<string[]> {
+    if (!customerId) return [];
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { discoveryRanges: true },
+    });
+    return customer?.discoveryRanges ?? [];
+  }
+
   // Keyed on requestedAt, not just the token: if someone clicked a second
   // button while the agent was still working on the first, the first
   // command's late ack must not mark the newer request as done. Can be

@@ -36,10 +36,53 @@ func portHost(name string, values map[string]string) string {
 		}
 	}
 	candidate := strings.TrimPrefix(strings.TrimPrefix(name, "IP_"), "ip_")
+	// Windows names a second port to the same address "10.0.0.5_1".
+	if i := strings.LastIndex(candidate, "_"); i > 0 && isDigits(candidate[i+1:]) {
+		candidate = candidate[:i]
+	}
 	if ip := net.ParseIP(candidate); ip != nil && ip.To4() != nil {
 		return candidate
 	}
 	return ""
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// localPortPrefixes are port names that are never a network address.
+var localPortPrefixes = []string{"wsd", "usb", "lpt", "com", "ts0", "dot4", "file", "nul", "portprompt", "xps"}
+
+// portNameHost is portHost for when only a port's NAME is known - an AD
+// printQueue's portName, or a remote print server's queue list - with no
+// registry values to read. Beyond the IP forms portHost already handles,
+// a name that looks like a hostname ("impressora-rh.sabin.local") is
+// returned as-is for DNS to try; local port kinds (USB001, LPT1, WSD-...)
+// never are.
+func portNameHost(name string) string {
+	if h := portHost(name, nil); h != "" {
+		return h
+	}
+	lower := strings.ToLower(name)
+	for _, p := range localPortPrefixes {
+		if strings.HasPrefix(lower, p) {
+			return ""
+		}
+	}
+	for _, r := range name {
+		if !(r == '-' || r == '.' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') {
+			return ""
+		}
+	}
+	return name
 }
 
 // target is one address a sweep will probe, with the SNMP community to use -
@@ -58,7 +101,12 @@ type target struct {
 func printServerTargets(ctx context.Context, defaultCommunity string) []target {
 	ports := printServerPorts()
 	log.Printf("discovery: found %d network printer port(s) configured on this host (print server)", len(ports))
+	return portTargets(ctx, ports, defaultCommunity)
+}
 
+// portTargets resolves ports (from this host, a remote print server, or AD)
+// into probe targets, deduplicated by IP.
+func portTargets(ctx context.Context, ports []printPort, defaultCommunity string) []target {
 	var out []target
 	for _, p := range ports {
 		ip := resolveIPv4(ctx, p.Host)
@@ -70,7 +118,7 @@ func printServerTargets(ctx context.Context, defaultCommunity string) []target {
 		if community == "" {
 			community = defaultCommunity
 		}
-		out = append(out, target{IP: ip, Community: community})
+		out = mergeTargets(out, []target{{IP: ip, Community: community}})
 	}
 	return out
 }

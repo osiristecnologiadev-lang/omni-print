@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect, unstable_rethrow } from 'next/navigation';
 import {
   createCustomerEnrollmentCode,
   createUser,
@@ -12,6 +12,7 @@ import {
   revokeCustomerEnrollmentCode,
   revokeUser,
   updateCustomer,
+  updateCustomerDiscoveryRanges,
 } from '@/lib/api';
 
 export async function revokeTokenAction(customerId: string, tokenId: string) {
@@ -48,6 +49,46 @@ export async function requestCommandAction(customerId: string, tokenId: string, 
   }
   revalidatePath(`/customers/${customerId}`);
   redirect(`/customers/${customerId}?commandRequested=1`);
+}
+
+export interface DiscoveryRangesState {
+  text: string;
+  error: string | null;
+  saved: boolean;
+}
+
+// One range per line; commas/semicolons/spaces also split, since people
+// paste lists from spreadsheets and e-mails.
+export async function updateDiscoveryRangesAction(
+  customerId: string,
+  _prevState: DiscoveryRangesState,
+  formData: FormData,
+): Promise<DiscoveryRangesState> {
+  const text = String(formData.get('ranges') ?? '');
+  const ranges = text.split(/[\s,;]+/).filter(Boolean);
+  try {
+    const customer = await updateCustomerDiscoveryRanges(customerId, ranges);
+    revalidatePath(`/customers/${customerId}`);
+    return { text: customer.discoveryRanges.join('\n'), error: null, saved: true };
+  } catch (err) {
+    unstable_rethrow(err); // apiMutate's own redirect('/login') / forbidden() must still happen
+    return { text, error: apiErrorMessage(err) ?? 'Não foi possível salvar as redes. Tente novamente.', saved: false };
+  }
+}
+
+// apiMutate's error is "API <method> <path> failed: <status> <body>"; a
+// 400's body is Nest's { message } - a string from discovery-ranges.util's
+// own checks (already Portuguese), an array from DTO validation (not).
+function apiErrorMessage(err: unknown): string | null {
+  const raw = err instanceof Error ? err.message : '';
+  const match = raw.match(/failed: 400 ([\s\S]*)$/);
+  if (!match) return null;
+  try {
+    const body = JSON.parse(match[1]) as { message?: unknown };
+    return typeof body.message === 'string' ? body.message : null;
+  } catch {
+    return null;
+  }
 }
 
 interface CreateEnrollmentCodeState {
