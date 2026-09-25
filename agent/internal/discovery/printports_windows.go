@@ -4,6 +4,7 @@ package discovery
 
 import (
 	"log"
+	"strings"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -27,8 +28,15 @@ func printServerPorts() []printPort {
 
 	monitorNames, err := monitors.ReadSubKeyNames(-1)
 	if err != nil {
+		log.Printf("discovery: can't list print monitors: %v", err)
 		return nil
 	}
+
+	// Diagnostics below are deliberately verbose: the first real print
+	// server this ran on (Sabin, 2026-09-25) returned zero ports with no
+	// trace of why, and there's no remote shell to go look - the uploaded
+	// log is the only window into the machine.
+	logInstalledPrinters()
 
 	var out []printPort
 	for _, monitor := range monitorNames {
@@ -38,17 +46,57 @@ func printServerPorts() []printPort {
 		}
 		portNames, _ := portsKey.ReadSubKeyNames(-1)
 		portsKey.Close()
+		log.Printf("discovery: print monitor %q has %d port(s)", monitor, len(portNames))
 
 		for _, name := range portNames {
-			values := readPortValues(printMonitorsKey + `\` + monitor + `\Ports\` + name)
+			path := printMonitorsKey + `\` + monitor + `\Ports\` + name
+			values := readPortValues(path)
 			host := portHost(name, values)
 			if host == "" {
+				log.Printf("discovery: print port %q (%s) has no usable address - values present: %s", name, monitor, portValueNames(path))
 				continue
 			}
 			out = append(out, printPort{Name: name, Host: host, Community: values["SNMP Community"]})
 		}
 	}
 	return out
+}
+
+// logInstalledPrinters logs how many print queues this machine hosts and
+// which port each one uses - tells apart "this isn't really the print
+// server" (few/no queues, or queues pointing at \\otherserver) from "the
+// queues are here but their ports use a layout portHost doesn't know".
+func logInstalledPrinters() {
+	const printersKey = `SYSTEM\CurrentControlSet\Control\Print\Printers`
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, printersKey, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		log.Printf("discovery: can't read installed printers: %v", err)
+		return
+	}
+	names, _ := k.ReadSubKeyNames(-1)
+	k.Close()
+	log.Printf("discovery: %d printer queue(s) installed on this host", len(names))
+	for _, name := range names {
+		port := ""
+		if pk, err := registry.OpenKey(registry.LOCAL_MACHINE, printersKey+`\`+name, registry.QUERY_VALUE); err == nil {
+			port, _, _ = pk.GetStringValue("Port")
+			pk.Close()
+		}
+		log.Printf("discovery:   queue %q -> port %q", name, port)
+	}
+}
+
+func portValueNames(path string) string {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
+	if err != nil {
+		return "(unreadable: " + err.Error() + ")"
+	}
+	defer k.Close()
+	names, _ := k.ReadValueNames(-1)
+	if len(names) == 0 {
+		return "(none)"
+	}
+	return strings.Join(names, ", ")
 }
 
 func readPortValues(path string) map[string]string {

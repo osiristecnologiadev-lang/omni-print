@@ -57,9 +57,6 @@ type target struct {
 // skipped - it'll be retried on the next sweep.
 func printServerTargets(ctx context.Context, defaultCommunity string) []target {
 	ports := printServerPorts()
-	if len(ports) == 0 {
-		return nil
-	}
 	log.Printf("discovery: found %d network printer port(s) configured on this host (print server)", len(ports))
 
 	var out []target
