@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"regexp"
 	"strings"
 )
 
@@ -43,6 +44,30 @@ func portHost(name string, values map[string]string) string {
 	if ip := net.ParseIP(candidate); ip != nil && ip.To4() != nil {
 		return candidate
 	}
+	return embeddedIPv4(name)
+}
+
+var (
+	dottedIPv4     = regexp.MustCompile(`(?:^|[^\d.])(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:$|[^\d.])`)
+	underscoreIPv4 = regexp.MustCompile(`(?:^|\D)(\d{1,3})_(\d{1,3})_(\d{1,3})_(\d{1,3})(?:$|\D)`)
+)
+
+// embeddedIPv4 finds an address inside a port name that has other text
+// around it - real names seen on Sabin's print servers:
+// "PAPERCUT_10.96.32.10" (PaperCut's port monitor) and "X_10_96_16_12"
+// (underscores instead of dots).
+func embeddedIPv4(name string) string {
+	if m := dottedIPv4.FindStringSubmatch(name); m != nil {
+		if ip := net.ParseIP(m[1]); ip != nil && ip.To4() != nil {
+			return m[1]
+		}
+	}
+	if m := underscoreIPv4.FindStringSubmatch(name); m != nil {
+		candidate := strings.Join(m[1:], ".")
+		if ip := net.ParseIP(candidate); ip != nil && ip.To4() != nil {
+			return candidate
+		}
+	}
 	return ""
 }
 
@@ -61,6 +86,21 @@ func isDigits(s string) bool {
 // localPortPrefixes are port names that are never a network address.
 var localPortPrefixes = []string{"wsd", "usb", "lpt", "com", "ts0", "dot4", "file", "nul", "portprompt", "xps"}
 
+// isLocalPortName reports ports that never lead to a network printer: USB,
+// LPT, WSD..., and `\\server\share` connections to another machine's queue.
+func isLocalPortName(name string) bool {
+	if strings.HasPrefix(name, `\\`) {
+		return true
+	}
+	lower := strings.ToLower(name)
+	for _, p := range localPortPrefixes {
+		if strings.HasPrefix(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // portNameHost is portHost for when only a port's NAME is known - an AD
 // printQueue's portName, or a remote print server's queue list - with no
 // registry values to read. Beyond the IP forms portHost already handles,
@@ -71,11 +111,8 @@ func portNameHost(name string) string {
 	if h := portHost(name, nil); h != "" {
 		return h
 	}
-	lower := strings.ToLower(name)
-	for _, p := range localPortPrefixes {
-		if strings.HasPrefix(lower, p) {
-			return ""
-		}
+	if isLocalPortName(name) {
+		return ""
 	}
 	for _, r := range name {
 		if !(r == '-' || r == '.' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') {

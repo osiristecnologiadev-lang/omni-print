@@ -38,7 +38,9 @@ func printServerPorts() []printPort {
 // yields nothing this falls back to each queue's port NAME - which, for a
 // Standard TCP/IP port, Windows names after the printer's IP by default.
 func remotePrintServerPorts(server string) []printPort {
-	root, err := registry.OpenRemoteKey(`\\`+server, registry.LOCAL_MACHINE)
+	// OpenRemoteKey adds the leading `\\` itself - passing it here too made
+	// every call fail with "invalid network address" (first real run, Sabin).
+	root, err := registry.OpenRemoteKey(server, registry.LOCAL_MACHINE)
 	if err != nil {
 		log.Printf("discovery: can't open the registry of print server %s remotely: %v", server, err)
 		return nil

@@ -80,3 +80,22 @@ func TestPortNameHost(t *testing.T) {
 		}
 	}
 }
+
+// Real port names from Sabin's print servers (2026-09-25 log).
+func TestPortHostEmbeddedAddress(t *testing.T) {
+	tests := map[string]string{
+		"PAPERCUT_10.96.32.10": "10.96.32.10",
+		"X_10_96_16_12":        "10.96.16.12",
+		"10.80.40.5_1":         "10.80.40.5",
+		"USB001":               "",
+		"pdfcmon":              "",
+		"WSD-3ecf7f0d-8d63-4da9-b2ce-97f66287a3a4": "",
+		"X_10_96_16_300": "",
+		"PORT_1.2.3":     "",
+	}
+	for name, want := range tests {
+		if got := portHost(name, nil); got != want {
+			t.Errorf("portHost(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

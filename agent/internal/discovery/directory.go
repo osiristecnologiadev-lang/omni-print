@@ -47,8 +47,19 @@ func directoryTargets(ctx context.Context, community string) []target {
 
 	var ports []printPort
 	perServer := map[string]int{}
+	// Only servers with at least one queue on a network-style port are
+	// worth a remote registry read. On a real domain (Sabin: 98 published
+	// printers) most "print servers" AD names are workstations sharing a
+	// USB label printer - reading each costs up to remoteServerTimeout when
+	// it's off or firewalled, for no network printer at the end.
+	networkServer := map[string]bool{}
 	for _, q := range queues {
 		perServer[q.Server]++
+		for _, p := range q.Ports {
+			if !isLocalPortName(p) {
+				networkServer[q.Server] = true
+			}
+		}
 		usable := false
 		for _, p := range q.Ports {
 			if h := portNameHost(p); h != "" {
@@ -68,7 +79,12 @@ func directoryTargets(ctx context.Context, community string) []target {
 		}
 	}
 	sort.Strings(servers)
+	skipped := 0
 	for _, s := range servers {
+		if !networkServer[s] {
+			skipped++
+			continue
+		}
 		log.Printf("discovery: print server %s publishes %d printer(s) in AD - reading its ports", s, perServer[s])
 		server := s
 		remote, err := withTimeout(ctx, remoteServerTimeout, func() ([]printPort, error) {
@@ -80,6 +96,10 @@ func directoryTargets(ctx context.Context, community string) []target {
 		}
 		log.Printf("discovery: print server %s: %d network port(s) read remotely", s, len(remote))
 		ports = append(ports, remote...)
+	}
+
+	if skipped > 0 {
+		log.Printf("discovery: skipped %d machine(s) whose AD printers are all local (USB/WSD/shared connections)", skipped)
 	}
 
 	targets := portTargets(ctx, ports, community)
