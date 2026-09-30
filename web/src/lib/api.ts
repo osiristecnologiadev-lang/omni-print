@@ -745,6 +745,40 @@ export function getUsageRevenueReport(months = 12): Promise<UsageRevenueReport> 
   return apiFetch<UsageRevenueReport>(`/v1/reports/usage-revenue?months=${months}`);
 }
 
+export interface DevicePagesReportRow {
+  deviceId: string;
+  deviceName: string;
+  printerName: string | null;
+  serialNumber: string | null;
+  host: string;
+  customerId: string | null;
+  customerName: string | null;
+  billingExcluded: boolean;
+  pages: number;
+  monoPages: number;
+  colorPages: number;
+  startReading: number | null;
+  endReading: number | null;
+  startReadingAt: string | null;
+  endReadingAt: string | null;
+  counterReset: boolean;
+  usedManualBaseline: boolean;
+}
+
+export interface DevicePagesReport {
+  periodStart: string;
+  periodEnd: string;
+  totalPages: number;
+  rows: DevicePagesReportRow[];
+}
+
+// Pages per printer in one calendar month - no contract needed.
+export function getDevicePagesReport(year: number, month: number, customerId?: string): Promise<DevicePagesReport> {
+  const params = new URLSearchParams({ year: String(year), month: String(month) });
+  if (customerId) params.set('customerId', customerId);
+  return apiFetch<DevicePagesReport>(`/v1/reports/device-pages?${params}`);
+}
+
 export interface SupplyForecast {
   description: string;
   colorant: string | null;

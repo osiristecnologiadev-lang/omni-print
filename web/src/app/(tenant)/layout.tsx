@@ -227,6 +227,9 @@ export default async function TenantLayout({ children }: { children: React.React
           {hasPermission(access, 'reports') && (
             <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
           )}
+          {hasPermission(access, 'reports') && (
+            <SidebarLink href="/reports/pages" icon={<ReportsIcon />} label="Páginas por impressora" />
+          )}
           {/* Chamados is the one nav item both session types get - a
               customer-scoped user opens/tracks their own tickets here, a
               tenant-wide user sees the full cross-customer queue. */}

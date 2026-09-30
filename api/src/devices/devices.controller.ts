@@ -82,6 +82,22 @@ export class DevicesController {
     });
   }
 
+  @Get('reports/device-pages')
+  async devicePagesReport(
+    @Req() req: any,
+    @Query('year') yearRaw?: string,
+    @Query('month') monthRaw?: string,
+    @Query('customerId') customerId?: string,
+  ) {
+    assertPermission(req, 'reports');
+    const now = new Date();
+    const year = parseInt(yearRaw ?? '', 10);
+    const month = parseInt(monthRaw ?? '', 10);
+    const validYear = Number.isFinite(year) && year >= 2000 && year <= 2100 ? year : now.getUTCFullYear();
+    const validMonth = Number.isFinite(month) && month >= 1 && month <= 12 ? month : now.getUTCMonth() + 1;
+    return this.devicesService.devicePagesReport(req.tenantId, req.customerId, validYear, validMonth, customerId || undefined);
+  }
+
   @Patch('devices/:id')
   async update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateDeviceDto) {
     assertPermission(req, 'devices');

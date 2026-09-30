@@ -210,6 +210,68 @@ export class DevicesService {
     return { periodStart: periodStart.toISOString(), periodEnd: now.toISOString(), ...result };
   }
 
+  // "Páginas por impressora" report: every visible device's pages in one
+  // calendar month, with the start/end counter readings that prove it - the
+  // same layout outsourcing companies keep in their manual spreadsheets
+  // (Início / Fim / Quantidade). Same DevicePagesService math as billing,
+  // but needs no contract, so it works for any customer and any past month.
+  // filterCustomerId narrows a tenant-wide user's view to one customer; a
+  // customer-scoped user is always pinned to their own (scopeCustomerId).
+  async devicePagesReport(
+    tenantId: string,
+    scopeCustomerId: string | null,
+    year: number,
+    month: number,
+    filterCustomerId?: string,
+  ) {
+    const customerId = scopeCustomerId ?? filterCustomerId ?? null;
+    const periodStart = new Date(Date.UTC(year, month - 1, 1));
+    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+    const now = new Date();
+    const periodEnd = monthEnd < now ? monthEnd : now;
+
+    const devices = await this.prisma.device.findMany({
+      where: { tenantId, ...(customerId ? { customerId } : {}) },
+      include: { customer: { select: { id: true, name: true } } },
+    });
+    const rows = await Promise.all(
+      devices.map(async (d) => {
+        const r = await this.devicePages.pagesInPeriod(d, periodStart, periodEnd);
+        return {
+          deviceId: d.id,
+          deviceName: d.customLabel ?? d.printerName ?? d.name ?? d.host,
+          printerName: d.printerName ?? d.name,
+          serialNumber: d.serialNumber,
+          host: d.host,
+          customerId: d.customer?.id ?? null,
+          customerName: d.customer?.name ?? null,
+          billingExcluded: d.billingExcluded,
+          pages: r.pages,
+          monoPages: r.monoPages,
+          colorPages: r.colorPages,
+          startReading: r.startReading,
+          endReading: r.endReading,
+          startReadingAt: r.startReadingAt,
+          endReadingAt: r.endReadingAt,
+          counterReset: r.counterReset,
+          usedManualBaseline: r.usedManualBaseline,
+        };
+      }),
+    );
+    rows.sort(
+      (a, b) =>
+        (a.customerName ?? '~').localeCompare(b.customerName ?? '~', 'pt-BR') ||
+        a.deviceName.localeCompare(b.deviceName, 'pt-BR'),
+    );
+
+    return {
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      totalPages: rows.reduce((sum, r) => sum + r.pages, 0),
+      rows,
+    };
+  }
+
   // Same as currentMonthPages but summed across every device visible to the
   // caller - the fleet-wide "how much has been printed this month so far"
   // headline, for the dashboard. No contract needed anywhere in the fleet

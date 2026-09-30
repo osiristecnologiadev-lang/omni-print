@@ -47,6 +47,12 @@ export default async function ReportsPage(props: PageProps<'/reports'>) {
         subtitle="Visão consolidada de tudo o que foi faturado e impresso pelos seus clientes, por período."
       />
 
+      <p className="mb-4 text-sm">
+        <a href="/reports/pages" className="text-accent hover:underline">
+          Ver páginas por impressora (início, fim e quantidade no mês) →
+        </a>
+      </p>
+
       <form method="get" className="mb-6 flex items-center gap-2">
         <label className="text-xs text-ink-muted">
           Período
