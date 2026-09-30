@@ -1,4 +1,4 @@
-import { IsInt, IsISO8601, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsISO8601, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
 
 export class UpdateDeviceDto {
   // Omit or null to unassign (device becomes tenant-wide/unassigned again).
@@ -25,4 +25,9 @@ export class UpdateDeviceDto {
   @IsInt()
   @Min(0)
   manualBaselinePageCount?: number | null;
+
+  // See Device.billingExcluded's schema comment.
+  @IsOptional()
+  @IsBoolean()
+  billingExcluded?: boolean;
 }

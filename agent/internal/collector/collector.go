@@ -171,10 +171,13 @@ type Metric struct {
 	ErrorState        ErrorState `json:"error_state,omitempty"`
 
 	// PageCount/PowerOnCount: 0 is a valid count (brand new device), -1
-	// means "unknown", -2 means "not supported by this device" (RFC 3805) -
-	// these are never omitted so consumers can tell "zero" from "missing".
-	PageCount    int64 `json:"page_count"`
-	PowerOnCount int64 `json:"power_on_count"`
+	// means "unknown", -2 means "not supported by this device" (RFC 3805).
+	// PageCount is nil (omitted) when the counter couldn't be read at all -
+	// it used to go out as 0, which looked like a real reading: Sabin's
+	// Brother printers (2026-09) reported "0 pages" on every poll for a week
+	// while their real counters were at ~160k.
+	PageCount    *int64 `json:"page_count,omitempty"`
+	PowerOnCount int64  `json:"power_on_count"`
 
 	// MonoPageCount/ColorPageCount: a per-colorant split of PageCount, when
 	// this device exposes one. Pointers (not plain int64 like PageCount)
@@ -202,6 +205,46 @@ type Collector struct {
 	timeout        time.Duration
 	retries        int
 	fullRawCapture bool
+
+	// Hosts whose SNMP agent ignores GETBULK - see session.walk. Remembered
+	// across polls so the failed GETBULK attempt is only paid once per run.
+	noBulkHosts sync.Map
+}
+
+// session is one device poll's SNMP connection plus how to walk it.
+type session struct {
+	*gosnmp.GoSNMP
+	noBulk bool
+}
+
+// walk walks one subtree with GETBULK, falling back to plain GETNEXT when
+// GETBULK got no answer at all. Found for real at Sabin (2026-09): Brother
+// NC-8900h print servers answer GET normally but never answer GETBULK - every
+// walk timed out, the whole poll hit the per-device limit, and the page
+// counter, supplies and trays were never read for a week. A walk that errors
+// after returning some rows, or that simply finds an empty table (no error),
+// is not a GETBULK problem and doesn't trigger the fallback.
+func (s *session) walk(root string, fn gosnmp.WalkFunc) error {
+	if s.noBulk {
+		return s.Walk(root, fn)
+	}
+	got := 0
+	err := s.BulkWalk(root, func(pdu gosnmp.SnmpPDU) error {
+		got++
+		return fn(pdu)
+	})
+	if err == nil || got > 0 || s.Context.Err() != nil {
+		return err
+	}
+	got = 0
+	err = s.Walk(root, func(pdu gosnmp.SnmpPDU) error {
+		got++
+		return fn(pdu)
+	})
+	if got > 0 {
+		s.noBulk = true
+	}
+	return err
 }
 
 func New(requestDelay, timeout time.Duration, retries int, fullRawCapture bool) *Collector {
@@ -295,14 +338,18 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 	ctx, cancel := context.WithTimeout(ctx, deviceTimeout)
 	defer cancel()
 
-	g := &gosnmp.GoSNMP{
-		Target:    d.Host,
-		Port:      d.Port,
-		Community: d.Community,
-		Version:   gosnmp.Version2c,
-		Timeout:   c.timeout,
-		Retries:   c.retries,
-		Context:   ctx,
+	_, knownNoBulk := c.noBulkHosts.Load(d.Host)
+	g := &session{
+		GoSNMP: &gosnmp.GoSNMP{
+			Target:    d.Host,
+			Port:      d.Port,
+			Community: d.Community,
+			Version:   gosnmp.Version2c,
+			Timeout:   c.timeout,
+			Retries:   c.retries,
+			Context:   ctx,
+		},
+		noBulk: knownNoBulk,
 	}
 
 	if err := g.Connect(); err != nil {
@@ -310,6 +357,12 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 		return m
 	}
 	defer g.Conn.Close()
+	defer func() {
+		if g.noBulk && !knownNoBulk {
+			c.noBulkHosts.Store(d.Host, true)
+			log.Printf("poll: %s doesn't answer SNMP GETBULK - reading it with GETNEXT from now on", d.Host)
+		}
+	}()
 
 	scalarOIDs := []string{
 		oidSysDescr, oidSysUpTime, oidSysContact, oidSysName, oidSysLocation,
@@ -371,16 +424,19 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 // same single value oidPageCount used to read directly - the walk only
 // changes behavior for a device with more than one marker, which none
 // tested so far have had.
-func (c *Collector) walkPageCount(g *gosnmp.GoSNMP) int64 {
+func (c *Collector) walkPageCount(g *session) *int64 {
 	counts := map[string]int64{}
 	walkInt(g, oidPageCountCol, counts)
+	if len(counts) == 0 {
+		return nil // nothing came back - "unknown", not a real zero
+	}
 	var total int64
 	for _, v := range counts {
 		if v > 0 {
 			total += v
 		}
 	}
-	return total
+	return &total
 }
 
 // collectMarkerSplit reads HP's private mono/color total-page-count scalars
@@ -409,7 +465,7 @@ func (c *Collector) walkPageCount(g *gosnmp.GoSNMP) int64 {
 // failing the whole GET, so this safely returns (nil, nil) on every non-HP
 // device, and the backend falls back to prtMarkerLifeCount for those (see
 // ContractsService.pagesInPeriod).
-func (c *Collector) collectMarkerSplit(g *gosnmp.GoSNMP) (mono *int64, color *int64) {
+func (c *Collector) collectMarkerSplit(g *session) (mono *int64, color *int64) {
 	result, err := g.Get([]string{oidHPTotalMonoPageCount, oidHPTotalColorPageCount})
 	if err != nil {
 		return nil, nil
@@ -423,7 +479,7 @@ func (c *Collector) collectMarkerSplit(g *gosnmp.GoSNMP) (mono *int64, color *in
 	return &monoVal, &colorVal
 }
 
-func (c *Collector) walkSupplies(g *gosnmp.GoSNMP) []Supply {
+func (c *Collector) walkSupplies(g *session) []Supply {
 	classes := map[string]int64{}
 	types := map[string]int64{}
 	descrs := map[string]string{}
@@ -441,7 +497,7 @@ func (c *Collector) walkSupplies(g *gosnmp.GoSNMP) []Supply {
 	walkInt(g, oidSuppliesColorant, colorantIdx)
 
 	colorantNames := map[int64]string{}
-	_ = g.BulkWalk(oidColorantValue, func(pdu gosnmp.SnmpPDU) error {
+	_ = g.walk(oidColorantValue, func(pdu gosnmp.SnmpPDU) error {
 		idx := indexOf(pdu.Name, oidColorantValue)
 		parts := strings.Split(idx, ".")
 		ci, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
@@ -507,7 +563,7 @@ func guessColorantFromDescription(description string) string {
 	return ""
 }
 
-func (c *Collector) walkInputTrays(g *gosnmp.GoSNMP) []Tray {
+func (c *Collector) walkInputTrays(g *session) []Tray {
 	names := map[string]string{}
 	mediaNames := map[string]string{}
 	statuses := map[string]int64{}
@@ -544,7 +600,7 @@ func (c *Collector) walkInputTrays(g *gosnmp.GoSNMP) []Tray {
 	return trays
 }
 
-func (c *Collector) walkAlerts(g *gosnmp.GoSNMP) []Alert {
+func (c *Collector) walkAlerts(g *session) []Alert {
 	severities := map[string]int64{}
 	codes := map[string]int64{}
 	descrs := map[string]string{}
@@ -566,7 +622,7 @@ func (c *Collector) walkAlerts(g *gosnmp.GoSNMP) []Alert {
 
 // walkConsoleDisplay reads the printer's front-panel display lines and joins
 // them in display order (lines are numerically indexed, e.g. "1", "2", ...).
-func (c *Collector) walkConsoleDisplay(g *gosnmp.GoSNMP) string {
+func (c *Collector) walkConsoleDisplay(g *session) string {
 	lines := map[string]string{}
 	walkString(g, oidConsoleDisplay, lines)
 
@@ -589,9 +645,9 @@ func (c *Collector) walkConsoleDisplay(g *gosnmp.GoSNMP) string {
 	return strings.Join(parts, " ")
 }
 
-func (c *Collector) walkRaw(g *gosnmp.GoSNMP, root string) map[string]string {
+func (c *Collector) walkRaw(g *session, root string) map[string]string {
 	raw := map[string]string{}
-	_ = g.BulkWalk(root, func(pdu gosnmp.SnmpPDU) error {
+	_ = g.walk(root, func(pdu gosnmp.SnmpPDU) error {
 		raw[pdu.Name] = formatPDUValue(pdu)
 		return nil
 	})
@@ -602,8 +658,8 @@ func (c *Collector) walkRaw(g *gosnmp.GoSNMP, root string) map[string]string {
 // table index suffix (everything after the column OID), so columns from
 // separate walks can be correlated by that shared index afterwards.
 
-func walkString(g *gosnmp.GoSNMP, columnOID string, dest map[string]string) {
-	_ = g.BulkWalk(columnOID, func(pdu gosnmp.SnmpPDU) error {
+func walkString(g *session, columnOID string, dest map[string]string) {
+	_ = g.walk(columnOID, func(pdu gosnmp.SnmpPDU) error {
 		if b, ok := pdu.Value.([]byte); ok {
 			dest[indexOf(pdu.Name, columnOID)] = cleanString(string(b))
 		}
@@ -629,8 +685,8 @@ func cleanString(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func walkInt(g *gosnmp.GoSNMP, columnOID string, dest map[string]int64) {
-	_ = g.BulkWalk(columnOID, func(pdu gosnmp.SnmpPDU) error {
+func walkInt(g *session, columnOID string, dest map[string]int64) {
+	_ = g.walk(columnOID, func(pdu gosnmp.SnmpPDU) error {
 		dest[indexOf(pdu.Name, columnOID)] = gosnmp.ToBigInt(pdu.Value).Int64()
 		return nil
 	})

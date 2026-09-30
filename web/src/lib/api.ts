@@ -376,6 +376,9 @@ export interface Device {
   // schema comment on the API's Device model. Both null, or both set.
   manualBaselineDate: string | null;
   manualBaselinePageCount: string | null;
+  // "Fora do contrato" - monitored, but never billed. See the API's
+  // Device.billingExcluded schema comment.
+  billingExcluded: boolean;
   firstSeenAt: string;
   lastSeenAt: string;
   latestMetric: LatestMetric | null;
@@ -976,6 +979,10 @@ export function updateDeviceManualBaseline(
   manualBaselinePageCount: number | null,
 ): Promise<Device> {
   return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', { manualBaselineDate, manualBaselinePageCount });
+}
+
+export function updateDeviceBillingExcluded(deviceId: string, billingExcluded: boolean): Promise<Device> {
+  return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', { billingExcluded });
 }
 
 export type ContractStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED';

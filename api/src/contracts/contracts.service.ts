@@ -218,7 +218,9 @@ export class ContractsService {
       return { hasContract: false as const, periodStart, periodEnd };
     }
 
-    const devices = await this.prisma.device.findMany({ where: { tenantId, customerId } });
+    // Devices marked "fora do contrato" stay monitored but never enter the
+    // bill - see Device.billingExcluded's schema comment.
+    const devices = await this.prisma.device.findMany({ where: { tenantId, customerId, billingExcluded: false } });
 
     const perDevice = await Promise.all(
       devices.map(async (device) => {

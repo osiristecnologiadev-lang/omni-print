@@ -2,7 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { assignDeviceCustomer, updateDeviceLabel, updateDeviceManualBaseline } from '@/lib/api';
+import {
+  assignDeviceCustomer,
+  updateDeviceBillingExcluded,
+  updateDeviceLabel,
+  updateDeviceManualBaseline,
+} from '@/lib/api';
 
 export async function assignCustomerAction(deviceId: string, formData: FormData) {
   const raw = String(formData.get('customerId') ?? '');
@@ -50,4 +55,21 @@ export async function updateManualBaselineAction(deviceId: string, formData: For
   revalidatePath(`/devices/${deviceId}`);
   revalidatePath(`/customers`);
   redirect(`/devices/${deviceId}?baselineSaved=1`);
+}
+
+// The form sends the value to switch TO (a hidden input), not a checkbox -
+// an unchecked checkbox sends nothing, which would be ambiguous here.
+export async function updateBillingExcludedAction(deviceId: string, formData: FormData) {
+  const billingExcluded = formData.get('billingExcluded') === 'true';
+
+  try {
+    await updateDeviceBillingExcluded(deviceId, billingExcluded);
+  } catch {
+    redirect(`/devices/${deviceId}?billingError=1`);
+  }
+  revalidatePath(`/devices/${deviceId}`);
+  revalidatePath('/');
+  revalidatePath('/customers');
+  revalidatePath('/contracts');
+  redirect(`/devices/${deviceId}?billingSaved=1`);
 }

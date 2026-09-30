@@ -31,6 +31,8 @@ const ACTION_LABEL: Record<string, string> = {
   'device.reassign_customer': 'Dispositivo reatribuído a outro cliente',
   'device.set_label': 'Apelido do dispositivo alterado',
   'device.set_manual_baseline': 'Leitura inicial manual definida',
+  'device.set_billing_excluded': 'Dispositivo marcado/desmarcado como fora do contrato',
+  'customer.discovery_ranges': 'Redes adicionais de busca alteradas',
   'contract.create': 'Contrato criado ou renegociado',
   'contract.update': 'Contrato editado',
   'contract.cancel': 'Contrato cancelado',

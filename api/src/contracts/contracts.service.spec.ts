@@ -58,6 +58,17 @@ describe('ContractsService.resolveBilling', () => {
     expect(result).toEqual({ hasContract: false, periodStart, periodEnd });
   });
 
+  it('only bills devices not marked "fora do contrato"', async () => {
+    prisma.contract.findFirst.mockResolvedValue({ pricingModel: 'PER_PAGE', pricePerPageMono: '0.047' });
+    prisma.device.findMany.mockResolvedValue([]);
+
+    await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(prisma.device.findMany).toHaveBeenCalledWith({
+      where: { tenantId: 't1', customerId: 'c1', billingExcluded: false },
+    });
+  });
+
   it('FLAT_RATE ignores page count entirely', async () => {
     prisma.contract.findFirst.mockResolvedValue({
       pricingModel: 'FLAT_RATE',

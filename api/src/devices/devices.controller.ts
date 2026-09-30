@@ -85,10 +85,16 @@ export class DevicesController {
   @Patch('devices/:id')
   async update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateDeviceDto) {
     assertPermission(req, 'devices');
+    // Taking a printer out of (or back into) billing changes what the
+    // customer's invoice says - that's a contracts decision, not just device
+    // housekeeping, so it needs that permission too.
+    if (dto.billingExcluded !== undefined) {
+      assertPermission(req, 'contracts');
+    }
     const device = await this.devicesService.update(req.tenantId, id, dto);
     const targetLabel = device.customLabel ?? device.printerName ?? device.name ?? device.host;
 
-    // One PATCH here bundles up to 3 conceptually distinct admin actions
+    // One PATCH here bundles up to 4 conceptually distinct admin actions
     // (see UpdateDeviceDto's own comment on why each field is independent)
     // - log one entry per field actually present, not one generic
     // "device.update", so "quem reatribuiu esse dispositivo" is a precise
@@ -130,6 +136,19 @@ export class DevicesController {
         targetId: device.id,
         targetLabel,
         metadata: { manualBaselineDate: dto.manualBaselineDate, manualBaselinePageCount: dto.manualBaselinePageCount },
+      });
+    }
+    if (dto.billingExcluded !== undefined) {
+      await this.auditLog.log({
+        tenantId: req.tenantId,
+        actorType: 'USER',
+        actorId: req.userId,
+        actorLabel: req.userEmail,
+        action: 'device.set_billing_excluded',
+        targetType: 'Device',
+        targetId: device.id,
+        targetLabel,
+        metadata: { billingExcluded: dto.billingExcluded },
       });
     }
 

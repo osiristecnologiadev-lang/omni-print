@@ -119,6 +119,7 @@ export class DevicesService {
       customLabel?: string | null;
       manualBaselineDate?: string | null;
       manualBaselinePageCount?: number | null;
+      billingExcluded?: boolean;
     },
   ) {
     const device = await this.prisma.device.findFirst({ where: { id: deviceId, tenantId } });
@@ -131,6 +132,7 @@ export class DevicesService {
       customLabel?: string | null;
       manualBaselineDate?: Date | null;
       manualBaselinePageCount?: bigint | null;
+      billingExcluded?: boolean;
     } = {};
 
     if (dto.customerId !== undefined) {
@@ -158,6 +160,10 @@ export class DevicesService {
         data.manualBaselineDate = new Date(dto.manualBaselineDate);
         data.manualBaselinePageCount = BigInt(dto.manualBaselinePageCount);
       }
+    }
+
+    if (dto.billingExcluded !== undefined) {
+      data.billingExcluded = dto.billingExcluded;
     }
 
     return this.prisma.device.update({ where: { id: deviceId }, data });

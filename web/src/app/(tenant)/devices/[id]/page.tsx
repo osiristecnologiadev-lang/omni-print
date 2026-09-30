@@ -21,7 +21,7 @@ import { Panel, PanelSection } from '@/components/Panel';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
 import { TrendChart } from '@/components/TrendChart';
-import { assignCustomerAction, updateLabelAction, updateManualBaselineAction } from './actions';
+import { assignCustomerAction, updateBillingExcludedAction, updateLabelAction, updateManualBaselineAction } from './actions';
 
 const fieldClass =
   'rounded-lg border border-line bg-surface px-2 py-1 text-xs text-ink outline-none transition-colors focus:border-accent';
@@ -71,6 +71,8 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
   const labelError = searchParams?.labelError === '1';
   const baselineSaved = searchParams?.baselineSaved === '1';
   const baselineError = searchParams?.baselineError === '1';
+  const billingSaved = searchParams?.billingSaved === '1';
+  const billingError = searchParams?.billingError === '1';
 
   const device = await getDevice(id);
   if (!device) {
@@ -108,6 +110,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
   const boundAssignCustomer = assignCustomerAction.bind(null, device.id);
   const boundUpdateLabel = updateLabelAction.bind(null, device.id);
   const boundUpdateManualBaseline = updateManualBaselineAction.bind(null, device.id);
+  const boundUpdateBillingExcluded = updateBillingExcludedAction.bind(null, device.id);
   const agentReportedName = device.printerName ?? device.name ?? device.host;
 
   return (
@@ -122,6 +125,18 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
       {labelError && <Banner tone="error" className="mt-4">Não foi possível salvar o apelido. Tente novamente.</Banner>}
       {baselineSaved && <Banner tone="success" className="mt-4">Leitura inicial salva.</Banner>}
       {baselineError && <Banner tone="error" className="mt-4">Não foi possível salvar a leitura inicial. Tente novamente.</Banner>}
+      {billingSaved && (
+        <Banner tone="success" className="mt-4">
+          {device.billingExcluded
+            ? 'Impressora marcada como fora do contrato - não entra mais no faturamento.'
+            : 'Impressora voltou a entrar no faturamento do contrato.'}
+        </Banner>
+      )}
+      {billingError && (
+        <Banner tone="error" className="mt-4">
+          Não foi possível alterar o faturamento desta impressora. É preciso ter a permissão de contratos.
+        </Banner>
+      )}
 
       <header className="mt-4 mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -263,7 +278,9 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
               <div className="flex justify-between gap-4">
                 <dt className="text-ink-muted">Receita estimada este mês</dt>
                 <dd className="text-right">
-                  {!billing?.hasContract ? (
+                  {device.billingExcluded ? (
+                    <span className="text-ink-faint">fora do contrato</span>
+                  ) : !billing?.hasContract ? (
                     <span className="text-ink-faint">sem contrato ativo</span>
                   ) : billing.contract.pricingModel === 'FLAT_RATE' ? (
                     <span className="text-ink-faint">não aplicável (mensalidade fixa)</span>
@@ -293,6 +310,34 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
           </dl>
         </Panel>
       </div>
+
+      {isTenantWide && (
+        <Panel className="mt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="mb-1 text-sm font-medium text-ink-muted">
+                Faturamento:{' '}
+                {device.billingExcluded ? (
+                  <span className="text-amber-600 dark:text-amber-400">fora do contrato</span>
+                ) : (
+                  <span className="text-ink">entra no contrato</span>
+                )}
+              </h2>
+              <p className="text-xs text-ink-faint">
+                {device.billingExcluded
+                  ? 'Esta impressora continua monitorada (status, suprimentos, páginas), mas não entra na fatura do cliente.'
+                  : 'Marque como fora do contrato uma impressora que o agente encontrou mas que você não atende (ex.: outra unidade do cliente) - ela segue monitorada, só não entra na fatura.'}
+              </p>
+            </div>
+            <form action={boundUpdateBillingExcluded}>
+              <input type="hidden" name="billingExcluded" value={device.billingExcluded ? 'false' : 'true'} />
+              <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
+                {device.billingExcluded ? 'Incluir no contrato' : 'Marcar como fora do contrato'}
+              </SubmitButton>
+            </form>
+          </div>
+        </Panel>
+      )}
 
       {isTenantWide && (
         <Panel className="mt-6">

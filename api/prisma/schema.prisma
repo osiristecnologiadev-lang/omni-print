@@ -720,6 +720,13 @@ model Device {
   // at all - see DevicesService.update.
   manualBaselineDate      DateTime? @map("manual_baseline_date")
   manualBaselinePageCount BigInt?   @map("manual_baseline_page_count")
+  // "Fora do contrato": the device stays monitored (status, supplies, pages)
+  // but never enters the customer's billing - ContractsService.resolveBilling
+  // skips it. Needed for real (Sabin, 2026-09): the agent's Active Directory
+  // route finds the WHOLE customer group's printers, including other sites
+  // the outsourcing tenant doesn't serve, and every device of a customer was
+  // billed. Tenant-wide admins toggle it on the device page.
+  billingExcluded         Boolean   @default(false) @map("billing_excluded")
   firstSeenAt             DateTime  @default(now()) @map("first_seen_at")
   lastSeenAt              DateTime  @updatedAt @map("last_seen_at")
 
