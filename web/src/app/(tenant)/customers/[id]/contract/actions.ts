@@ -42,6 +42,15 @@ function readContractForm(formData: FormData): CreateContractInput {
       overagePriceColor: num(formData, 'overagePriceColor'),
     };
   }
+  if (pricingModel === 'PER_DEVICE_MINIMUM') {
+    return {
+      ...base,
+      fixedFee: optNum(formData, 'fixedFee'),
+      pricePerPageMono: num(formData, 'pricePerPageMono'),
+      pricePerPageColor: num(formData, 'pricePerPageColor'),
+      minimumChargePerDevice: num(formData, 'minimumChargePerDevice'),
+    };
+  }
   // PER_PAGE
   return {
     ...base,

@@ -11,6 +11,8 @@ const MODEL_HELP: Record<ContractPricingModel, string> = {
   FLAT_RATE: 'Valor fixo por mês, independente da quantidade de páginas impressas.',
   ALLOWANCE_PLUS_OVERAGE: 'Mensalidade já inclui um pacote de páginas; o que passar disso é cobrado à parte.',
   PER_PAGE: 'Cobra por página impressa, mas nunca abaixo do valor equivalente à quantidade mínima garantida.',
+  PER_DEVICE_MINIMUM:
+    'Cada impressora paga o maior valor entre a franquia dela e páginas × preço. Uma impressora pode ter franquia própria (na página da impressora).',
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -43,6 +45,7 @@ export function ContractForm({
         >
           <option value="ALLOWANCE_PLUS_OVERAGE">Franquia com excedente</option>
           <option value="PER_PAGE">Por página com mínimo</option>
+          <option value="PER_DEVICE_MINIMUM">Mínimo por impressora</option>
           <option value="FLAT_RATE">Mensalidade fixa</option>
         </select>
         <p className="mt-1 text-xs text-ink-faint">{MODEL_HELP[model]}</p>
@@ -59,7 +62,7 @@ export function ContractForm({
           <input type="number" name="billingDay" min={1} max={31} defaultValue={10} required className={inputClass} />
         </Field>
 
-        {model === 'PER_PAGE' ? (
+        {model === 'PER_PAGE' || model === 'PER_DEVICE_MINIMUM' ? (
           <Field label="Taxa fixa adicional (opcional)">
             <input type="text" inputMode="decimal" name="fixedFee" placeholder="0,00" className={inputClass} />
           </Field>
@@ -99,6 +102,20 @@ export function ContractForm({
             </Field>
             <Field label="Mínimo garantido cor (páginas)">
               <input type="number" name="minimumPagesColor" min={0} required placeholder="0" className={inputClass} />
+            </Field>
+          </>
+        )}
+
+        {model === 'PER_DEVICE_MINIMUM' && (
+          <>
+            <Field label="Preço por página P&B (R$)">
+              <input type="text" inputMode="decimal" name="pricePerPageMono" required placeholder="0,042" className={inputClass} />
+            </Field>
+            <Field label="Preço por página cor (R$)">
+              <input type="text" inputMode="decimal" name="pricePerPageColor" required placeholder="0,042" className={inputClass} />
+            </Field>
+            <Field label="Franquia por impressora (R$)">
+              <input type="text" inputMode="decimal" name="minimumChargePerDevice" required placeholder="200,00" className={inputClass} />
             </Field>
           </>
         )}

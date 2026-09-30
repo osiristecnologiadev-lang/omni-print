@@ -56,6 +56,7 @@ const MODEL_LABEL: Record<string, string> = {
   FLAT_RATE: 'Mensalidade fixa',
   ALLOWANCE_PLUS_OVERAGE: 'Franquia com excedente',
   PER_PAGE: 'Por página com mínimo',
+  PER_DEVICE_MINIMUM: 'Mínimo por impressora',
 };
 
 function ContractTerms({ contract }: { contract: Contract }) {
@@ -69,7 +70,7 @@ function ContractTerms({ contract }: { contract: Contract }) {
       {contract.fixedFee != null && (
         <div>
           <dt className="text-xs text-ink-faint">
-            {contract.pricingModel === 'PER_PAGE' ? 'Taxa fixa adicional' : 'Mensalidade'}
+            {contract.pricingModel === 'PER_PAGE' || contract.pricingModel === 'PER_DEVICE_MINIMUM' ? 'Taxa fixa adicional' : 'Mensalidade'}
           </dt>
           <dd className="tabular-nums text-ink-muted">{currency.format(Number(contract.fixedFee))}</dd>
         </div>
@@ -101,6 +102,19 @@ function ContractTerms({ contract }: { contract: Contract }) {
           <div>
             <dt className="text-xs text-ink-faint">Mínimo garantido P&B</dt>
             <dd className="tabular-nums text-ink-muted">{integer.format(contract.minimumPagesMono ?? 0)} pág.</dd>
+          </div>
+        </>
+      )}
+
+      {contract.pricingModel === 'PER_DEVICE_MINIMUM' && (
+        <>
+          <div>
+            <dt className="text-xs text-ink-faint">Preço por página</dt>
+            <dd className="tabular-nums text-ink-muted">{rate.format(Number(contract.pricePerPageMono ?? 0))}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-ink-faint">Franquia por impressora</dt>
+            <dd className="tabular-nums text-ink-muted">{currency.format(Number(contract.minimumChargePerDevice ?? 0))}</dd>
           </div>
         </>
       )}
@@ -249,12 +263,21 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
                   <StatTile label="Faturadas" value={integer.format(billing.billablePages ?? 0)} />
                 </>
               )}
+              {billing.contract.pricingModel === 'PER_DEVICE_MINIMUM' && (
+                <>
+                  <StatTile label="Impressoras" value={integer.format(billing.perDevice.length)} />
+                  <StatTile
+                    label="Pagando franquia"
+                    value={integer.format(billing.perDevice.filter((d) => d.minimumApplied).length)}
+                  />
+                </>
+              )}
               <StatTile label="Total devido" value={currency.format(billing.totalDue)} accent />
             </div>
 
             <p className="text-xs text-ink-faint">
               {MODEL_LABEL[billing.contract.pricingModel]}: {currency.format(billing.fixedFee)} de taxa fixa +{' '}
-              {currency.format(billing.usageCost)} de uso = {currency.format(billing.totalDue)}.
+              {currency.format(billing.usageCost)} {billing.contract.pricingModel === 'PER_DEVICE_MINIMUM' ? 'das impressoras' : 'de uso'} = {currency.format(billing.totalDue)}.
               {billing.contract.pricingModel !== 'FLAT_RATE' &&
                 billing.colorPages === 0 &&
                 ' Nenhum dispositivo deste cliente reporta contagem separada de páginas coloridas ainda, então tudo foi cobrado à taxa P&B.'}
@@ -298,16 +321,29 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
                       {d.enginePages !== d.pages && (
                         <span className="block text-xs text-ink-faint">mecanismo: {integer.format(d.enginePages)}</span>
                       )}
-                      {billing.contract.pricingModel !== 'FLAT_RATE' && (
-                        <span className="block text-xs tabular-nums text-ink-faint">
-                          ≈ {currency.format(d.usageRevenue)} de receita
+                      {billing.contract.pricingModel === 'PER_DEVICE_MINIMUM' ? (
+                        <span className="block text-xs tabular-nums text-ink">
+                          {currency.format(d.usageRevenue)}
+                          {d.minimumApplied && <span className="text-ink-faint"> (franquia)</span>}
                         </span>
+                      ) : (
+                        billing.contract.pricingModel !== 'FLAT_RATE' && (
+                          <span className="block text-xs tabular-nums text-ink-faint">
+                            ≈ {currency.format(d.usageRevenue)} de receita
+                          </span>
+                        )
                       )}
                     </span>
                   </li>
                 ))}
               </ul>
-              {billing.contract.pricingModel !== 'FLAT_RATE' && (
+              {billing.contract.pricingModel === 'PER_DEVICE_MINIMUM' && (
+                <p className="mt-2 text-xs text-ink-faint">
+                  Cada impressora paga o maior valor entre a franquia dela e páginas × preço. (franquia) = imprimiu
+                  menos que a franquia.
+                </p>
+              )}
+              {billing.contract.pricingModel !== 'FLAT_RATE' && billing.contract.pricingModel !== 'PER_DEVICE_MINIMUM' && (
                 <p className="mt-2 text-xs text-ink-faint">
                   Receita estimada: rateio proporcional pelo uso de cada impressora, não um valor cobrado por
                   dispositivo (nenhum dos modelos de cobrança fatura por impressora individualmente).

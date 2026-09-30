@@ -15,7 +15,11 @@ export enum ContractPricingModel {
   FLAT_RATE = 'FLAT_RATE',
   ALLOWANCE_PLUS_OVERAGE = 'ALLOWANCE_PLUS_OVERAGE',
   PER_PAGE = 'PER_PAGE',
+  PER_DEVICE_MINIMUM = 'PER_DEVICE_MINIMUM',
 }
+
+const usesPricePerPage = (o: { pricingModel?: ContractPricingModel }) =>
+  o.pricingModel === ContractPricingModel.PER_PAGE || o.pricingModel === ContractPricingModel.PER_DEVICE_MINIMUM;
 
 // Which fields are required depends on pricingModel - see the enum's
 // counterpart comment on the Contract model in prisma/schema.prisma for
@@ -40,8 +44,9 @@ export class CreateContractDto {
   billingDay: number;
 
   // FLAT_RATE: required, the whole bill. ALLOWANCE_PLUS_OVERAGE: required,
-  // the base fee. PER_PAGE: optional extra fixed charge on top of usage.
-  @ValidateIf((o) => o.pricingModel !== ContractPricingModel.PER_PAGE)
+  // the base fee. PER_PAGE / PER_DEVICE_MINIMUM: optional extra fixed
+  // charge on top of usage.
+  @ValidateIf((o) => !usesPricePerPage(o) || o.fixedFee != null)
   @Type(() => Number)
   @IsNumber()
   @Min(0)
@@ -71,13 +76,13 @@ export class CreateContractDto {
   @Min(0)
   overagePriceColor?: number;
 
-  @ValidateIf((o) => o.pricingModel === ContractPricingModel.PER_PAGE)
+  @ValidateIf(usesPricePerPage)
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   pricePerPageMono?: number;
 
-  @ValidateIf((o) => o.pricingModel === ContractPricingModel.PER_PAGE)
+  @ValidateIf(usesPricePerPage)
   @Type(() => Number)
   @IsNumber()
   @Min(0)
@@ -94,6 +99,12 @@ export class CreateContractDto {
   @IsInt()
   @Min(0)
   minimumPagesColor?: number;
+
+  @ValidateIf((o) => o.pricingModel === ContractPricingModel.PER_DEVICE_MINIMUM)
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  minimumChargePerDevice?: number;
 
   @IsOptional()
   @Type(() => Number)

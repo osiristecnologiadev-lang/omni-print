@@ -13,6 +13,8 @@ interface InvoicePerDevice {
   endReading?: number | null;
   counterReset?: boolean;
   usedManualBaseline?: boolean;
+  usageRevenue?: number;
+  minimumApplied?: boolean;
 }
 
 interface PartyInfo {
@@ -66,6 +68,7 @@ const MODEL_LABEL: Record<string, string> = {
   FLAT_RATE: 'Mensalidade fixa',
   ALLOWANCE_PLUS_OVERAGE: 'Franquia com excedente',
   PER_PAGE: 'Por página com mínimo',
+  PER_DEVICE_MINIMUM: 'Mínimo por impressora',
 };
 
 const INK = '#111827';
@@ -198,7 +201,20 @@ export class InvoicePdfService {
     // Atual are the meter-reading proof behind the billed page count - the
     // standard way outsourcing-de-impressão invoices in this market justify
     // that number, not just showing the delta on its own.
-    const columns = hasColorSplit
+    // Mínimo por impressora: each printer is billed on its own, so its line
+    // shows what it costs (and whether its minimum kicked in) - the same
+    // layout as the tenant's manual per-printer spreadsheets.
+    const perDeviceBilling = invoice.pricingModel === 'PER_DEVICE_MINIMUM';
+    const columns = perDeviceBilling
+      ? [
+          { title: 'Equipamento', width: contentWidth * 0.27, align: 'left' as const },
+          { title: 'Nº Série', width: contentWidth * 0.17, align: 'left' as const },
+          { title: 'Leitura ant.', width: contentWidth * 0.14, align: 'right' as const },
+          { title: 'Leitura atual', width: contentWidth * 0.14, align: 'right' as const },
+          { title: 'Páginas', width: contentWidth * 0.11, align: 'right' as const },
+          { title: 'Valor', width: contentWidth * 0.17, align: 'right' as const },
+        ]
+      : hasColorSplit
       ? [
           { title: 'Equipamento', width: contentWidth * 0.24, align: 'left' as const },
           { title: 'Nº Série', width: contentWidth * 0.14, align: 'left' as const },
@@ -243,7 +259,9 @@ export class InvoicePdfService {
         const marker = `${d.counterReset ? ' *' : ''}${d.usedManualBaseline ? ' †' : ''}`;
         const nameCell = `${d.deviceName}${marker}`;
         const readingCols = [d.serialNumber || '—', fmtReading(d.startReading), fmtReading(d.endReading)];
-        const rowValues = hasColorSplit
+        const rowValues = perDeviceBilling
+          ? [nameCell, ...readingCols, fmtInt(d.pages), `${d.minimumApplied ? 'franquia ' : ''}${money(d.usageRevenue ?? 0)}`]
+          : hasColorSplit
           ? [nameCell, ...readingCols, fmtInt(d.monoPages ?? d.pages), fmtInt(d.colorPages ?? 0), fmtInt(d.pages)]
           : [nameCell, ...readingCols, fmtInt(d.pages)];
         y = drawTableRow(doc, columns, rowValues, left, y, i % 2 === 1);
@@ -286,7 +304,7 @@ export class InvoicePdfService {
     const boxX = right - boxWidth;
     const lines = [
       { label: 'Taxa fixa', value: money(invoice.fixedFee) },
-      { label: 'Uso', value: money(invoice.usageCost) },
+      { label: perDeviceBilling ? 'Impressoras' : 'Uso', value: money(invoice.usageCost) },
     ];
     doc.font('Helvetica').fontSize(9.5).fillColor(MUTED);
     let sy = y;

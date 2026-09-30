@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsISO8601, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsISO8601, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
 
 export class UpdateDeviceDto {
   // Omit or null to unassign (device becomes tenant-wide/unassigned again).
@@ -30,4 +30,16 @@ export class UpdateDeviceDto {
   @IsOptional()
   @IsBoolean()
   billingExcluded?: boolean;
+
+  // PER_DEVICE_MINIMUM contracts - null clears back to the contract default.
+  @ValidateIf((o) => o.minimumChargeOverride !== null)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minimumChargeOverride?: number | null;
+
+  // See Device.billEngineCounter.
+  @IsOptional()
+  @IsBoolean()
+  billEngineCounter?: boolean;
 }

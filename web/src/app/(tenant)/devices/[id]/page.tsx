@@ -21,7 +21,13 @@ import { Panel, PanelSection } from '@/components/Panel';
 import { SubmitButton } from '@/components/SubmitButton';
 import { Banner } from '@/components/Banner';
 import { TrendChart } from '@/components/TrendChart';
-import { assignCustomerAction, updateBillingExcludedAction, updateLabelAction, updateManualBaselineAction } from './actions';
+import {
+  assignCustomerAction,
+  updateBillingExcludedAction,
+  updateBillingTermsAction,
+  updateLabelAction,
+  updateManualBaselineAction,
+} from './actions';
 
 const fieldClass =
   'rounded-lg border border-line bg-surface px-2 py-1 text-xs text-ink outline-none transition-colors focus:border-accent';
@@ -73,6 +79,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
   const baselineError = searchParams?.baselineError === '1';
   const billingSaved = searchParams?.billingSaved === '1';
   const billingError = searchParams?.billingError === '1';
+  const billingTermsSaved = searchParams?.billingTermsSaved === '1';
 
   const device = await getDevice(id);
   if (!device) {
@@ -111,6 +118,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
   const boundUpdateLabel = updateLabelAction.bind(null, device.id);
   const boundUpdateManualBaseline = updateManualBaselineAction.bind(null, device.id);
   const boundUpdateBillingExcluded = updateBillingExcludedAction.bind(null, device.id);
+  const boundUpdateBillingTerms = updateBillingTermsAction.bind(null, device.id);
   const agentReportedName = device.printerName ?? device.name ?? device.host;
 
   return (
@@ -132,6 +140,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
             : 'Impressora voltou a entrar no faturamento do contrato.'}
         </Banner>
       )}
+      {billingTermsSaved && <Banner tone="success" className="mt-4">Condições de cobrança da impressora salvas.</Banner>}
       {billingError && (
         <Banner tone="error" className="mt-4">
           Não foi possível alterar o faturamento desta impressora. É preciso ter a permissão de contratos.
@@ -336,6 +345,35 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
               </SubmitButton>
             </form>
           </div>
+          {!device.billingExcluded && (
+            <form action={boundUpdateBillingTerms} className="mt-4 flex flex-wrap items-end gap-4 border-t border-line pt-4">
+              <div>
+                <label htmlFor="minimumChargeOverride" className="block text-xs text-ink-muted">
+                  Franquia desta impressora (R$)
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  id="minimumChargeOverride"
+                  name="minimumChargeOverride"
+                  defaultValue={device.minimumChargeOverride ? String(Number(device.minimumChargeOverride)).replace('.', ',') : ''}
+                  placeholder="padrão do contrato"
+                  className={`mt-1 w-36 ${fieldClass}`}
+                />
+              </div>
+              <label className="flex items-center gap-2 text-xs text-ink-muted">
+                <input type="checkbox" name="billEngineCounter" defaultChecked={device.billEngineCounter} />
+                Cobrar pelo contador total (mecanismo)
+              </label>
+              <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
+                Salvar
+              </SubmitButton>
+              <p className="w-full text-xs text-ink-faint">
+                Franquia: só para contratos &quot;Mínimo por impressora&quot; - em branco usa a do contrato. Contador total:
+                use quando você cobra esta impressora pelo contador do mecanismo, não pelo de páginas impressas.
+              </p>
+            </form>
+          )}
         </Panel>
       )}
 

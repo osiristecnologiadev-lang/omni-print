@@ -32,6 +32,8 @@ const ACTION_LABEL: Record<string, string> = {
   'device.set_label': 'Apelido do dispositivo alterado',
   'device.set_manual_baseline': 'Leitura inicial manual definida',
   'device.set_billing_excluded': 'Dispositivo marcado/desmarcado como fora do contrato',
+  'device.set_billing_terms': 'Franquia/contador de cobrança da impressora alterados',
+  'invoice.delete': 'Fatura apagada',
   'customer.discovery_ranges': 'Redes adicionais de busca alteradas',
   'contract.create': 'Contrato criado ou renegociado',
   'contract.update': 'Contrato editado',

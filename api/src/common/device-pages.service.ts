@@ -49,7 +49,12 @@ export class DevicePagesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async pagesInPeriod(
-    device: { id: string; manualBaselineDate: Date | null; manualBaselinePageCount: bigint | null },
+    device: {
+      id: string;
+      manualBaselineDate: Date | null;
+      manualBaselinePageCount: bigint | null;
+      billEngineCounter?: boolean;
+    },
     start: Date,
     end: Date,
   ): Promise<PagesInPeriodResult> {
@@ -84,7 +89,9 @@ export class DevicePagesService {
     // "printed" vs 75,222 "mechanism" on the same unit. Only readings with
     // BOTH a mono and color value are usable (a poll that returned neither,
     // e.g. a non-HP device, can't contribute).
-    const realSplitReadings = readings
+    // Device.billEngineCounter: the tenant bills this printer by its total
+    // engine counter, so the printed-pages split is never used for it.
+    const realSplitReadings = (device.billEngineCounter ? [] : readings)
       .filter((m) => m.monoPageCount != null && m.colorPageCount != null)
       .map((m) => ({
         collectedAt: m.collectedAt,

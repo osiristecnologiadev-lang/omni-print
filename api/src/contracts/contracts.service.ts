@@ -72,6 +72,7 @@ export class ContractsService {
         pricePerPageColor: dto.pricePerPageColor,
         minimumPagesMono: dto.minimumPagesMono,
         minimumPagesColor: dto.minimumPagesColor,
+        minimumChargePerDevice: dto.minimumChargePerDevice,
         setupFee: dto.setupFee,
         earlyTerminationFee: dto.earlyTerminationFee,
         adjustmentIndex: dto.adjustmentIndex,
@@ -109,6 +110,7 @@ export class ContractsService {
         ...(dto.pricePerPageColor !== undefined ? { pricePerPageColor: dto.pricePerPageColor } : {}),
         ...(dto.minimumPagesMono !== undefined ? { minimumPagesMono: dto.minimumPagesMono } : {}),
         ...(dto.minimumPagesColor !== undefined ? { minimumPagesColor: dto.minimumPagesColor } : {}),
+        ...(dto.minimumChargePerDevice !== undefined ? { minimumChargePerDevice: dto.minimumChargePerDevice } : {}),
         ...(dto.setupFee !== undefined ? { setupFee: dto.setupFee } : {}),
         ...(dto.earlyTerminationFee !== undefined ? { earlyTerminationFee: dto.earlyTerminationFee } : {}),
         ...(dto.adjustmentIndex !== undefined ? { adjustmentIndex: dto.adjustmentIndex } : {}),
@@ -275,6 +277,9 @@ export class ContractsService {
           enginePages,
           engineStartReading,
           engineEndReading,
+          // PER_DEVICE_MINIMUM: this printer's own "franquia", when it has
+          // one different from the contract's default.
+          minimumChargeOverride: device.minimumChargeOverride != null ? Number(device.minimumChargeOverride) : null,
         };
       }),
     );
@@ -330,10 +335,31 @@ export class ContractsService {
         usageCost = monoRevenueTotal + colorRevenueTotal;
         break;
       }
+
+      // Each printer pays max(its minimum, its own usage) - computed per
+      // device below, so here only the total is summed. A printer with no
+      // reading at all in the period still pays its minimum, same as the
+      // tenant's manual spreadsheets ("franquia" on a printer with no Fim).
+      case 'PER_DEVICE_MINIMUM':
+        break;
     }
 
-    const revenueByDevice = allocateUsageRevenue(perDevice, monoRevenueTotal, colorRevenueTotal);
-    const perDeviceWithRevenue = perDevice.map((d) => ({ ...d, usageRevenue: revenueByDevice.get(d.deviceId) ?? 0 }));
+    const perDeviceCharges =
+      contract.pricingModel === 'PER_DEVICE_MINIMUM' ? perDeviceMinimumCharges(perDevice, contract) : null;
+    if (perDeviceCharges) {
+      usageCost = [...perDeviceCharges.values()].reduce((sum, c) => sum + c.charge, 0);
+    }
+    const revenueByDevice = perDeviceCharges
+      ? new Map([...perDeviceCharges].map(([id, c]) => [id, c.charge]))
+      : allocateUsageRevenue(perDevice, monoRevenueTotal, colorRevenueTotal);
+    const perDeviceWithRevenue = perDevice.map((d) => ({
+      ...d,
+      usageRevenue: revenueByDevice.get(d.deviceId) ?? 0,
+      // PER_DEVICE_MINIMUM only: the printer paid its minimum ("franquia")
+      // because its usage came out below it.
+      minimumCharge: perDeviceCharges?.get(d.deviceId)?.minimum ?? null,
+      minimumApplied: perDeviceCharges?.get(d.deviceId)?.minimumApplied ?? false,
+    }));
 
     return {
       hasContract: true as const,
@@ -353,6 +379,25 @@ export class ContractsService {
       totalDue: fixedFee + usageCost,
     };
   }
+}
+
+// PER_DEVICE_MINIMUM: each printer's charge = max(minimum, mono x mono rate
+// + color x color rate). Rounded to cents per printer, since that's what
+// each line of the tenant's own invoice shows.
+export function perDeviceMinimumCharges(
+  perDevice: Array<{ deviceId: string; monoPages: number; colorPages: number; minimumChargeOverride: number | null }>,
+  contract: { pricePerPageMono: unknown; pricePerPageColor: unknown; minimumChargePerDevice?: unknown },
+): Map<string, { charge: number; minimum: number; minimumApplied: boolean }> {
+  const monoRate = Number(contract.pricePerPageMono ?? 0);
+  const colorRate = Number(contract.pricePerPageColor ?? 0);
+  const defaultMinimum = Number(contract.minimumChargePerDevice ?? 0);
+  const out = new Map<string, { charge: number; minimum: number; minimumApplied: boolean }>();
+  for (const d of perDevice) {
+    const minimum = d.minimumChargeOverride ?? defaultMinimum;
+    const usage = Math.round((d.monoPages * monoRate + d.colorPages * colorRate) * 100) / 100;
+    out.set(d.deviceId, { charge: Math.max(minimum, usage), minimum, minimumApplied: usage < minimum });
+  }
+  return out;
 }
 
 export function monthRange(year: number, month: number): { periodStart: Date; periodEnd: Date } {

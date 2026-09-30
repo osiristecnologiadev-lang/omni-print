@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import {
   assignDeviceCustomer,
   updateDeviceBillingExcluded,
+  updateDeviceBillingTerms,
   updateDeviceLabel,
   updateDeviceManualBaseline,
 } from '@/lib/api';
@@ -72,4 +73,23 @@ export async function updateBillingExcludedAction(deviceId: string, formData: Fo
   revalidatePath('/customers');
   revalidatePath('/contracts');
   redirect(`/devices/${deviceId}?billingSaved=1`);
+}
+
+export async function updateBillingTermsAction(deviceId: string, formData: FormData) {
+  const rawMinimum = String(formData.get('minimumChargeOverride') ?? '').trim();
+  // pt-BR input: "1.250,50" -> 1250.5
+  const minimumChargeOverride = rawMinimum ? Number(rawMinimum.replace(/\./g, '').replace(',', '.')) : null;
+  const billEngineCounter = formData.get('billEngineCounter') === 'on';
+
+  try {
+    if (minimumChargeOverride != null && !Number.isFinite(minimumChargeOverride)) {
+      throw new Error('invalid minimum');
+    }
+    await updateDeviceBillingTerms(deviceId, { minimumChargeOverride, billEngineCounter });
+  } catch {
+    redirect(`/devices/${deviceId}?billingError=1`);
+  }
+  revalidatePath(`/devices/${deviceId}`);
+  revalidatePath('/customers');
+  redirect(`/devices/${deviceId}?billingTermsSaved=1`);
 }

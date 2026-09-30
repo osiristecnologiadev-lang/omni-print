@@ -92,6 +92,69 @@ describe('ContractsService.resolveBilling', () => {
     }
   });
 
+  it('PER_DEVICE_MINIMUM charges each printer max(minimum, pages x rate) - real SE August numbers', async () => {
+    // SE Distribuidora's manual August invoice (Multitoner): R$ 0,042/page,
+    // R$ 200 "franquia" per printer. BRBSQ9D0GW printed 18,629 (R$ 782,42),
+    // BRBSQ9N00D printed 1,665 (R$ 69,93 -> pays the R$ 200 franquia).
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_DEVICE_MINIMUM',
+      fixedFee: null,
+      pricePerPageMono: '0.042',
+      pricePerPageColor: '0.042',
+      minimumChargePerDevice: '200',
+    });
+    prisma.device.findMany.mockResolvedValue([
+      makeDevice({ id: 'big', minimumChargeOverride: null }),
+      makeDevice({ id: 'small', minimumChargeOverride: null }),
+      makeDevice({ id: 'override', minimumChargeOverride: '250' }),
+    ]);
+    prisma.metric.findFirst.mockResolvedValue(null);
+    prisma.metric.findMany.mockImplementation(({ where }: { where: { deviceId: string } }) => {
+      const [start, end] = { big: [43247, 61876], small: [46288, 47953], override: [1000, 2000] }[where.deviceId as 'big']!;
+      return Promise.resolve([
+        { collectedAt: new Date('2026-09-01T01:00:00Z'), pageCount: BigInt(start), monoPageCount: null, colorPageCount: null },
+        { collectedAt: periodEnd, pageCount: BigInt(end), monoPageCount: null, colorPageCount: null },
+      ]);
+    });
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      const byId = new Map(result.perDevice.map((d) => [d.deviceId, d]));
+      expect(byId.get('big')!.usageRevenue).toBeCloseTo(782.42, 2);
+      expect(byId.get('big')!.minimumApplied).toBe(false);
+      expect(byId.get('small')!.usageRevenue).toBe(200);
+      expect(byId.get('small')!.minimumApplied).toBe(true);
+      // 1,000 pages = R$ 42 -> this printer's own R$ 250 minimum, not the contract's R$ 200.
+      expect(byId.get('override')!.usageRevenue).toBe(250);
+      expect(result.usageCost).toBeCloseTo(782.42 + 200 + 250, 2);
+      expect(result.totalDue).toBeCloseTo(1232.42, 2);
+    }
+  });
+
+  it('billEngineCounter bills the engine counter even when a printed-pages split exists', async () => {
+    prisma.contract.findFirst.mockResolvedValue({ pricingModel: 'PER_PAGE', pricePerPageMono: '0.042', pricePerPageColor: '0.042' });
+    prisma.device.findMany.mockResolvedValue([
+      makeDevice({ billEngineCounter: true, manualBaselineDate: new Date('2026-08-31T12:00:00Z'), manualBaselinePageCount: BigInt(61876) }),
+    ]);
+    prisma.metric.findFirst.mockResolvedValue(null);
+    // Real BRBSQ9D0GW shape: engine counter above the baseline, printed split
+    // (only reported from 29/09) below it.
+    prisma.metric.findMany.mockResolvedValue([
+      { collectedAt: new Date('2026-09-08T12:00:00Z'), pageCount: BigInt(63706), monoPageCount: null, colorPageCount: null },
+      { collectedAt: new Date('2026-09-29T12:00:00Z'), pageCount: BigInt(70100), monoPageCount: BigInt(59062), colorPageCount: BigInt(0) },
+      { collectedAt: new Date('2026-09-30T12:00:00Z'), pageCount: BigInt(70544), monoPageCount: BigInt(59436), colorPageCount: BigInt(0) },
+    ]);
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      expect(result.totalPages).toBe(70544 - 61876);
+    }
+  });
+
   it('FLAT_RATE ignores page count entirely', async () => {
     prisma.contract.findFirst.mockResolvedValue({
       pricingModel: 'FLAT_RATE',

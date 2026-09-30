@@ -120,6 +120,8 @@ export class DevicesService {
       manualBaselineDate?: string | null;
       manualBaselinePageCount?: number | null;
       billingExcluded?: boolean;
+      minimumChargeOverride?: number | null;
+      billEngineCounter?: boolean;
     },
   ) {
     const device = await this.prisma.device.findFirst({ where: { id: deviceId, tenantId } });
@@ -133,6 +135,8 @@ export class DevicesService {
       manualBaselineDate?: Date | null;
       manualBaselinePageCount?: bigint | null;
       billingExcluded?: boolean;
+      minimumChargeOverride?: number | null;
+      billEngineCounter?: boolean;
     } = {};
 
     if (dto.customerId !== undefined) {
@@ -164,6 +168,12 @@ export class DevicesService {
 
     if (dto.billingExcluded !== undefined) {
       data.billingExcluded = dto.billingExcluded;
+    }
+    if (dto.minimumChargeOverride !== undefined) {
+      data.minimumChargeOverride = dto.minimumChargeOverride;
+    }
+    if (dto.billEngineCounter !== undefined) {
+      data.billEngineCounter = dto.billEngineCounter;
     }
 
     return this.prisma.device.update({ where: { id: deviceId }, data });

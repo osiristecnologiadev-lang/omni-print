@@ -87,6 +87,12 @@ export class UpdateContractDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  minimumChargePerDevice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   setupFee?: number;
 
   @IsOptional()

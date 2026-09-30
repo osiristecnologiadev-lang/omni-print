@@ -345,10 +345,18 @@ enum ContractStatus {
 // on one table (nullable, not required) rather than three separate tables:
 // a contract only ever uses one model at a time, the set of fields is small,
 // and one table keeps history/listing/display queries simple.
+//   PER_DEVICE_MINIMUM:     "mínimo por impressora" - EACH printer pays
+//                           max(minimum charge, its pages x pricePerPage*),
+//                           the bill is the sum (+ optional fixedFee). How
+//                           Multitoner really bills SE/Rodovibe (2026-09):
+//                           a printer that prints little still pays its
+//                           R$200/R$250 "franquia". minimumChargePerDevice is
+//                           the default; Device.minimumChargeOverride wins.
 enum ContractPricingModel {
   FLAT_RATE
   ALLOWANCE_PLUS_OVERAGE
   PER_PAGE
+  PER_DEVICE_MINIMUM
 }
 
 // The outsourcing tenant's billing agreement with one of its own customers -
@@ -397,6 +405,9 @@ model Contract {
   pricePerPageColor Decimal? @map("price_per_page_color") @db.Decimal(12, 4)
   minimumPagesMono  Int?     @map("minimum_pages_mono")
   minimumPagesColor Int?     @map("minimum_pages_color")
+
+  // PER_DEVICE_MINIMUM only (pricePerPage* above are its rates)
+  minimumChargePerDevice Decimal? @map("minimum_charge_per_device") @db.Decimal(12, 2)
 
   setupFee            Decimal? @map("setup_fee") @db.Decimal(12, 2)
   earlyTerminationFee Decimal? @map("early_termination_fee") @db.Decimal(12, 2)
@@ -727,6 +738,16 @@ model Device {
   // the outsourcing tenant doesn't serve, and every device of a customer was
   // billed. Tenant-wide admins toggle it on the device page.
   billingExcluded         Boolean   @default(false) @map("billing_excluded")
+  // PER_DEVICE_MINIMUM contracts: this printer's own minimum charge
+  // ("franquia"), overriding the contract's minimumChargePerDevice - real
+  // contracts mix values (Rodovibe: R$250 for most printers, R$200 for one).
+  minimumChargeOverride   Decimal?  @map("minimum_charge_override") @db.Decimal(12, 2)
+  // Bill this printer by its total engine counter even when it reports a
+  // "pages printed" split (DevicePagesService normally prefers the split).
+  // Some outsourcing contracts bill the total counter for specific models
+  // (SE's HP 4103 BRBSQ9D0GW, 2026-09): its split only appeared later and
+  // reads below the engine-counter baseline the tenant bills from.
+  billEngineCounter       Boolean   @default(false) @map("bill_engine_counter")
   firstSeenAt             DateTime  @default(now()) @map("first_seen_at")
   lastSeenAt              DateTime  @updatedAt @map("last_seen_at")
 

@@ -379,6 +379,10 @@ export interface Device {
   // "Fora do contrato" - monitored, but never billed. See the API's
   // Device.billingExcluded schema comment.
   billingExcluded: boolean;
+  // PER_DEVICE_MINIMUM: this printer's own minimum (Decimal as string).
+  minimumChargeOverride: string | null;
+  // Bill by the total engine counter even when a printed split exists.
+  billEngineCounter: boolean;
   firstSeenAt: string;
   lastSeenAt: string;
   latestMetric: LatestMetric | null;
@@ -1015,6 +1019,13 @@ export function updateDeviceManualBaseline(
   return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', { manualBaselineDate, manualBaselinePageCount });
 }
 
+export function updateDeviceBillingTerms(
+  deviceId: string,
+  terms: { minimumChargeOverride?: number | null; billEngineCounter?: boolean },
+): Promise<Device> {
+  return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', terms);
+}
+
 export function updateDeviceBillingExcluded(deviceId: string, billingExcluded: boolean): Promise<Device> {
   return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', { billingExcluded });
 }
@@ -1029,7 +1040,8 @@ export type ContractStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED';
 //   PER_PAGE:               every billable page costs pricePerPage, but
 //                           never fewer than minimumPages are billed even
 //                           if the customer printed less.
-export type ContractPricingModel = 'FLAT_RATE' | 'ALLOWANCE_PLUS_OVERAGE' | 'PER_PAGE';
+//   PER_DEVICE_MINIMUM:     each printer pays max(its minimum, pages x price).
+export type ContractPricingModel = 'FLAT_RATE' | 'ALLOWANCE_PLUS_OVERAGE' | 'PER_PAGE' | 'PER_DEVICE_MINIMUM';
 
 export interface Contract {
   id: string;
@@ -1051,6 +1063,7 @@ export interface Contract {
   pricePerPageColor: string | null;
   minimumPagesMono: number | null;
   minimumPagesColor: number | null;
+  minimumChargePerDevice: string | null;
   setupFee: string | null;
   earlyTerminationFee: string | null;
   adjustmentIndex: string | null;
@@ -1073,6 +1086,7 @@ export interface CreateContractInput {
   pricePerPageColor?: number;
   minimumPagesMono?: number;
   minimumPagesColor?: number;
+  minimumChargePerDevice?: number;
   setupFee?: number;
   earlyTerminationFee?: number;
   adjustmentIndex?: string;
@@ -1099,8 +1113,12 @@ export interface DevicePages {
   // responsible for, proportional to its own mono/color page share - not a
   // literal per-device bill (none of the pricing models actually bill per
   // printer). Always 0 under FLAT_RATE, since that fee isn't usage-based at
-  // all. See api's allocateUsageRevenue for the full reasoning.
+  // all. See api's allocateUsageRevenue for the full reasoning. Under
+  // PER_DEVICE_MINIMUM it IS the literal per-printer charge.
   usageRevenue: number;
+  // PER_DEVICE_MINIMUM only: this printer's minimum, and whether it paid it.
+  minimumCharge: number | null;
+  minimumApplied: boolean;
 }
 
 export type BillingResult =
