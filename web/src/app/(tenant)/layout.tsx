@@ -39,6 +39,21 @@ function SidebarLink({
   );
 }
 
+// A child row under a SidebarLink group (e.g. Relatórios' own reports) -
+// indented under the parent's icon column with a thin guide line, always
+// visible (the layout is server-rendered, so there's no open/closed state
+// to keep).
+function SidebarSubLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="ml-[1.4rem] block border-l border-line py-1.5 pl-4 text-[13px] text-ink-muted transition-colors hover:border-accent hover:text-ink"
+    >
+      {label}
+    </Link>
+  );
+}
+
 function CustomersIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -225,10 +240,11 @@ export default async function TenantLayout({ children }: { children: React.React
               same as the dashboard's own device table already shows them. */}
           <SidebarLink href="/devices" icon={<DevicesIcon />} label="Dispositivos" />
           {hasPermission(access, 'reports') && (
-            <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
-          )}
-          {hasPermission(access, 'reports') && (
-            <SidebarLink href="/reports/pages" icon={<ReportsIcon />} label="Páginas por impressora" />
+            <div>
+              <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
+              <SidebarSubLink href="/reports" label="Uso e receita" />
+              <SidebarSubLink href="/reports/pages" label="Páginas por impressora" />
+            </div>
           )}
           {/* Chamados is the one nav item both session types get - a
               customer-scoped user opens/tracks their own tickets here, a
