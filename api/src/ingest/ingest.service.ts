@@ -24,6 +24,10 @@ export class IngestService {
     const metrics = rawMetrics.map((m) => deepStripNul(m));
     for (const metric of metrics) {
       const device = await this.upsertDevice(tenantId, customerId, metric);
+      // Agents before v0.1.20 send page_count 0 when the counter couldn't be
+      // read (offline, or a walk that timed out) - store "no reading", not a
+      // fake zero. See DevicePagesService.pagesInPeriod.
+      const counterRead = metric.online && metric.page_count != null && metric.page_count > 0;
       await this.prisma.metric.create({
         data: {
           deviceId: device.id,
@@ -40,9 +44,9 @@ export class IngestService {
           deviceStatusCode: metric.device_status_code,
           deviceStatus: metric.device_status,
           errorState: metric.error_state,
-          pageCount: toBigInt(metric.page_count),
-          monoPageCount: toBigInt(metric.mono_page_count),
-          colorPageCount: toBigInt(metric.color_page_count),
+          pageCount: counterRead ? toBigInt(metric.page_count) : undefined,
+          monoPageCount: counterRead ? toBigInt(metric.mono_page_count) : undefined,
+          colorPageCount: counterRead ? toBigInt(metric.color_page_count) : undefined,
           powerOnCount: toBigInt(metric.power_on_count),
           supplies: metric.supplies,
           inputTrays: metric.input_trays,

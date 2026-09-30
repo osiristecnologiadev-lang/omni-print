@@ -320,7 +320,7 @@ export class DevicesService {
     const select = { collectedAt: true, pageCount: true, monoPageCount: true, colorPageCount: true } as const;
     const [baseline, inRange] = await Promise.all([
       this.prisma.metric.findFirst({
-        where: { deviceId, collectedAt: { lte: start } },
+        where: { deviceId, collectedAt: { lte: start }, pageCount: { gt: 0 } },
         orderBy: { collectedAt: 'desc' },
         select,
       }),
@@ -331,7 +331,11 @@ export class DevicesService {
       }),
     ]);
 
-    const sequence = [...(baseline ? [baseline] : []), ...inRange];
+    // 0/null = counter not read (offline poll) - same rule as
+    // DevicePagesService.pagesInPeriod.
+    const sequence = [...(baseline ? [baseline] : []), ...inRange].filter(
+      (m) => m.pageCount != null && Number(m.pageCount) > 0,
+    );
 
     // Same printed-vs-engine preference as DevicePagesService.pagesInPeriod
     // (see its comment for why they can differ a lot on the same device) -

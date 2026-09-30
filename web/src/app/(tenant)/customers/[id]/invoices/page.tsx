@@ -75,6 +75,13 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
       {searchParams?.error === '1' && (
         <Banner tone="error">Não foi possível gerar a fatura - confira se existe um contrato cobrindo esse período.</Banner>
       )}
+      {searchParams?.error === 'open' && (
+        <Banner tone="error">
+          Esse mês ainda não fechou - a fatura só pode ser gerada depois do último dia do mês (ela é gerada
+          automaticamente na madrugada do dia 1º). Para acompanhar o mês em andamento, use Relatórios → Páginas por
+          impressora.
+        </Banner>
+      )}
       {searchParams?.paid === '1' && <Banner tone="success">Fatura marcada como paga.</Banner>}
       {searchParams?.payError === '1' && <Banner tone="error">Não foi possível marcar a fatura como paga. Tente novamente.</Banner>}
       {searchParams?.cancelled === '1' && <Banner tone="success">Fatura cancelada.</Banner>}

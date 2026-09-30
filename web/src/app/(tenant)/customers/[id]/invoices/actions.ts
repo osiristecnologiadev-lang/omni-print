@@ -8,6 +8,11 @@ export async function generateInvoiceAction(customerId: string, formData: FormDa
   const year = Number(formData.get('year'));
   const month = Number(formData.get('month'));
 
+  // Same rule the API enforces - checked here too so the message can say why.
+  if (Date.UTC(year, month, 1) > Date.now()) {
+    redirect(`/customers/${customerId}/invoices?error=open`);
+  }
+
   try {
     await generateInvoice(customerId, year, month);
   } catch {

@@ -69,6 +69,29 @@ describe('ContractsService.resolveBilling', () => {
     });
   });
 
+  it('ignores 0 readings from offline polls instead of billing the whole lifetime counter', async () => {
+    // Real Rodovibe sequence (088WB07JC10S9CA, Sept 2026): first poll of the
+    // month was offline and old agents sent page_count 0 for it.
+    prisma.contract.findFirst.mockResolvedValue({ pricingModel: 'PER_PAGE', pricePerPageMono: '0.042' });
+    prisma.device.findMany.mockResolvedValue([makeDevice()]);
+    prisma.metric.findFirst.mockResolvedValue(null);
+    prisma.metric.findMany.mockResolvedValue([
+      { collectedAt: new Date('2026-09-26T12:21:00Z'), pageCount: BigInt(0), monoPageCount: null, colorPageCount: null },
+      { collectedAt: new Date('2026-09-26T12:25:00Z'), pageCount: BigInt(51368), monoPageCount: null, colorPageCount: null },
+      { collectedAt: new Date('2026-09-28T11:59:00Z'), pageCount: BigInt(0), monoPageCount: null, colorPageCount: null },
+      { collectedAt: new Date('2026-09-30T12:00:00Z'), pageCount: BigInt(51440), monoPageCount: null, colorPageCount: null },
+    ]);
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      expect(result.totalPages).toBe(72);
+      expect(result.perDevice[0].startReading).toBe(51368);
+      expect(result.perDevice[0].endReading).toBe(51440);
+    }
+  });
+
   it('FLAT_RATE ignores page count entirely', async () => {
     prisma.contract.findFirst.mockResolvedValue({
       pricingModel: 'FLAT_RATE',
@@ -143,16 +166,18 @@ describe('ContractsService.resolveBilling', () => {
       // Combined: 1200 mono (200 over the 1000 allowance), 800 color (300
       // over the 500 allowance) - same overage totals as the R$310 test
       // above, just split across two devices instead of one.
-      const anchor = { collectedAt: new Date('2026-09-01T01:00:00Z'), pageCount: BigInt(0), monoPageCount: BigInt(0), colorPageCount: BigInt(0) };
+      // Engine counter starts at 1000, not 0: a 0 page_count is treated as
+      // "counter not read" (see DevicePagesService.pagesInPeriod).
+      const anchor = { collectedAt: new Date('2026-09-01T01:00:00Z'), pageCount: BigInt(1000), monoPageCount: BigInt(0), colorPageCount: BigInt(0) };
       if (where.deviceId === 'device-a') {
         return Promise.resolve([
           anchor,
-          { collectedAt: periodEnd, pageCount: BigInt(600), monoPageCount: BigInt(600), colorPageCount: BigInt(0) },
+          { collectedAt: periodEnd, pageCount: BigInt(1600), monoPageCount: BigInt(600), colorPageCount: BigInt(0) },
         ]);
       }
       return Promise.resolve([
         anchor,
-        { collectedAt: periodEnd, pageCount: BigInt(1400), monoPageCount: BigInt(600), colorPageCount: BigInt(800) },
+        { collectedAt: periodEnd, pageCount: BigInt(2400), monoPageCount: BigInt(600), colorPageCount: BigInt(800) },
       ]);
     });
 
@@ -230,8 +255,8 @@ describe('ContractsService.resolveBilling', () => {
       minimumPagesColor: 0,
     });
     prisma.device.findMany.mockResolvedValue([makeDevice()]);
-    prisma.metric.findFirst.mockResolvedValue({ collectedAt: new Date('2026-08-31T00:00:00Z'), pageCount: BigInt(0), monoPageCount: null, colorPageCount: null });
-    prisma.metric.findMany.mockResolvedValue([{ collectedAt: periodEnd, pageCount: BigInt(1339), monoPageCount: null, colorPageCount: null }]);
+    prisma.metric.findFirst.mockResolvedValue({ collectedAt: new Date('2026-08-31T00:00:00Z'), pageCount: BigInt(10000), monoPageCount: null, colorPageCount: null });
+    prisma.metric.findMany.mockResolvedValue([{ collectedAt: periodEnd, pageCount: BigInt(11339), monoPageCount: null, colorPageCount: null }]);
 
     const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
 

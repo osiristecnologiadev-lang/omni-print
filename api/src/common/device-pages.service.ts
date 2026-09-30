@@ -54,9 +54,16 @@ export class DevicePagesService {
     end: Date,
   ): Promise<PagesInPeriodResult> {
     const deviceId = device.id;
+    // Only real counter readings count, here and below: a page_count of 0
+    // (or null) means the poll couldn't read the counter - older agents sent
+    // 0 for every offline poll (a third of all September 2026 metrics). A
+    // period whose first reading was one of those zeros billed the printer's
+    // entire lifetime counter as "this month" (found for real: Rodovibe,
+    // 51,440 and 177,660 pages). A genuinely brand-new printer's 0 is lost
+    // too, which costs at most the pages before its first non-zero reading.
     const [baseline, inPeriod] = await Promise.all([
       this.prisma.metric.findFirst({
-        where: { deviceId, collectedAt: { lte: start } },
+        where: { deviceId, collectedAt: { lte: start }, pageCount: { gt: 0 } },
         orderBy: { collectedAt: 'desc' },
       }),
       this.prisma.metric.findMany({
@@ -68,7 +75,7 @@ export class DevicePagesService {
     const sequence: Array<{ collectedAt: Date; pageCount: bigint | null; monoPageCount?: bigint | null; colorPageCount?: bigint | null }> =
       [...(baseline ? [baseline] : []), ...inPeriod];
 
-    const readings = sequence.filter((m) => m.pageCount != null);
+    const readings = sequence.filter((m) => m.pageCount != null && Number(m.pageCount) > 0);
 
     // The vendor's own "pages actually printed" counter (see
     // Collector.collectMarkerSplit's comment) - genuinely different from,

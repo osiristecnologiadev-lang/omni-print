@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -54,6 +54,15 @@ export class InvoicesService {
   async generate(tenantId: string, customerId: string, year: number, month: number) {
     await this.contractsService.requireCustomer(tenantId, customerId);
     const { periodStart, periodEnd } = monthRange(year, month);
+
+    // An invoice is a frozen snapshot and only one exists per month - one
+    // generated before the month closes bills a partial month forever, and
+    // the 2AM cron can't replace it (found for real: Rodovibe's September
+    // invoice generated on 24/09). "So far this month" belongs to the
+    // contract page / Páginas por impressora report instead.
+    if (periodEnd.getTime() > Date.now()) {
+      throw new BadRequestException('month not closed yet - invoices can only be generated after the month ends');
+    }
 
     const existing = await this.prisma.invoice.findUnique({
       where: { customerId_periodStart: { customerId, periodStart } },
