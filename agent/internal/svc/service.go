@@ -464,14 +464,21 @@ func (p *program) runDiscovery(ctx context.Context, tc *transport.Client) (found
 	if timeout <= 0 {
 		timeout = 800 * time.Millisecond
 	}
+	known := p.activeDevices()
+	knownHosts := make([]string, 0, len(known))
+	for _, d := range known {
+		knownHosts = append(knownHosts, d.Host)
+	}
 	devices := discovery.Run(ctx, discovery.Options{
-		Ranges:       p.cfg.Discovery.Ranges,
-		ExtraRanges:  p.panelRanges(ctx, tc),
-		Community:    community,
-		Port:         161,
-		Concurrency:  p.cfg.Discovery.Concurrency,
-		ProbeTimeout: timeout,
-		Delay:        100 * time.Millisecond,
+		Ranges:          p.cfg.Discovery.Ranges,
+		ExtraRanges:     p.panelRanges(ctx, tc),
+		KnownHosts:      knownHosts,
+		NoAutoNeighbors: p.cfg.Discovery.NoAutoNeighbors,
+		Community:       community,
+		Port:            161,
+		Concurrency:     p.cfg.Discovery.Concurrency,
+		ProbeTimeout:    timeout,
+		Delay:           100 * time.Millisecond,
 	})
 	return len(devices), p.addDiscovered(devices)
 }
@@ -516,10 +523,16 @@ func (p *program) activeDevices() []config.Device {
 func (p *program) cycle(ctx context.Context, col *collector.Collector, tc *transport.Client) {
 	start := time.Now()
 	metrics := col.PollAll(ctx, p.activeDevices())
+	// Re-read every cycle: a laptop/VM can change networks while running.
+	// No interfaces readable at all = no basis to flag anything.
+	ownNets := discovery.HostNetworks()
 	online := 0
-	for _, m := range metrics {
-		if m.Online {
+	for i := range metrics {
+		if metrics[i].Online {
 			online++
+		}
+		if len(ownNets) > 0 {
+			metrics[i].OutsideAgentNetwork = !discovery.OnNetworks(metrics[i].Host, ownNets)
 		}
 	}
 	// Logged every cycle: a cycle's duration was invisible until a real

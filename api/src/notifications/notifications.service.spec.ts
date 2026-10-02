@@ -26,7 +26,7 @@ describe('NotificationsService.syncNotifications', () => {
     customer: { findMany: jest.Mock };
   };
   let invoicesService: { alerts: jest.Mock };
-  let devicesService: { activeAlerts: jest.Mock; lowSupplyForecast: jest.Mock; listUnassigned: jest.Mock };
+  let devicesService: { activeAlerts: jest.Mock; lowSupplyForecast: jest.Mock; listUnassigned: jest.Mock; listPendingReview: jest.Mock };
   let ticketsService: { slaBreached: jest.Mock; createAutomated: jest.Mock };
   let emailService: { send: jest.Mock };
 
@@ -68,6 +68,7 @@ describe('NotificationsService.syncNotifications', () => {
       activeAlerts: jest.fn().mockResolvedValue([]),
       lowSupplyForecast: jest.fn().mockResolvedValue([]),
       listUnassigned: jest.fn().mockResolvedValue([]),
+      listPendingReview: jest.fn().mockResolvedValue([]),
     };
     ticketsService = { slaBreached: jest.fn().mockResolvedValue([]), createAutomated: jest.fn().mockResolvedValue({ id: 'auto-ticket-1' }) };
     emailService = { send: jest.fn().mockResolvedValue(undefined) };
@@ -111,6 +112,24 @@ describe('NotificationsService.syncNotifications', () => {
         // customLabel wins over the other name fields, same display
         // priority used everywhere else in the app (dashboard, device page).
         title: 'Dispositivo sem cliente: Recepção',
+      }),
+    });
+  });
+
+  it('creates a review notification for a device found outside its agent network', async () => {
+    devicesService.listPendingReview.mockResolvedValue([
+      { id: 'dev-9', name: 'SEC1234', printerName: null, customLabel: null, host: '192.168.50.7', serialNumber: '088WB07X', customerId: 'c1', customer: { name: 'DAC' } },
+    ]);
+
+    await service.syncNotifications('tenant-1');
+
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: 'DEVICE_REVIEW',
+        dedupeKey: 'device-review:dev-9',
+        body: expect.stringContaining('fora da rede do agente de DAC'),
+        linkHref: '/devices/dev-9',
+        customerId: null,
       }),
     });
   });

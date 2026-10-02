@@ -279,10 +279,16 @@ export function DeviceFleetTable({
                       <Link href={`/devices/${device.id}`} className="block">
                         <div className="font-medium text-ink">
                           {device.customLabel ?? device.printerName ?? device.name ?? device.host}
-                          {device.billingExcluded && (
-                            <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-normal text-ink-muted">
-                              fora do contrato
+                          {device.reviewPending ? (
+                            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-normal text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                              revisar
                             </span>
+                          ) : (
+                            device.billingExcluded && (
+                              <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-normal text-ink-muted">
+                                fora do contrato
+                              </span>
+                            )
                           )}
                         </div>
                         <div className="text-xs text-ink-faint">

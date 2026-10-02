@@ -239,7 +239,8 @@ export type NotificationType =
   | 'CRITICAL_DEVICE_ALERT'
   | 'LOW_SUPPLY'
   | 'UNASSIGNED_DEVICE'
-  | 'TICKET_SLA_BREACH';
+  | 'TICKET_SLA_BREACH'
+  | 'DEVICE_REVIEW';
 
 export interface Notification {
   id: string;
@@ -379,6 +380,9 @@ export interface Device {
   // "Fora do contrato" - monitored, but never billed. See the API's
   // Device.billingExcluded schema comment.
   billingExcluded: boolean;
+  // Found outside its agent's network and not confirmed yet - see the API's
+  // Device.reviewPending schema comment. Always billingExcluded meanwhile.
+  reviewPending: boolean;
   // PER_DEVICE_MINIMUM: this printer's own minimum (Decimal as string).
   minimumChargeOverride: string | null;
   // Bill by the total engine counter even when a printed split exists.

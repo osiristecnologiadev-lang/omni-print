@@ -21,6 +21,7 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   LOW_SUPPLY: 'Suprimento',
   UNASSIGNED_DEVICE: 'Sem cliente',
   TICKET_SLA_BREACH: 'Chamado',
+  DEVICE_REVIEW: 'Revisar impressora',
 };
 
 // The only two categories a tenant's own CLIENT can ever be emailed about
@@ -110,12 +111,13 @@ export class NotificationsService {
   // critical, DevicesService.lowSupplyForecast) - just shaped as individual
   // dedupeKey'd items instead of one bundled text blob.
   private async collectCurrentAlerts(tenantId: string): Promise<CurrentAlert[]> {
-    const [billingAlerts, activeAlerts, lowSupplies, unassignedDevices, breachedTickets] = await Promise.all([
+    const [billingAlerts, activeAlerts, lowSupplies, unassignedDevices, breachedTickets, reviewDevices] = await Promise.all([
       this.invoicesService.alerts(tenantId),
       this.devicesService.activeAlerts(tenantId, null),
       this.devicesService.lowSupplyForecast(tenantId, null, 14, 90),
       this.devicesService.listUnassigned(tenantId),
       this.ticketsService.slaBreached(tenantId),
+      this.devicesService.listPendingReview(tenantId),
     ]);
     const criticalDeviceAlerts = activeAlerts.filter((a) => a.severity === 'critical');
 
@@ -193,6 +195,24 @@ export class NotificationsService {
         body: `${d.host}${d.serialNumber ? ` · nº série ${d.serialNumber}` : ''} - atribua um cliente para que este dispositivo entre no faturamento.`,
         linkHref: `/devices/${d.id}`,
         customerId: null, // by definition - that's the whole point of this notification type
+      });
+    }
+
+    // Found outside the agent's own network - already "fora do contrato", so
+    // nothing is billed wrongly meanwhile, but it also bills nothing until
+    // someone confirms whose printer it is. Staff-only like UNASSIGNED_DEVICE:
+    // the customer it's tagged with may not even be the right one.
+    for (const d of reviewDevices) {
+      const deviceName = d.customLabel ?? d.printerName ?? d.name ?? d.host;
+      items.push({
+        type: 'DEVICE_REVIEW',
+        dedupeKey: `device-review:${d.id}`,
+        title: `Impressora nova para revisar: ${deviceName}`,
+        body:
+          `${d.host}${d.serialNumber ? ` · nº série ${d.serialNumber}` : ''} - encontrada fora da rede do agente` +
+          `${d.customer ? ` de ${d.customer.name}` : ''}. Confirme de qual cliente ela é e se entra no contrato.`,
+        linkHref: `/devices/${d.id}`,
+        customerId: null,
       });
     }
 

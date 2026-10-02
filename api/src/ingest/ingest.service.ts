@@ -139,8 +139,18 @@ export class IngestService {
       return this.prisma.device.update({ where: { id: device.id }, data });
     }
 
-    this.logger.log(`new device for tenant ${tenantId}: ${metric.device_name} (${metric.host})`);
-    return this.prisma.device.create({ data: { tenantId, customerId, ...data } });
+    // Found outside the agent's own network: on a network shared by several
+    // of the tenant's customers it may not be this agent's customer's
+    // printer at all - so it starts "fora do contrato" until a human
+    // confirms it (see Device.reviewPending). Never applied to an existing
+    // device: that decision was already made.
+    const review = metric.outside_agent_network === true;
+    this.logger.log(
+      `new device for tenant ${tenantId}: ${metric.device_name} (${metric.host})${review ? ' - outside the agent network, pending review' : ''}`,
+    );
+    return this.prisma.device.create({
+      data: { tenantId, customerId, ...data, ...(review ? { billingExcluded: true, reviewPending: true } : {}) },
+    });
   }
 }
 

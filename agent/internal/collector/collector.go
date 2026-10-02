@@ -160,6 +160,13 @@ type Metric struct {
 	PrinterName  string `json:"printer_name,omitempty"`
 	SerialNumber string `json:"serial_number,omitempty"`
 
+	// OutsideAgentNetwork: Host isn't on any subnet of the agent host's own
+	// interfaces (found via a panel range, AD, a print server or a
+	// neighbouring /24). The API creates such a NEW printer "fora do
+	// contrato" pending review - on a network shared by several companies
+	// it may not be this agent's customer's printer. Set by svc, not here.
+	OutsideAgentNetwork bool `json:"outside_agent_network,omitempty"`
+
 	// ConsoleDisplay is the literal text shown on the device's own front
 	// panel right now (e.g. "Printing", "Ready", "Door Open").
 	ConsoleDisplay string `json:"console_display,omitempty"`

@@ -82,6 +82,25 @@ export class DevicesService {
     });
   }
 
+  // Devices found outside their agent's network that nobody has confirmed
+  // yet - see Device.reviewPending / NotificationType.DEVICE_REVIEW.
+  listPendingReview(tenantId: string) {
+    return this.prisma.device.findMany({
+      where: { tenantId, reviewPending: true },
+      select: {
+        id: true,
+        name: true,
+        printerName: true,
+        customLabel: true,
+        host: true,
+        serialNumber: true,
+        customerId: true,
+        customer: { select: { name: true } },
+      },
+      orderBy: { firstSeenAt: 'desc' },
+    });
+  }
+
   async listMetrics(
     tenantId: string,
     customerId: string | null,
@@ -135,6 +154,7 @@ export class DevicesService {
       manualBaselineDate?: Date | null;
       manualBaselinePageCount?: bigint | null;
       billingExcluded?: boolean;
+      reviewPending?: boolean;
       minimumChargeOverride?: number | null;
       billEngineCounter?: boolean;
     } = {};
@@ -168,6 +188,8 @@ export class DevicesService {
 
     if (dto.billingExcluded !== undefined) {
       data.billingExcluded = dto.billingExcluded;
+      // Either answer is the human review Device.reviewPending waits for.
+      data.reviewPending = false;
     }
     if (dto.minimumChargeOverride !== undefined) {
       data.minimumChargeOverride = dto.minimumChargeOverride;

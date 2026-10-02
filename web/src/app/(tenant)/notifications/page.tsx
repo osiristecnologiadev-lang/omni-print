@@ -36,6 +36,7 @@ const TYPE_LABEL: Record<Notification['type'], string> = {
   LOW_SUPPLY: 'Suprimento',
   UNASSIGNED_DEVICE: 'Sem cliente',
   TICKET_SLA_BREACH: 'Chamado',
+  DEVICE_REVIEW: 'Revisar impressora',
 };
 
 const TYPE_TONE: Record<Notification['type'], BadgeTone> = {
@@ -45,6 +46,7 @@ const TYPE_TONE: Record<Notification['type'], BadgeTone> = {
   LOW_SUPPLY: 'warning',
   UNASSIGNED_DEVICE: 'warning',
   TICKET_SLA_BREACH: 'critical',
+  DEVICE_REVIEW: 'warning',
 };
 
 const ALL_TYPES: NotificationType[] = [
@@ -54,6 +56,7 @@ const ALL_TYPES: NotificationType[] = [
   'LOW_SUPPLY',
   'UNASSIGNED_DEVICE',
   'TICKET_SLA_BREACH',
+  'DEVICE_REVIEW',
 ];
 
 // Mirrors api's AUTO_TICKETABLE_TYPES (notifications.service.ts) exactly -

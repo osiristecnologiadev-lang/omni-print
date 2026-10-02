@@ -748,6 +748,13 @@ model Device {
   // (SE's HP 4103 BRBSQ9D0GW, 2026-09): its split only appeared later and
   // reads below the engine-counter baseline the tenant bills from.
   billEngineCounter       Boolean   @default(false) @map("bill_engine_counter")
+  // "Revisar": set by ingest on a NEW device the agent found outside its
+  // own network (agent >= v0.1.21 reports outside_agent_network) - such a
+  // device is created already billingExcluded, because on a network shared
+  // by several companies (DAC/SE/Rodovibe, 2026-10) it may well belong to a
+  // different customer than the agent's. Cleared by the first human
+  // billing decision (DevicesService.update, billingExcluded either way).
+  reviewPending           Boolean   @default(false) @map("review_pending")
   firstSeenAt             DateTime  @default(now()) @map("first_seen_at")
   lastSeenAt              DateTime  @updatedAt @map("last_seen_at")
 
@@ -834,6 +841,10 @@ enum NotificationType {
   // the client "we're failing our own SLA with you" isn't something an
   // automated alert should do on the tenant's behalf.
   TICKET_SLA_BREACH
+  // A device found outside its agent's own network that nobody has
+  // confirmed yet - see Device.reviewPending. Created "fora do contrato",
+  // so unlike UNASSIGNED_DEVICE it bills nothing until someone decides.
+  DEVICE_REVIEW
 }
 
 // One row per distinct issue (not per day) - dedupeKey is the stable

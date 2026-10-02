@@ -38,6 +38,12 @@ export class IngestMetricDto {
   @IsOptional() @IsString() serial_number?: string;
   @IsOptional() @IsString() console_display?: string;
 
+  // Agent >= v0.1.21: the printer's address isn't on any of the agent
+  // host's own subnets (found via a panel range, AD, a print server or a
+  // neighbouring subnet). Only consulted when the device is NEW - see
+  // Device.reviewPending.
+  @IsOptional() @IsBoolean() outside_agent_network?: boolean;
+
   @IsOptional() @IsInt() printer_status_code?: number;
   @IsOptional() @IsString() printer_status?: string;
   @IsOptional() @IsInt() device_status_code?: number;

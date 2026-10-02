@@ -74,12 +74,17 @@ type Options struct {
 	// ("Redes adicionais" on the customer page), for printers on other
 	// routed subnets/VLANs the agent can't find on its own. CIDRs or bare
 	// IPv4 addresses.
-	ExtraRanges  []string
-	Community    string
-	Port         uint16
-	Concurrency  int
-	ProbeTimeout time.Duration
-	Delay        time.Duration // pause between each worker's requests
+	ExtraRanges []string
+	// KnownHosts are the printers the agent already polls - hints, like a
+	// print server's ports, for which neighbouring /24s to sweep (see
+	// neighborNets). NoAutoNeighbors turns that off (config.yaml).
+	KnownHosts      []string
+	NoAutoNeighbors bool
+	Community       string
+	Port            uint16
+	Concurrency     int
+	ProbeTimeout    time.Duration
+	Delay           time.Duration // pause between each worker's requests
 }
 
 // Run sweeps the configured (or auto-detected) ranges and returns every host
@@ -94,7 +99,9 @@ type Options struct {
 //   - on a Windows print server, every network printer port it has
 //     configured, whatever subnet it's on - see printports.go;
 //   - printers published in Active Directory, plus the ports of the print
-//     servers hosting them - see directory.go.
+//     servers hosting them - see directory.go;
+//   - the /24s next to every printer the sources above (or earlier sweeps)
+//     point at - see neighbors.go.
 func Run(ctx context.Context, opts Options) []config.Device {
 	nets := parseRanges(opts.Ranges)
 	if len(nets) == 0 {
@@ -120,6 +127,30 @@ func Run(ctx context.Context, opts Options) []config.Device {
 	}
 	targets = mergeTargets(targets, printServerTargets(ctx, opts.Community))
 	targets = mergeTargets(targets, directoryTargets(ctx, opts.Community))
+
+	if !opts.NoAutoNeighbors {
+		scanned := append(append([]*net.IPNet{}, nets...), parseRanges(opts.ExtraRanges)...)
+		var hints []net.IP
+		for _, t := range targets {
+			if t.Label != "" { // a print server port / AD queue, not a sweep address
+				hints = append(hints, t.IP)
+			}
+		}
+		for _, h := range opts.KnownHosts {
+			if ip := net.ParseIP(h); ip != nil {
+				hints = append(hints, ip)
+			}
+		}
+		for _, n := range neighborNets(hints, scanned, maxAutoNeighborNets) {
+			hosts := hostsIn(n)
+			log.Printf("discovery: scanning %s (%d hosts, next to known printers)", n.String(), len(hosts))
+			near := make([]target, 0, len(hosts))
+			for _, ip := range hosts {
+				near = append(near, target{IP: ip, Community: opts.Community})
+			}
+			targets = mergeTargets(targets, near)
+		}
+	}
 
 	// The default 8 workers sweep ~5 hosts/s (most addresses on a big range
 	// never answer, and each silent one costs a full timeout + retry) - fine

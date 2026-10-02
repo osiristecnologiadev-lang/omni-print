@@ -111,4 +111,45 @@ describe('IngestService.upsertDevice (via ingest)', () => {
     expect(prisma.device.create).not.toHaveBeenCalled();
     expect(prisma.device.update).toHaveBeenCalledWith({ where: { id: 'existing-id' }, data: expect.anything() });
   });
+
+  // DAC/SE/Rodovibe (2026-10) share one network: a printer the agent finds
+  // outside its own subnet may belong to another customer, so it must not
+  // start billing under the agent's customer before someone confirms it.
+  it('creates a device found outside the agent network as fora do contrato, pending review', async () => {
+    prisma.device.findUnique.mockResolvedValue(null);
+    prisma.device.findFirst.mockResolvedValue(null);
+    prisma.device.create.mockResolvedValue({ id: 'new-id' });
+    prisma.metric.create.mockResolvedValue({});
+
+    await service.ingest('t1', 'cust-1', [baseMetric({ serial_number: 'REMOTE-1', outside_agent_network: true })]);
+
+    const createArg = prisma.device.create.mock.calls[0][0];
+    expect(createArg.data).toMatchObject({ customerId: 'cust-1', billingExcluded: true, reviewPending: true });
+  });
+
+  it('creates a device on the agent own network billable as before', async () => {
+    prisma.device.findUnique.mockResolvedValue(null);
+    prisma.device.findFirst.mockResolvedValue(null);
+    prisma.device.create.mockResolvedValue({ id: 'new-id' });
+    prisma.metric.create.mockResolvedValue({});
+
+    await service.ingest('t1', 'cust-1', [baseMetric({ serial_number: 'LOCAL-1', outside_agent_network: false })]);
+
+    const createArg = prisma.device.create.mock.calls[0][0];
+    expect(createArg.data.billingExcluded).toBeUndefined();
+    expect(createArg.data.reviewPending).toBeUndefined();
+  });
+
+  it('never re-flags an existing device, even when reported outside the agent network', async () => {
+    const existing = { id: 'existing-id', tenantId: 't1', serialNumber: 'SAME', host: '10.0.0.50' };
+    prisma.device.findUnique.mockResolvedValue(existing);
+    prisma.device.update.mockResolvedValue({ id: 'existing-id' });
+    prisma.metric.create.mockResolvedValue({});
+
+    await service.ingest('t1', 'cust-1', [baseMetric({ serial_number: 'SAME', outside_agent_network: true })]);
+
+    const updateArg = prisma.device.update.mock.calls[0][0];
+    expect(updateArg.data.billingExcluded).toBeUndefined();
+    expect(updateArg.data.reviewPending).toBeUndefined();
+  });
 });

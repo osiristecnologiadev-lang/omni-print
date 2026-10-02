@@ -59,6 +59,10 @@ type Discovery struct {
 	Interval     Duration `yaml:"interval"`
 	Concurrency  int      `yaml:"concurrency"`
 	ProbeTimeout Duration `yaml:"probe_timeout"`
+	// NoAutoNeighbors stops discovery from also sweeping the /24s next to
+	// printers it already knows about (see discovery.neighborNets) - on by
+	// default, this is the opt-out for a network where that's unwelcome.
+	NoAutoNeighbors bool `yaml:"no_auto_neighbors,omitempty"`
 }
 
 // AutoUpdate controls the self-update check (see internal/updater). Enabled

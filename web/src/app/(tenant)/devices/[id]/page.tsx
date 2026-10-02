@@ -147,6 +147,31 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
         </Banner>
       )}
 
+      {isTenantWide && device.reviewPending && (
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+          <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">Impressora nova para revisar</h2>
+          <p className="mt-1 text-sm text-amber-900/90 dark:text-amber-200/90">
+            O agente{device.customer ? ` de ${device.customer.name}` : ''} encontrou esta impressora fora da rede dele. Numa rede
+            compartilhada ela pode ser de outra empresa, por isso entrou <strong>fora do contrato</strong> e ainda não é cobrada.
+            Confira o cliente logo abaixo (troque se não for dele) e decida:
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <form action={boundUpdateBillingExcluded}>
+              <input type="hidden" name="billingExcluded" value="false" />
+              <SubmitButton variant="primary" size="sm" pendingLabel="Salvando...">
+                Confirmar e incluir no contrato
+              </SubmitButton>
+            </form>
+            <form action={boundUpdateBillingExcluded}>
+              <input type="hidden" name="billingExcluded" value="true" />
+              <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
+                Manter fora do contrato
+              </SubmitButton>
+            </form>
+          </div>
+        </div>
+      )}
+
       <header className="mt-4 mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-balance text-ink">{device.customLabel ?? agentReportedName}</h1>
