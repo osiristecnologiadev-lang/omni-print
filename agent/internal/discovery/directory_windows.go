@@ -42,38 +42,51 @@ const (
 	ldapReferral          = 0x0a
 )
 
-func adPrintQueues() ([]adQueue, error) {
+// ldapConnect binds to this machine's domain as the machine itself and
+// returns the connection (close with procLdapUnbind) plus one rootDSE naming
+// context (e.g. defaultNamingContext, configurationNamingContext).
+func ldapConnect(namingContext string) (ld uintptr, base string, err error) {
 	domain, err := machineDomain()
 	if err != nil {
-		return nil, err
+		return 0, "", err
 	}
 
 	host, _ := windows.UTF16PtrFromString(domain)
-	ld, _, _ := procLdapInit.Call(uintptr(unsafe.Pointer(host)), ldapPort)
+	ld, _, _ = procLdapInit.Call(uintptr(unsafe.Pointer(host)), ldapPort)
 	if ld == 0 {
-		return nil, fmt.Errorf("can't open an LDAP connection to domain %s", domain)
+		return 0, "", fmt.Errorf("can't open an LDAP connection to domain %s", domain)
 	}
-	defer procLdapUnbind.Call(ld)
 
 	version := uint32(3)
 	procLdapSetOption.Call(ld, ldapOptProtocolVer, uintptr(unsafe.Pointer(&version)))
 	runtime.KeepAlive(&version)
 
 	if rc, _, _ := procLdapBind.Call(ld, 0, 0, ldapAuthNegotiate); rc != ldapSuccess {
-		return nil, fmt.Errorf("can't authenticate to domain %s as this machine: %s", domain, ldapErr(rc))
+		procLdapUnbind.Call(ld)
+		return 0, "", fmt.Errorf("can't authenticate to domain %s as this machine: %s", domain, ldapErr(rc))
 	}
 
-	rootDSE, err := ldapSearch(ld, "", ldapScopeBase, "(objectClass=*)", []string{"defaultNamingContext"})
+	rootDSE, err := ldapSearch(ld, "", ldapScopeBase, "(objectClass=*)", []string{namingContext})
 	if err != nil {
-		return nil, fmt.Errorf("read rootDSE of %s: %w", domain, err)
+		procLdapUnbind.Call(ld)
+		return 0, "", fmt.Errorf("read rootDSE of %s: %w", domain, err)
 	}
-	var base string
-	if len(rootDSE) > 0 && len(rootDSE[0]["defaultNamingContext"]) > 0 {
-		base = rootDSE[0]["defaultNamingContext"][0]
+	if len(rootDSE) > 0 && len(rootDSE[0][namingContext]) > 0 {
+		base = rootDSE[0][namingContext][0]
 	}
 	if base == "" {
-		return nil, fmt.Errorf("domain %s didn't report its naming context", domain)
+		procLdapUnbind.Call(ld)
+		return 0, "", fmt.Errorf("domain %s didn't report its %s", domain, namingContext)
 	}
+	return ld, base, nil
+}
+
+func adPrintQueues() ([]adQueue, error) {
+	ld, base, err := ldapConnect("defaultNamingContext")
+	if err != nil {
+		return nil, err
+	}
+	defer procLdapUnbind.Call(ld)
 
 	entries, err := ldapSearch(ld, base, ldapScopeSubtree, "(objectCategory=printQueue)", []string{"printerName", "serverName", "portName"})
 	if err != nil {
@@ -89,6 +102,28 @@ func adPrintQueues() ([]adQueue, error) {
 			q.Server = v[0]
 		}
 		out = append(out, q)
+	}
+	return out, nil
+}
+
+// adSubnets lists the subnets defined in AD Sites and Services (e.g.
+// "192.168.1.0/24") - the domain's own map of its networks.
+func adSubnets() ([]string, error) {
+	ld, config, err := ldapConnect("configurationNamingContext")
+	if err != nil {
+		return nil, err
+	}
+	defer procLdapUnbind.Call(ld)
+
+	entries, err := ldapSearch(ld, "CN=Subnets,CN=Sites,"+config, ldapScopeSubtree, "(objectClass=subnet)", []string{"cn"})
+	if err != nil {
+		return nil, fmt.Errorf("search subnets in %s: %w", config, err)
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if v := e["cn"]; len(v) > 0 {
+			out = append(out, v[0])
+		}
 	}
 	return out, nil
 }

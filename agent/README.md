@@ -193,8 +193,17 @@ Como funciona:
 - Cada host candidato recebe uma consulta SNMP leve testando se ele
   implementa a Printer-MIB — switch, roteador, nobreak com SNMP habilitado
   não respondem a isso, só impressoras de verdade respondem.
-- Roda uma vez ao iniciar e depois a cada `interval` (padrão 24h) — não é
-  contínuo, não é a cada ciclo de coleta (30min).
+- Também varre, sozinho, as outras redes que o próprio cliente "declara": a
+  lista de sub-redes do Active Directory (Sites e Serviços) e as rotas da
+  tabela de roteamento do Windows — só redes privadas, de `/16` para baixo,
+  que ainda não sejam varridas (`no_auto_networks: true` desliga).
+- Roda **uma vez por dia, com as impressoras ligadas**: no primeiro ciclo de
+  coleta a partir das 9h em que pelo menos 90% das impressoras conhecidas
+  responderam — ou a partir das 14h de qualquer jeito. Antes rodava ao
+  iniciar o serviço, e num cliente que desliga o computador à noite isso era
+  sempre às ~7h50, com metade das impressoras ainda desligada. Instalação
+  nova, sem nenhuma impressora conhecida, varre na hora. Não é a cada ciclo
+  de coleta (30min).
 - Impressora nova encontrada entra direto no polling e fica registrada em
   `discovered.yaml` (ao lado do `config.yaml`), pra sobreviver a um restart
   sem precisar re-descobrir.
@@ -208,7 +217,7 @@ consulta direta logo depois. SNMP roda sobre UDP, que não garante entrega, e
 sob carga concorrente (12 workers simultâneos) um pacote se perdeu. Corrigido
 adicionando 1 retry por host na varredura. Mesmo assim, **uma varredura
 isolada não é garantia de inventário completo** — é por isso que ela roda
-periodicamente (`interval`, padrão 24h) em vez de uma vez só.
+todo dia em vez de uma vez só.
 
 ## Sobre antivírus/EDR barrando o agente
 
@@ -221,8 +230,7 @@ diferença que importa é **escopo e transparência**, não "nunca varrer nada":
   máquina onde o agente está instalado, nunca uma faixa arbitrária — e capado
   em `/20` na detecção automática. Faixas maiores exigem configuração
   explícita do admin.
-- **Não é contínuo**: roda 1x ao iniciar e depois no intervalo configurado
-  (padrão 24h), não a cada poll (30min).
+- **Não é contínuo**: roda 1x por dia (ver acima), não a cada poll (30min).
 - **Throttling** (concorrência limitada + pausa entre requisições) tanto na
   descoberta quanto no polling normal — evita o padrão de rajada que
   IDS/EDR associam a port scan.

@@ -56,6 +56,8 @@ type Discovery struct {
 	Enabled      bool     `yaml:"enabled"`
 	Ranges       []string `yaml:"ranges"` // CIDRs; empty = auto-detect the host's own subnet(s)
 	Community    string   `yaml:"community"`
+	// Interval only matters below 24h: the daily sweep itself waits for
+	// the printers to be on (see svc.maybeDailySweep), not for a timer.
 	Interval     Duration `yaml:"interval"`
 	Concurrency  int      `yaml:"concurrency"`
 	ProbeTimeout Duration `yaml:"probe_timeout"`
@@ -63,6 +65,10 @@ type Discovery struct {
 	// printers it already knows about (see discovery.neighborNets) - on by
 	// default, this is the opt-out for a network where that's unwelcome.
 	NoAutoNeighbors bool `yaml:"no_auto_neighbors,omitempty"`
+	// NoAutoNetworks stops discovery from also sweeping the networks Active
+	// Directory's subnet list and the routing table name (see
+	// discovery.autoNetworks) - same opt-out reasoning.
+	NoAutoNetworks bool `yaml:"no_auto_networks,omitempty"`
 }
 
 // AutoUpdate controls the self-update check (see internal/updater). Enabled

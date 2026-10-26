@@ -9,3 +9,7 @@ func printServerPorts() []printPort { return nil }
 func remotePrintServerPorts(string) []printPort { return nil }
 
 func adPrintQueues() ([]adQueue, error) { return nil, errNotInDomain }
+
+func adSubnets() ([]string, error) { return nil, errNotInDomain }
+
+func routedNetworks() ([]string, error) { return nil, nil }

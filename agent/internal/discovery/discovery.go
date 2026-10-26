@@ -80,6 +80,9 @@ type Options struct {
 	// neighborNets). NoAutoNeighbors turns that off (config.yaml).
 	KnownHosts      []string
 	NoAutoNeighbors bool
+	// NoAutoNetworks turns off sweeping the networks Active Directory and
+	// the routing table name (see autoNetworks) - config.yaml.
+	NoAutoNetworks bool
 	Community       string
 	Port            uint16
 	Concurrency     int
@@ -100,6 +103,8 @@ type Options struct {
 //     configured, whatever subnet it's on - see printports.go;
 //   - printers published in Active Directory, plus the ports of the print
 //     servers hosting them - see directory.go;
+//   - the other networks Active Directory's subnet list and this host's
+//     routing table name - see autonets.go;
 //   - the /24s next to every printer the sources above (or earlier sweeps)
 //     point at - see neighbors.go.
 func Run(ctx context.Context, opts Options) []config.Device {
@@ -125,11 +130,23 @@ func Run(ctx context.Context, opts Options) []config.Device {
 		}
 		targets = mergeTargets(targets, extra)
 	}
+	scanned := append(append([]*net.IPNet{}, nets...), parseRanges(opts.ExtraRanges)...)
+	if !opts.NoAutoNetworks {
+		for _, a := range autoNetworks(ctx, scanned) {
+			hosts := hostsIn(a.Net)
+			log.Printf("discovery: scanning %s (%d hosts, found in the %s)", a.Net.String(), len(hosts), a.Source)
+			auto := make([]target, 0, len(hosts))
+			for _, ip := range hosts {
+				auto = append(auto, target{IP: ip, Community: opts.Community})
+			}
+			targets = mergeTargets(targets, auto)
+			scanned = append(scanned, a.Net)
+		}
+	}
 	targets = mergeTargets(targets, printServerTargets(ctx, opts.Community))
 	targets = mergeTargets(targets, directoryTargets(ctx, opts.Community))
 
 	if !opts.NoAutoNeighbors {
-		scanned := append(append([]*net.IPNet{}, nets...), parseRanges(opts.ExtraRanges)...)
 		var hints []net.IP
 		for _, t := range targets {
 			if t.Label != "" { // a print server port / AD queue, not a sweep address

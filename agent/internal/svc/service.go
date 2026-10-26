@@ -42,6 +42,7 @@ type program struct {
 	discovering   atomic.Bool
 	discoveryDone chan int
 	extraRanges   []string // last ranges fetched from the panel, reused when the fetch fails (guarded by mu)
+	sweptDay      string   // local "YYYY-MM-DD" of the last finished sweep, see maybeDailySweep (guarded by mu)
 
 	updating sync.Mutex // see checkForUpdate
 }
@@ -146,7 +147,9 @@ func (p *program) run(ctx context.Context) {
 	// picked up at all. See controlLoop.
 	go p.controlLoop(ctx, tc)
 
-	if p.cfg.Discovery.Enabled {
+	// A fresh install with nothing to poll yet looks right away; otherwise
+	// the daily sweep waits for the printers to be on - see maybeDailySweep.
+	if p.cfg.Discovery.Enabled && len(p.activeDevices()) == 0 {
 		p.startDiscovery(ctx, tc, nil)
 	}
 	// Both before the first cycle, which can take minutes on a big fleet.
@@ -156,13 +159,15 @@ func (p *program) run(ctx context.Context) {
 	// otherwise go a full day+ without ever contributing to the per-day
 	// history if it never survives long enough for that ticker to fire.
 	p.uploadDailyLog(ctx, tc)
-	p.cycle(ctx, col, tc)
+	p.maybeDailySweep(ctx, tc, p.cycle(ctx, col, tc))
 
 	pollTicker := time.NewTicker(p.cfg.PollInterval.Duration())
 	defer pollTicker.Stop()
 
+	// Only for an interval explicitly configured below a day - the daily
+	// sweep itself is maybeDailySweep's job.
 	var discoveryC <-chan time.Time
-	if p.cfg.Discovery.Enabled {
+	if p.cfg.Discovery.Enabled && p.cfg.Discovery.Interval.Duration() < 24*time.Hour {
 		discoveryTicker := time.NewTicker(p.cfg.Discovery.Interval.Duration())
 		defer discoveryTicker.Stop()
 		discoveryC = discoveryTicker.C
@@ -187,7 +192,7 @@ func (p *program) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-pollTicker.C:
-			p.cycle(ctx, col, tc)
+			p.maybeDailySweep(ctx, tc, p.cycle(ctx, col, tc))
 		case <-discoveryC:
 			if !p.startDiscovery(ctx, tc, nil) {
 				log.Printf("discovery: previous sweep still running - skipping this scheduled one")
@@ -413,6 +418,49 @@ func (p *program) checkCommand(ctx context.Context, tc *transport.Client) {
 	}
 }
 
+// When the day's sweep runs - see maybeDailySweep.
+const (
+	dailySweepEarliestHour = 9
+	dailySweepAnswerRatio  = 0.9
+	dailySweepFallbackHour = 14
+)
+
+// maybeDailySweep runs the day's discovery sweep once the printers are
+// actually on: at the first poll cycle of the (local) day, from 09:00, where
+// at least 90% of the known printers answered - or from 14:00 regardless.
+// Not before 09:00 even if they answer: an always-on server would otherwise
+// sweep at midnight, while printers only switched on in office hours are off. A sweep
+// finished earlier the same day (e.g. a "Buscar impressoras" command)
+// counts.
+//
+// Used to be "at startup, then every 24h" - on a real customer (Cartório
+// 2º Ofício, 2026-10) the PC is switched off every night, so the agent
+// restarted every morning at 07:51 and swept when only 7 of 18 printers
+// were on yet; a printer the tenant bills every month went 10 days unseen
+// until a sweep was run by hand at 09:34.
+func (p *program) maybeDailySweep(ctx context.Context, tc *transport.Client, polled pollResult) {
+	if !p.cfg.Discovery.Enabled {
+		return
+	}
+	p.mu.Lock()
+	sweptDay := p.sweptDay
+	p.mu.Unlock()
+	if !dailySweepDue(time.Now(), sweptDay, polled) {
+		return
+	}
+	if p.startDiscovery(ctx, tc, nil) {
+		log.Printf("discovery: starting today's sweep (%d of %d known printers answered the last poll)", polled.online, polled.total)
+	}
+}
+
+func dailySweepDue(now time.Time, sweptDay string, polled pollResult) bool {
+	if sweptDay == now.Format("2006-01-02") || now.Hour() < dailySweepEarliestHour {
+		return false
+	}
+	printersOn := polled.total == 0 || float64(polled.online) >= dailySweepAnswerRatio*float64(polled.total)
+	return printersOn || now.Hour() >= dailySweepFallbackHour
+}
+
 // startDiscovery runs one sweep in the background, unless one is already
 // running (returns false then). onDone, if set, gets the sweep's outcome.
 func (p *program) startDiscovery(ctx context.Context, tc *transport.Client, onDone func(found, added int)) bool {
@@ -422,6 +470,11 @@ func (p *program) startDiscovery(ctx context.Context, tc *transport.Client, onDo
 	go func() {
 		defer p.discovering.Store(false)
 		found, added := p.runDiscovery(ctx, tc)
+		if ctx.Err() == nil {
+			p.mu.Lock()
+			p.sweptDay = time.Now().Format("2006-01-02")
+			p.mu.Unlock()
+		}
 		if onDone != nil {
 			onDone(found, added)
 		}
@@ -474,6 +527,7 @@ func (p *program) runDiscovery(ctx context.Context, tc *transport.Client) (found
 		ExtraRanges:     p.panelRanges(ctx, tc),
 		KnownHosts:      knownHosts,
 		NoAutoNeighbors: p.cfg.Discovery.NoAutoNeighbors,
+		NoAutoNetworks:  p.cfg.Discovery.NoAutoNetworks,
 		Community:       community,
 		Port:            161,
 		Concurrency:     p.cfg.Discovery.Concurrency,
@@ -520,7 +574,9 @@ func (p *program) activeDevices() []config.Device {
 	return out
 }
 
-func (p *program) cycle(ctx context.Context, col *collector.Collector, tc *transport.Client) {
+type pollResult struct{ online, total int }
+
+func (p *program) cycle(ctx context.Context, col *collector.Collector, tc *transport.Client) pollResult {
 	start := time.Now()
 	metrics := col.PollAll(ctx, p.activeDevices())
 	// Re-read every cycle: a laptop/VM can change networks while running.
@@ -541,6 +597,7 @@ func (p *program) cycle(ctx context.Context, col *collector.Collector, tc *trans
 	if err := tc.SendMetrics(ctx, p.cfg.TenantID, metrics); err != nil {
 		log.Printf("failed to send metrics: %v", err)
 	}
+	return pollResult{online: online, total: len(metrics)}
 }
 
 func (p *program) Stop(s service.Service) error {
