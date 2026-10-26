@@ -310,6 +310,13 @@ model Customer {
   // agents by GET /v1/agent/discovery-config.
   discoveryRanges String[] @default([]) @map("discovery_ranges")
 
+  // "Dia de fechamento": the day of the month this customer's counters are
+  // closed, 1-28. 1 = calendar month; e.g. 28 = 28/09 - 27/10. Every billing
+  // period (invoices, the contract calculator, "período atual") follows it -
+  // see common/billing-cycle.util.ts. Per customer, not per contract, so a
+  // renegotiated contract doesn't shift the periods under existing invoices.
+  billingCycleDay Int @default(1) @map("billing_cycle_day")
+
   devices              Device[]
   users                User[]
   agentTokens          AgentToken[]

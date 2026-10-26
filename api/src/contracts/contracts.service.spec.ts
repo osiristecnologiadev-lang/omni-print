@@ -716,12 +716,17 @@ describe('ContractsService.resolveBilling', () => {
 
 describe('ContractsService.currentPeriodPreview', () => {
   let service: ContractsService;
-  let prisma: { customer: { findFirst: jest.Mock }; contract: { findFirst: jest.Mock; findMany: jest.Mock } };
+  let prisma: {
+    customer: { findFirst: jest.Mock };
+    contract: { findFirst: jest.Mock; findMany: jest.Mock };
+    invoice: { findFirst: jest.Mock };
+  };
 
   beforeEach(async () => {
     prisma = {
       customer: { findFirst: jest.fn() },
       contract: { findFirst: jest.fn(), findMany: jest.fn() },
+      invoice: { findFirst: jest.fn().mockResolvedValue(null) },
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -744,6 +749,15 @@ describe('ContractsService.currentPeriodPreview', () => {
     expect(spy).toHaveBeenCalledWith('t1', 'c1', new Date('2026-09-01T00:00:00.000Z'), new Date('2026-09-15T12:00:00Z'));
   });
 
+  it("follows the customer's closing day: day 10 on 15/09 is already the 10/09 - 09/10 period", async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'c1', billingCycleDay: 10 });
+    const spy = jest.spyOn(service, 'resolveBilling').mockResolvedValue({ hasContract: false, periodStart: new Date(), periodEnd: new Date() });
+
+    await service.currentPeriodPreview('t1', 'c1');
+
+    expect(spy).toHaveBeenCalledWith('t1', 'c1', new Date('2026-09-10T00:00:00.000Z'), new Date('2026-09-15T12:00:00Z'));
+  });
+
   it('throws when the customer does not belong to this tenant', async () => {
     prisma.customer.findFirst.mockResolvedValue(null);
     await expect(service.currentPeriodPreview('t1', 'missing')).rejects.toThrow();
@@ -752,12 +766,17 @@ describe('ContractsService.currentPeriodPreview', () => {
 
 describe('ContractsService.portfolioCurrentPeriodPreview', () => {
   let service: ContractsService;
-  let prisma: { customer: { findFirst: jest.Mock }; contract: { findFirst: jest.Mock; findMany: jest.Mock } };
+  let prisma: {
+    customer: { findFirst: jest.Mock };
+    contract: { findFirst: jest.Mock; findMany: jest.Mock };
+    invoice: { findFirst: jest.Mock };
+  };
 
   beforeEach(async () => {
     prisma = {
       customer: { findFirst: jest.fn() },
       contract: { findFirst: jest.fn(), findMany: jest.fn() },
+      invoice: { findFirst: jest.fn().mockResolvedValue(null) },
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -789,8 +808,8 @@ describe('ContractsService.portfolioCurrentPeriodPreview', () => {
 
     expect(result.totalAccrued).toBe(350);
     expect(result.byCustomer).toEqual([
-      { customerId: 'b', customerName: 'Customer B', totalDue: 250, totalPages: 900 },
-      { customerId: 'a', customerName: 'Customer A', totalDue: 100, totalPages: 500 },
+      { customerId: 'b', customerName: 'Customer B', periodStart: '2026-09-01T00:00:00.000Z', totalDue: 250, totalPages: 900 },
+      { customerId: 'a', customerName: 'Customer A', periodStart: '2026-09-01T00:00:00.000Z', totalDue: 100, totalPages: 500 },
     ]);
   });
 
@@ -809,5 +828,52 @@ describe('ContractsService.portfolioCurrentPeriodPreview', () => {
     const result = await service.portfolioCurrentPeriodPreview('t1');
     expect(result.totalAccrued).toBe(0);
     expect(result.byCustomer).toEqual([]);
+  });
+});
+
+describe('ContractsService.periodFor', () => {
+  let service: ContractsService;
+  let prisma: { invoice: { findFirst: jest.Mock } };
+
+  beforeEach(async () => {
+    prisma = { invoice: { findFirst: jest.fn().mockResolvedValue(null) } };
+    const moduleRef = await Test.createTestingModule({
+      providers: [ContractsService, DevicePagesService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = moduleRef.get(ContractsService);
+  });
+
+  const iso = (p: { periodStart: Date; periodEnd: Date }) => [p.periodStart.toISOString(), p.periodEnd.toISOString()];
+
+  it("steady state: the previous invoice ends right before, nothing moves", async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ periodEnd: new Date('2026-09-27T23:59:59.999Z') });
+    expect(iso(await service.periodFor({ id: 'c1', billingCycleDay: 28 }, 2026, 10))).toEqual([
+      '2026-09-28T00:00:00.000Z',
+      '2026-10-27T23:59:59.999Z',
+    ]);
+  });
+
+  it('switching day 1 -> 28 after September was invoiced: October starts 01/10, no double billing', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ periodEnd: new Date('2026-09-30T23:59:59.999Z') });
+    expect(iso(await service.periodFor({ id: 'c1', billingCycleDay: 28 }, 2026, 10))).toEqual([
+      '2026-10-01T00:00:00.000Z',
+      '2026-10-27T23:59:59.999Z',
+    ]);
+  });
+
+  it('switching day 28 -> 1 after October was invoiced: November starts 28/10, no unbilled days', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ periodEnd: new Date('2026-10-27T23:59:59.999Z') });
+    expect(iso(await service.periodFor({ id: 'c1', billingCycleDay: 1 }, 2026, 11))).toEqual([
+      '2026-10-28T00:00:00.000Z',
+      '2026-11-30T23:59:59.999Z',
+    ]);
+  });
+
+  it('a month with no invoice in between (no contract) is not stitched over', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ periodEnd: new Date('2026-08-31T23:59:59.999Z') });
+    expect(iso(await service.periodFor({ id: 'c1', billingCycleDay: 1 }, 2026, 10))).toEqual([
+      '2026-10-01T00:00:00.000Z',
+      '2026-10-31T23:59:59.999Z',
+    ]);
   });
 });

@@ -42,6 +42,9 @@ export interface Customer {
   slaHoursMedium: number | null;
   slaHoursHigh: number | null;
   slaHoursUrgent: number | null;
+  // "Dia de fechamento", 1-28 - 1 is the calendar month; e.g. 28 closes
+  // 28/09 - 27/10. See the API's common/billing-cycle.util.ts.
+  billingCycleDay: number;
   // Extra network ranges this customer's agents sweep for printers, on top
   // of what they find by themselves - see the API's Customer.discoveryRanges.
   discoveryRanges: string[];
@@ -57,6 +60,7 @@ export function updateCustomer(
     slaHoursMedium?: number | null;
     slaHoursHigh?: number | null;
     slaHoursUrgent?: number | null;
+    billingCycleDay?: number;
   },
 ): Promise<Customer> {
   return apiMutate<Customer>(`/v1/customers/${customerId}`, 'PATCH', input);
@@ -761,6 +765,10 @@ export interface DevicePagesReportRow {
   host: string;
   customerId: string | null;
   customerName: string | null;
+  // This row's own window - follows its customer's closing day, so rows of
+  // different customers can cover different dates for the same month.
+  periodStart: string;
+  periodEnd: string;
   billingExcluded: boolean;
   pages: number;
   monoPages: number;
@@ -1183,7 +1191,9 @@ export interface PortfolioCurrentPeriod {
   periodStart: string;
   periodEnd: string;
   totalAccrued: number;
-  byCustomer: Array<{ customerId: string; customerName: string; totalDue: number; totalPages: number }>;
+  // Each customer's own current period start (see Customer.billingCycleDay)
+  // - the top-level periodStart is the earliest of them.
+  byCustomer: Array<{ customerId: string; customerName: string; periodStart: string; totalDue: number; totalPages: number }>;
 }
 
 export function getPortfolioCurrentPeriod(): Promise<PortfolioCurrentPeriod> {

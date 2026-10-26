@@ -183,6 +183,21 @@ export async function updateCustomerNotifyEmailAction(customerId: string, formDa
   redirect(`/customers/${customerId}?notifyEmailSaved=1`);
 }
 
+export async function updateCustomerBillingCycleAction(customerId: string, formData: FormData) {
+  const billingCycleDay = Number(formData.get('billingCycleDay'));
+  if (!Number.isInteger(billingCycleDay) || billingCycleDay < 1 || billingCycleDay > 28) {
+    redirect(`/customers/${customerId}?cycleError=1`);
+  }
+
+  try {
+    await updateCustomer(customerId, { billingCycleDay });
+  } catch {
+    redirect(`/customers/${customerId}?cycleError=1`);
+  }
+  revalidatePath(`/customers/${customerId}`);
+  redirect(`/customers/${customerId}?cycleSaved=1`);
+}
+
 // An empty field means "use the global default" - sent as null (explicit
 // clear) rather than omitted, so a previously-set override actually gets
 // removed instead of silently staying in place (see UpdateCustomerDto's

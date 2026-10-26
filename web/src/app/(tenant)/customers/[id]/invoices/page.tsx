@@ -77,9 +77,9 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
       )}
       {searchParams?.error === 'open' && (
         <Banner tone="error">
-          Esse mês ainda não fechou - a fatura só pode ser gerada depois do último dia do mês (ela é gerada
-          automaticamente na madrugada do dia 1º). Para acompanhar o mês em andamento, use Relatórios → Páginas por
-          impressora.
+          Esse período ainda não fechou - a fatura só pode ser gerada depois do dia de fechamento do cliente (ela é
+          gerada automaticamente na madrugada seguinte). Para acompanhar o período em andamento, use Relatórios →
+          Páginas por impressora.
         </Banner>
       )}
       {searchParams?.paid === '1' && <Banner tone="success">Fatura marcada como paga.</Banner>}
@@ -91,8 +91,15 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
       <Panel className="mb-6">
         <h2 className="mb-1 text-sm font-medium text-ink">Gerar fatura</h2>
         <p className="mb-4 text-xs text-ink-faint">
-          Todo dia, o sistema já gera automaticamente a fatura do mês fechado anterior. Use isto para gerar um mês
-          específico antecipadamente ou para preencher um mês antigo.
+          Todo dia, o sistema já gera automaticamente a fatura do período que acabou de fechar. Use isto para
+          preencher um mês antigo.
+          {customer && customer.billingCycleDay > 1 && (
+            <>
+              {' '}
+              Este cliente fecha todo dia {customer.billingCycleDay}: a fatura de um mês cobre do dia{' '}
+              {customer.billingCycleDay} do mês anterior ao dia {customer.billingCycleDay - 1} do mês escolhido.
+            </>
+          )}
         </p>
         <form action={boundGenerate} className="flex items-center gap-2">
           <select name="month" defaultValue={now.getMonth() + 1} className={selectClass}>

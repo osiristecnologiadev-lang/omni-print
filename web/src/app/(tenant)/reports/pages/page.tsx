@@ -19,6 +19,13 @@ function formatReadingDate(iso: string | null, timeZone?: string): string {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone }).format(new Date(iso));
 }
 
+// Period bounds are UTC-anchored calendar dates (see dashboard/page.tsx's
+// formatUtcDate) - a period still in progress ends "now", a real instant,
+// but its UTC day is close enough for this label.
+function formatPeriodDate(iso: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(new Date(iso));
+}
+
 export default async function DevicePagesReportPage(props: PageProps<'/reports/pages'>) {
   const searchParams = await props.searchParams;
 
@@ -53,7 +60,7 @@ export default async function DevicePagesReportPage(props: PageProps<'/reports/p
       </Link>
       <PageHeader
         title="Páginas por impressora"
-        subtitle="Leitura inicial, leitura final e páginas de cada impressora no mês - não depende de contrato."
+        subtitle="Leitura inicial, leitura final e páginas de cada impressora no mês - não depende de contrato. Clientes com dia de fechamento próprio usam o seu período."
       />
 
       <form method="get" className="mb-6 flex flex-wrap items-center gap-2">
@@ -92,6 +99,9 @@ export default async function DevicePagesReportPage(props: PageProps<'/reports/p
             <h2 className="text-sm font-medium text-ink">
               {integer.format(report.totalPages)} páginas em {report.rows.length} impressoras
             </h2>
+            <p className="mt-0.5 text-xs text-ink-faint">
+              Período: {formatPeriodDate(report.periodStart)} a {formatPeriodDate(report.periodEnd)}
+            </p>
             {excludedCount > 0 && (
               <p className="mt-0.5 text-xs text-ink-faint">
                 {integer.format(billedPages)} páginas nas impressoras do contrato · {excludedCount} fora do contrato
@@ -125,7 +135,14 @@ export default async function DevicePagesReportPage(props: PageProps<'/reports/p
                 {report.rows.map((r) => (
                   <tr key={r.deviceId} className={`border-b border-line last:border-0 ${r.billingExcluded ? 'opacity-60' : ''}`}>
                     {isTenantWide && !customerId && (
-                      <td className="py-2 pr-3 text-ink-muted">{r.customerName ?? '—'}</td>
+                      <td className="py-2 pr-3 text-ink-muted">
+                        {r.customerName ?? '—'}
+                        {r.periodStart !== report.periodStart && (
+                          <div className="text-[11px] text-ink-faint">
+                            {formatPeriodDate(r.periodStart)} a {formatPeriodDate(r.periodEnd)}
+                          </div>
+                        )}
+                      </td>
                     )}
                     <td className="py-2 pr-3">
                       <Link href={`/devices/${r.deviceId}`} className="text-ink hover:text-accent">

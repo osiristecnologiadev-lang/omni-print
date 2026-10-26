@@ -27,6 +27,7 @@ import {
   updateCustomerInfoAction,
   updateCustomerNotifyEmailAction,
   updateCustomerSlaAction,
+  updateCustomerBillingCycleAction,
 } from './actions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
@@ -142,6 +143,14 @@ function formatDate(iso: string): string {
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
+// "Ex.: outubro = 28/09 a 27/10" - a period is named by the month it ends
+// in (see the API's common/billing-cycle.util.ts).
+function billingCycleExample(day: number): string {
+  if (day <= 1) return 'Hoje: mês fechado, do dia 1º ao último dia do mês.';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `Hoje: fecha todo dia ${day} - ex.: a fatura de outubro cobre ${pad(day)}/09 a ${pad(day - 1)}/10, e a de novembro ${pad(day)}/10 a ${pad(day - 1)}/11.`;
+}
+
 export default async function CustomerPage(props: PageProps<'/customers/[id]'>) {
   const { id } = await props.params;
   const searchParams = await props.searchParams;
@@ -179,6 +188,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
   const boundUpdateInfo = updateCustomerInfoAction.bind(null, id);
   const boundUpdateNotifyEmail = updateCustomerNotifyEmailAction.bind(null, id);
   const boundUpdateSla = updateCustomerSlaAction.bind(null, id);
+  const boundUpdateBillingCycle = updateCustomerBillingCycleAction.bind(null, id);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -249,6 +259,33 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           </ul>
         </Panel>
       )}
+
+      <Panel className="mb-6">
+        <h2 className="mb-1 text-sm font-medium text-ink">Dia de fechamento</h2>
+        <p className="mb-4 text-xs text-ink-faint">
+          Dia do mês em que os contadores de &ldquo;{customer.name}&rdquo; são fechados. Todas as faturas, o cálculo do
+          contrato e o período atual seguem este dia. {billingCycleExample(customer.billingCycleDay)}
+        </p>
+        {searchParams?.cycleSaved === '1' && <Banner tone="success">Dia de fechamento salvo.</Banner>}
+        {searchParams?.cycleError === '1' && (
+          <Banner tone="error">Não foi possível salvar o dia de fechamento. Tente novamente.</Banner>
+        )}
+        <form action={boundUpdateBillingCycle} className="flex flex-wrap items-end gap-2">
+          <label className="text-xs text-ink-muted">
+            Fecha todo dia
+            <select name="billingCycleDay" defaultValue={customer.billingCycleDay} className={`${inputClass} block`}>
+              {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>
+                  {d === 1 ? '1 (mês fechado)' : d}
+                </option>
+              ))}
+            </select>
+          </label>
+          <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
+            Salvar
+          </SubmitButton>
+        </form>
+      </Panel>
 
       <Panel className="mb-6">
         <h2 className="mb-1 text-sm font-medium text-ink">Dados fiscais</h2>

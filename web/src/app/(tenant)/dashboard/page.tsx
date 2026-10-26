@@ -152,8 +152,8 @@ export default async function DashboardPage() {
             </Link>
           </div>
           <p className="mb-3 text-xs text-ink-faint">
-            Baseado no que já foi impresso desde {formatUtcDate(currentPeriod.periodStart)} - o mês ainda não fechou, então
-            este valor só cresce até a fatura ser gerada.
+            Baseado no que já foi impresso desde {formatUtcDate(currentPeriod.periodStart)} (cada cliente no seu próprio
+            período de fechamento) - o período ainda não fechou, então este valor só cresce até a fatura ser gerada.
           </p>
           <p className="mb-3 text-2xl font-semibold tabular-nums text-ink">{currency.format(currentPeriod.totalAccrued)}</p>
           <ul className="divide-y divide-line">

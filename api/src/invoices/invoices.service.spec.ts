@@ -50,7 +50,7 @@ describe('InvoicesService.usageRevenueReport', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           tenantId: 't1',
-          periodStart: { gte: new Date('2026-07-01T00:00:00.000Z') },
+          periodEnd: { gte: new Date('2026-07-01T00:00:00.000Z') },
           status: { not: 'CANCELLED' },
         }),
       }),
@@ -62,7 +62,7 @@ describe('InvoicesService.usageRevenueReport', () => {
       makeInvoice({
         customerId: 'a',
         customer: { id: 'a', name: 'Customer A' },
-        periodStart: new Date('2026-07-01T00:00:00Z'),
+        periodEnd: new Date('2026-07-31T23:59:59.999Z'),
         totalDue: '100.00',
         status: 'PENDING',
         totalPages: 500,
@@ -70,7 +70,7 @@ describe('InvoicesService.usageRevenueReport', () => {
       makeInvoice({
         customerId: 'a',
         customer: { id: 'a', name: 'Customer A' },
-        periodStart: new Date('2026-08-01T00:00:00Z'),
+        periodEnd: new Date('2026-08-31T23:59:59.999Z'),
         totalDue: '150.00',
         paidAmount: '150.00',
         status: 'PAID',
@@ -79,7 +79,8 @@ describe('InvoicesService.usageRevenueReport', () => {
       makeInvoice({
         customerId: 'b',
         customer: { id: 'b', name: 'Customer B' },
-        periodStart: new Date('2026-08-01T00:00:00Z'),
+        // closing day 28: 28/07 - 27/08 is August's invoice, not July's
+        periodEnd: new Date('2026-08-27T23:59:59.999Z'),
         totalDue: '200.00',
         paidAmount: null, // PAID but no explicit paidAmount recorded - must fall back to totalDue
         status: 'PAID',

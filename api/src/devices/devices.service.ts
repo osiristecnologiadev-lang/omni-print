@@ -4,6 +4,7 @@ import { bucketDeltas, displayPageCount } from '../common/counter.util';
 import { lowestSupplyPercent } from '../common/supplies.util';
 import { forecastSupply, type SupplyReading } from '../common/supply-forecast.util';
 import { DevicePagesService } from '../common/device-pages.service';
+import { cycleContaining, cyclePeriod } from '../common/billing-cycle.util';
 
 interface DailyPoint {
   date: string;
@@ -232,12 +233,17 @@ export class DevicesService {
   async currentMonthPages(tenantId: string, customerId: string | null, deviceId: string) {
     const device = await this.prisma.device.findFirst({
       where: { id: deviceId, tenantId, ...(customerId ? { customerId } : {}) },
+      include: { customer: { select: { billingCycleDay: true } } },
     });
     if (!device) {
       throw new NotFoundException('device not found');
     }
+    // The customer's own current period when it closes on another day than
+    // the 1st (see Customer.billingCycleDay), so this matches its bill.
     const now = new Date();
-    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const cycleDay = device.customer?.billingCycleDay ?? 1;
+    const { year, month } = cycleContaining(now, cycleDay);
+    const { periodStart } = cyclePeriod(year, month, cycleDay);
     const result = await this.devicePages.pagesInPeriod(device, periodStart, now);
     return { periodStart: periodStart.toISOString(), periodEnd: now.toISOString(), ...result };
   }
@@ -247,6 +253,10 @@ export class DevicesService {
   // same layout outsourcing companies keep in their manual spreadsheets
   // (Início / Fim / Quantidade). Same DevicePagesService math as billing,
   // but needs no contract, so it works for any customer and any past month.
+  // `month` is a competência: each device's window follows its customer's
+  // closing day (see Customer.billingCycleDay), so a customer closing on
+  // the 28th shows 28/09 - 27/10 for October, like its invoice. The
+  // top-level period is the calendar month, or the filtered customer's own.
   // filterCustomerId narrows a tenant-wide user's view to one customer; a
   // customer-scoped user is always pinned to their own (scopeCustomerId).
   async devicePagesReport(
@@ -257,18 +267,24 @@ export class DevicesService {
     filterCustomerId?: string,
   ) {
     const customerId = scopeCustomerId ?? filterCustomerId ?? null;
-    const periodStart = new Date(Date.UTC(year, month - 1, 1));
-    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
     const now = new Date();
-    const periodEnd = monthEnd < now ? monthEnd : now;
+    const periodOf = (cycleDay: number) => {
+      const p = cyclePeriod(year, month, cycleDay);
+      return { periodStart: p.periodStart, periodEnd: p.periodEnd < now ? p.periodEnd : now };
+    };
 
     const devices = await this.prisma.device.findMany({
       where: { tenantId, ...(customerId ? { customerId } : {}) },
-      include: { customer: { select: { id: true, name: true } } },
+      include: { customer: { select: { id: true, name: true, billingCycleDay: true } } },
     });
+    const filteredCustomer = customerId
+      ? await this.prisma.customer.findFirst({ where: { id: customerId, tenantId }, select: { billingCycleDay: true } })
+      : null;
+    const { periodStart, periodEnd } = periodOf(filteredCustomer?.billingCycleDay ?? 1);
     const rows = await Promise.all(
       devices.map(async (d) => {
-        const r = await this.devicePages.pagesInPeriod(d, periodStart, periodEnd);
+        const p = periodOf(d.customer?.billingCycleDay ?? 1);
+        const r = await this.devicePages.pagesInPeriod(d, p.periodStart, p.periodEnd);
         return {
           deviceId: d.id,
           deviceName: d.customLabel ?? d.printerName ?? d.name ?? d.host,
@@ -277,6 +293,8 @@ export class DevicesService {
           host: d.host,
           customerId: d.customer?.id ?? null,
           customerName: d.customer?.name ?? null,
+          periodStart: p.periodStart.toISOString(),
+          periodEnd: p.periodEnd.toISOString(),
           billingExcluded: d.billingExcluded,
           pages: r.pages,
           monoPages: r.monoPages,

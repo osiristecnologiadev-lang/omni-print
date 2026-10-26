@@ -83,7 +83,7 @@ function money(v: unknown): string {
   return `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 // periodStart/periodEnd/dueDate are constructed as UTC-anchored PURE
-// CALENDAR DATES (see contracts.service.ts's monthRange / invoices.
+// CALENDAR DATES (see common/billing-cycle.util.ts's cyclePeriod / invoices.
 // service.ts's dueDateFor) - always interpreted in UTC here, deliberately
 // NOT the tenant's real timezone, or the displayed day would shift by up
 // to a day relative to how they were computed.

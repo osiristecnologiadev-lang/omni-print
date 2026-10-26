@@ -2,18 +2,23 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ContractsService, monthRange } from '../contracts/contracts.service';
+import { ContractsService } from '../contracts/contracts.service';
+import { competenciaKey, lastClosedCycle } from '../common/billing-cycle.util';
 
-// The due date for a billed month always falls in the FOLLOWING calendar
-// month, on the covering contract's billingDay (clamped to that month's
-// actual length - e.g. billingDay 31 in a 30-day month becomes the 30th).
-function dueDateFor(billingDay: number, periodEnd: Date): Date {
-  const billedYear = periodEnd.getUTCFullYear();
-  const billedMonthIndex = periodEnd.getUTCMonth();
-  const dueMonthIndex = billedMonthIndex + 1; // Date.UTC rolls this into January of next year when needed
-  const daysInDueMonth = new Date(Date.UTC(billedYear, dueMonthIndex + 1, 0)).getUTCDate();
-  const day = Math.min(billingDay, daysInDueMonth);
-  return new Date(Date.UTC(billedYear, dueMonthIndex, day, 23, 59, 59, 999));
+// The due date is the first billingDay AFTER the period closes (clamped to
+// each month's actual length - e.g. billingDay 31 in a 30-day month becomes
+// the 30th). For a calendar-month period that's always the following month,
+// as before; with a closing day (period ending 27/10) a billingDay of 30
+// falls in the same month (30/10), which is the whole point of that setup.
+export function dueDateFor(billingDay: number, periodEnd: Date): Date {
+  for (let offset = 0; ; offset++) {
+    const monthIndex = periodEnd.getUTCMonth() + offset; // Date.UTC rolls this into January of next year when needed
+    const daysInMonth = new Date(Date.UTC(periodEnd.getUTCFullYear(), monthIndex + 1, 0)).getUTCDate();
+    const due = new Date(Date.UTC(periodEnd.getUTCFullYear(), monthIndex, Math.min(billingDay, daysInMonth), 23, 59, 59, 999));
+    if (due > periodEnd) {
+      return due;
+    }
+  }
 }
 
 function isUniqueConstraintError(err: unknown): boolean {
@@ -52,8 +57,8 @@ export class InvoicesService {
   // time (see Invoice's schema comment) - editing the contract afterward
   // never changes an invoice that's already been generated.
   async generate(tenantId: string, customerId: string, year: number, month: number) {
-    await this.contractsService.requireCustomer(tenantId, customerId);
-    const { periodStart, periodEnd } = monthRange(year, month);
+    const customer = await this.contractsService.requireCustomer(tenantId, customerId);
+    const { periodStart, periodEnd } = await this.contractsService.periodFor(customer, year, month);
 
     // An invoice is a frozen snapshot and only one exists per month - one
     // generated before the month closes bills a partial month forever, and
@@ -61,7 +66,7 @@ export class InvoicesService {
     // invoice generated on 24/09). "So far this month" belongs to the
     // contract page / Páginas por impressora report instead.
     if (periodEnd.getTime() > Date.now()) {
-      throw new BadRequestException('month not closed yet - invoices can only be generated after the month ends');
+      throw new BadRequestException('period not closed yet - invoices can only be generated after the period ends');
     }
 
     const existing = await this.prisma.invoice.findUnique({
@@ -164,20 +169,22 @@ export class InvoicesService {
   // live recomputation against Metric history), so it's cheap and always
   // reflects exactly what was actually billed. `months` counts back from
   // the current calendar month inclusive (months=6 means this month plus
-  // the 5 before it).
+  // the 5 before it). Invoices are grouped by competência (the month their
+  // period ends in - see common/billing-cycle.util.ts), so a 28/09 - 27/10
+  // invoice counts as October, like a plain 01/10 - 31/10 one.
   async usageRevenueReport(tenantId: string, months: number) {
     const now = new Date();
     const windowStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
 
     const invoices = await this.prisma.invoice.findMany({
-      where: { tenantId, periodStart: { gte: windowStart }, status: { not: 'CANCELLED' } },
+      where: { tenantId, periodEnd: { gte: windowStart }, status: { not: 'CANCELLED' } },
       include: { customer: { select: { id: true, name: true } } },
       orderBy: { periodStart: 'asc' },
     });
 
-    // Keyed by periodStart's ISO date (always the 1st of a month - see
-    // monthRange) so months with zero invoices still aren't silently
-    // skipped, just absent from the map and backfilled as zero below.
+    // Keyed by competência ("YYYY-MM-01") so months with zero invoices still
+    // aren't silently skipped, just absent from the map and backfilled as
+    // zero below.
     const byMonth = new Map<string, { totalDue: number; paidAmount: number; totalPages: number }>();
     const byCustomer = new Map<
       string,
@@ -199,7 +206,7 @@ export class InvoicesService {
       totalOutstanding += outstanding;
       totalPages += inv.totalPages;
 
-      const monthKey = inv.periodStart.toISOString().slice(0, 10);
+      const monthKey = competenciaKey(inv.periodEnd);
       const month = byMonth.get(monthKey) ?? { totalDue: 0, paidAmount: 0, totalPages: 0 };
       month.totalDue += due;
       month.paidAmount += paid;
@@ -245,24 +252,23 @@ export class InvoicesService {
     };
   }
 
-  // Runs once a day: as soon as a calendar month fully closes, generate the
-  // invoice for every customer whose contract covered it - so by the time
+  // Runs once a day: as soon as a period fully closes (the calendar month,
+  // or the customer's own cycle - see Customer.billingCycleDay), generate
+  // the invoice for every customer whose contract covered it - so by the time
   // the contract's own billingDay arrives, the PDF already exists instead of
   // being computed for the first time under pressure. Safe to fail per
   // customer: one bad row shouldn't block everyone else's invoice.
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async generateDueInvoices() {
     const now = new Date();
-    const lastMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
-    const year = lastMonthEnd.getUTCFullYear();
-    const month = lastMonthEnd.getUTCMonth() + 1;
 
     const customers = await this.prisma.customer.findMany({
       where: { contracts: { some: {} } },
-      select: { id: true, tenantId: true },
+      select: { id: true, tenantId: true, billingCycleDay: true },
     });
 
     for (const customer of customers) {
+      const { year, month } = lastClosedCycle(now, customer.billingCycleDay);
       try {
         await this.generate(customer.tenantId, customer.id, year, month);
       } catch (err) {

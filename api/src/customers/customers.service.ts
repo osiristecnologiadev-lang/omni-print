@@ -59,6 +59,7 @@ export class CustomersService {
       slaHoursMedium?: number | null;
       slaHoursHigh?: number | null;
       slaHoursUrgent?: number | null;
+      billingCycleDay?: number;
     },
   ) {
     await this.requireCustomer(tenantId, customerId);

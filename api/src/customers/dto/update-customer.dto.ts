@@ -1,4 +1,5 @@
-import { IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { MAX_BILLING_CYCLE_DAY, MIN_BILLING_CYCLE_DAY } from '../../common/billing-cycle.util';
 
 // Shown on the invoice PDF's "cliente" block - see Customer's schema
 // comment. Renaming a customer isn't exposed here on purpose: name is also
@@ -23,4 +24,8 @@ export class UpdateCustomerDto {
   @IsOptional() @IsInt() @Min(0) @Max(999) slaHoursMedium?: number | null;
   @IsOptional() @IsInt() @Min(0) @Max(999) slaHoursHigh?: number | null;
   @IsOptional() @IsInt() @Min(0) @Max(999) slaHoursUrgent?: number | null;
+
+  // "Dia de fechamento" - see Customer.billingCycleDay. Never null: 1 is
+  // the calendar month, so unlike the fields above null is rejected.
+  @ValidateIf((o) => o.billingCycleDay !== undefined) @IsInt() @Min(MIN_BILLING_CYCLE_DAY) @Max(MAX_BILLING_CYCLE_DAY) billingCycleDay?: number;
 }

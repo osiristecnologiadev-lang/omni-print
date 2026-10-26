@@ -1,22 +1,21 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect, unstable_rethrow } from 'next/navigation';
 import { generateInvoice, markInvoicePaid, cancelInvoice } from '@/lib/api';
 
 export async function generateInvoiceAction(customerId: string, formData: FormData) {
   const year = Number(formData.get('year'));
   const month = Number(formData.get('month'));
 
-  // Same rule the API enforces - checked here too so the message can say why.
-  if (Date.UTC(year, month, 1) > Date.now()) {
-    redirect(`/customers/${customerId}/invoices?error=open`);
-  }
-
+  // When the period closes depends on the customer's closing day, so only
+  // the API knows - its 400 is the "not closed yet" answer.
   try {
     await generateInvoice(customerId, year, month);
-  } catch {
-    redirect(`/customers/${customerId}/invoices?error=1`);
+  } catch (err) {
+    unstable_rethrow(err);
+    const open = err instanceof Error && err.message.includes('failed: 400');
+    redirect(`/customers/${customerId}/invoices?error=${open ? 'open' : '1'}`);
   }
 
   revalidatePath(`/customers/${customerId}/invoices`);

@@ -220,7 +220,8 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
       <Panel className="mt-6">
         <h2 className="mb-1 text-sm font-medium text-ink">Fatura do período</h2>
         <p className="mb-4 text-xs text-ink-faint">
-          Calculado a partir do contador real de páginas de cada impressora do cliente.
+          Calculado a partir do contador real de páginas de cada impressora do cliente. O mês escolhido segue o dia de
+          fechamento do cliente{customer.billingCycleDay > 1 ? ` (dia ${customer.billingCycleDay})` : ''}.
         </p>
 
         <form method="get" className="mb-4 flex items-center gap-2">
@@ -242,6 +243,10 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
             Calcular
           </Button>
         </form>
+
+        <p className="mb-4 text-xs text-ink-muted">
+          Período: {formatDate(billing.periodStart)} a {formatDate(billing.periodEnd)}
+        </p>
 
         {!billing.hasContract ? (
           <p className="rounded-lg border border-dashed border-line p-4 text-sm text-ink-faint">

@@ -270,7 +270,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
             )}
             <div className="flex justify-between gap-4">
               <dt className="text-ink-muted">
-                Impresso este mês (até agora)
+                Impresso no período (até agora)
                 {currentMonthPages.counterReset && (
                   <span
                     title={
@@ -299,7 +299,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
             </div>
             {currentMonthPages.enginePages !== currentMonthPages.pages && (
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-muted">Mecanismo, este mês</dt>
+                <dt className="text-ink-muted">Mecanismo, no período</dt>
                 <dd className="text-right">
                   <div className="tabular-nums text-ink-faint">{formatPageCount(currentMonthPages.enginePages)}</div>
                   <div className="text-xs text-ink-faint">
@@ -310,7 +310,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
             )}
             {isTenantWide && device.customerId && (
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-muted">Receita estimada este mês</dt>
+                <dt className="text-ink-muted">Receita estimada no período</dt>
                 <dd className="text-right">
                   {device.billingExcluded ? (
                     <span className="text-ink-faint">fora do contrato</span>

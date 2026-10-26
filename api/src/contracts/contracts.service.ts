@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { DevicePagesService } from '../common/device-pages.service';
 import { allocateUsageRevenue } from '../common/revenue-allocation.util';
+import { BillingPeriod, competenciaKey, cycleContaining, cyclePeriod } from '../common/billing-cycle.util';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 
@@ -131,7 +132,33 @@ export class ContractsService {
     });
   }
 
-  // Computes what's owed for one calendar month, using whichever contract
+  // One competência's period for this customer, following its
+  // billingCycleDay (see common/billing-cycle.util.ts). After the day is
+  // changed, the first period on the new cycle is stitched onto the last
+  // invoice instead of overlapping it or leaving days unbilled: it starts
+  // right after that invoice ended (e.g. day 1 -> 28 with September already
+  // invoiced: October is 01/10 - 27/10, not 28/09 - 27/10). In steady state
+  // the previous invoice already ends right before periodStart, so nothing
+  // moves; a month skipped entirely (no contract) isn't stitched over.
+  async periodFor(customer: { id: string; billingCycleDay: number }, year: number, month: number): Promise<BillingPeriod> {
+    const period = cyclePeriod(year, month, customer.billingCycleDay);
+    const previous = await this.prisma.invoice.findFirst({
+      where: { customerId: customer.id, status: { not: 'CANCELLED' }, periodEnd: { lt: period.periodEnd } },
+      orderBy: { periodEnd: 'desc' },
+      select: { periodEnd: true },
+    });
+    if (!previous) {
+      return period;
+    }
+    const previousCompetencia = new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 10);
+    if (previous.periodEnd >= period.periodStart || competenciaKey(previous.periodEnd) === previousCompetencia) {
+      return { periodStart: new Date(previous.periodEnd.getTime() + 1), periodEnd: period.periodEnd };
+    }
+    return period;
+  }
+
+  // Computes what's owed for one competência (a calendar month, or the
+  // customer's own cycle - see periodFor), using whichever contract
   // covered the start of that month (so re-running this for a past month
   // stays correct even after a renegotiation). The formula depends on
   // pricingModel - see Contract's schema comment for what each model means
@@ -140,8 +167,8 @@ export class ContractsService {
   // month, including ones with no persisted invoice yet) - InvoicesService
   // calls resolveBilling directly to build the row it actually persists.
   async calculateBilling(tenantId: string, customerId: string, year: number, month: number) {
-    await this.requireCustomer(tenantId, customerId);
-    const { periodStart, periodEnd } = monthRange(year, month);
+    const customer = await this.requireCustomer(tenantId, customerId);
+    const { periodStart, periodEnd } = await this.periodFor(customer, year, month);
     return this.resolveBilling(tenantId, customerId, periodStart, periodEnd);
   }
 
@@ -154,9 +181,10 @@ export class ContractsService {
   // tenant see "what's guaranteed so far" without waiting for the period
   // to close, and updates every time real usage data comes in.
   async currentPeriodPreview(tenantId: string, customerId: string) {
-    await this.requireCustomer(tenantId, customerId);
+    const customer = await this.requireCustomer(tenantId, customerId);
     const now = new Date();
-    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const { year, month } = cycleContaining(now, customer.billingCycleDay);
+    const { periodStart } = await this.periodFor(customer, year, month);
     return this.resolveBilling(tenantId, customerId, periodStart, now);
   }
 
@@ -164,30 +192,35 @@ export class ContractsService {
   // ACTIVE contract right now - "how much is guaranteed across my whole
   // portfolio this month so far," for the outsource owner's own overview
   // rather than one customer at a time. A customer with no active contract
-  // simply doesn't contribute (nothing to preview).
+  // simply doesn't contribute (nothing to preview). Each customer's own
+  // current period (see periodFor) - with different closing days they don't
+  // all start on the same date; the top-level periodStart is the earliest.
   async portfolioCurrentPeriodPreview(tenantId: string) {
     const now = new Date();
-    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
     const activeContracts = await this.prisma.contract.findMany({
       where: { tenantId, status: 'ACTIVE' },
-      include: { customer: { select: { id: true, name: true } } },
+      include: { customer: { select: { id: true, name: true, billingCycleDay: true } } },
     });
 
     const byCustomer = await Promise.all(
       activeContracts.map(async (contract) => {
+        const { year, month } = cycleContaining(now, contract.customer.billingCycleDay);
+        const { periodStart } = await this.periodFor(contract.customer, year, month);
         const billing = await this.resolveBilling(tenantId, contract.customerId, periodStart, now);
         return {
           customerId: contract.customerId,
           customerName: contract.customer.name,
+          periodStart: periodStart.toISOString(),
           totalDue: billing.hasContract ? billing.totalDue : 0,
           totalPages: billing.hasContract ? billing.totalPages : 0,
         };
       }),
     );
 
+    const calendarStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
     return {
-      periodStart: periodStart.toISOString(),
+      periodStart: byCustomer.reduce((min, c) => (c.periodStart < min ? c.periodStart : min), calendarStart),
       periodEnd: now.toISOString(),
       totalAccrued: byCustomer.reduce((sum, c) => sum + c.totalDue, 0),
       byCustomer: byCustomer.sort((a, b) => b.totalDue - a.totalDue),
@@ -400,9 +433,3 @@ export function perDeviceMinimumCharges(
   return out;
 }
 
-export function monthRange(year: number, month: number): { periodStart: Date; periodEnd: Date } {
-  return {
-    periodStart: new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)),
-    periodEnd: new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)), // last instant of the month
-  };
-}
