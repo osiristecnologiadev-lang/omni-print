@@ -229,8 +229,12 @@ type session struct {
 // NC-8900h print servers answer GET normally but never answer GETBULK - every
 // walk timed out, the whole poll hit the per-device limit, and the page
 // counter, supplies and trays were never read for a week. A walk that errors
-// after returning some rows, or that simply finds an empty table (no error),
-// is not a GETBULK problem and doesn't trigger the fallback.
+// after returning some rows is not a GETBULK problem and doesn't trigger the
+// fallback. An EMPTY GETBULK answer does: Amecor's HP Laser 408dn / MFP
+// 432fdn (2026-10) answer GET (serial, sysDescr) but every table came back
+// empty, while Printwayy on the same server reads their counters - so an
+// empty table is re-checked once with GETNEXT, which costs one extra request
+// on a device whose table really is empty.
 func (s *session) walk(root string, fn gosnmp.WalkFunc) error {
 	if s.noBulk {
 		return s.Walk(root, fn)
@@ -240,7 +244,7 @@ func (s *session) walk(root string, fn gosnmp.WalkFunc) error {
 		got++
 		return fn(pdu)
 	})
-	if err == nil || got > 0 || s.Context.Err() != nil {
+	if got > 0 || s.Context.Err() != nil {
 		return err
 	}
 	got = 0
@@ -435,6 +439,14 @@ func (c *Collector) walkPageCount(g *session) *int64 {
 	counts := map[string]int64{}
 	walkInt(g, oidPageCountCol, counts)
 	if len(counts) == 0 {
+		// Some agents answer GET but no walk at all - ask for the one marker
+		// every device tested so far has (prtMarkerLifeCount.1.1) directly.
+		oid := oidPageCountCol + ".1.1"
+		if result, err := g.Get([]string{oid}); err == nil {
+			if v, ok := getIntOK(varMap(result.Variables), oid); ok && v > 0 {
+				return &v
+			}
+		}
 		return nil // nothing came back - "unknown", not a real zero
 	}
 	var total int64

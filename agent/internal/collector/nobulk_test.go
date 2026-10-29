@@ -22,6 +22,10 @@ type fakeAgent struct {
 	oids  []string // sorted, no leading dot
 	vals  map[string]gosnmp.SnmpPDU
 	bulks int
+	// What GETBULK gets: dropped (default), or an empty endOfMibView answer.
+	emptyBulk bool
+	// Answer GET only - every GETNEXT gets endOfMibView.
+	noNext bool
 }
 
 func oidLess(a, b string) bool {
@@ -36,13 +40,16 @@ func oidLess(a, b string) bool {
 	return len(pa) < len(pb)
 }
 
-func startFakeAgent(t *testing.T, pdus []gosnmp.SnmpPDU) *fakeAgent {
+func startFakeAgent(t *testing.T, pdus []gosnmp.SnmpPDU, opts ...func(*fakeAgent)) *fakeAgent {
 	t.Helper()
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := &fakeAgent{conn: conn, vals: map[string]gosnmp.SnmpPDU{}}
+	for _, o := range opts {
+		o(a)
+	}
 	for _, p := range pdus {
 		a.vals[p.Name] = p
 		a.oids = append(a.oids, p.Name)
@@ -69,7 +76,12 @@ func (a *fakeAgent) serve() {
 		switch req.PDUType {
 		case gosnmp.GetBulkRequest:
 			a.bulks++
-			continue // never answered
+			if !a.emptyBulk {
+				continue // never answered
+			}
+			for _, v := range req.Variables {
+				out = append(out, gosnmp.SnmpPDU{Name: strings.TrimPrefix(v.Name, "."), Type: gosnmp.EndOfMibView})
+			}
 		case gosnmp.GetRequest:
 			for _, v := range req.Variables {
 				name := strings.TrimPrefix(v.Name, ".")
@@ -83,7 +95,7 @@ func (a *fakeAgent) serve() {
 			for _, v := range req.Variables {
 				name := strings.TrimPrefix(v.Name, ".")
 				i := sort.Search(len(a.oids), func(i int) bool { return oidLess(name, a.oids[i]) })
-				if i < len(a.oids) {
+				if i < len(a.oids) && !a.noNext {
 					out = append(out, a.vals[a.oids[i]])
 				} else {
 					out = append(out, gosnmp.SnmpPDU{Name: name, Type: gosnmp.EndOfMibView})
@@ -142,6 +154,46 @@ func TestPollFallsBackToGetNextWhenGetBulkIsIgnored(t *testing.T) {
 	}
 	if time.Since(start) > time.Second {
 		t.Fatalf("second poll took %s - still waiting on GETBULK timeouts", time.Since(start))
+	}
+}
+
+// HP Laser 408dn / MFP 432fdn shape (Amecor, 2026-10): GET works, GETBULK
+// comes back empty without an error.
+func TestPollFallsBackToGetNextWhenGetBulkIsEmpty(t *testing.T) {
+	agent := startFakeAgent(t, []gosnmp.SnmpPDU{
+		{Name: oidSysDescr, Type: gosnmp.OctetString, Value: []byte("HP Laser 408dn; V4.00.01.37")},
+		{Name: oidSerialNumber, Type: gosnmp.OctetString, Value: []byte("BRBSP7507C")},
+		{Name: oidPageCountCol + ".1.1", Type: gosnmp.Counter32, Value: uint(70596)},
+		{Name: oidSuppliesDescr + ".1.1", Type: gosnmp.OctetString, Value: []byte("Toner")},
+		{Name: oidSuppliesLevel + ".1.1", Type: gosnmp.Integer, Value: 40},
+		{Name: oidSuppliesMax + ".1.1", Type: gosnmp.Integer, Value: 100},
+	}, func(a *fakeAgent) { a.emptyBulk = true })
+	port := uint16(agent.conn.LocalAddr().(*net.UDPAddr).Port)
+	dev := config.Device{Name: "hp408", Host: "127.0.0.1", Port: port, Community: "public"}
+	c := New(0, 150*time.Millisecond, 0, false)
+
+	m := c.pollDevice(context.Background(), dev)
+	if m.PageCount == nil || *m.PageCount != 70596 {
+		t.Fatalf("PageCount = %v, want 70596 (read via GETNEXT after an empty GETBULK)", m.PageCount)
+	}
+	if len(m.Supplies) != 1 || m.Supplies[0].Level != 40 {
+		t.Fatalf("Supplies = %+v, want the toner at 40", m.Supplies)
+	}
+}
+
+// An agent that answers no walk at all still gets its page counter by GET.
+func TestPageCountReadByGetWhenNoWalkWorks(t *testing.T) {
+	agent := startFakeAgent(t, []gosnmp.SnmpPDU{
+		{Name: oidSysDescr, Type: gosnmp.OctetString, Value: []byte("HP Laser MFP 432fdn")},
+		{Name: oidPageCountCol + ".1.1", Type: gosnmp.Counter32, Value: uint(12345)},
+	}, func(a *fakeAgent) { a.emptyBulk = true; a.noNext = true })
+	port := uint16(agent.conn.LocalAddr().(*net.UDPAddr).Port)
+	dev := config.Device{Name: "hp432", Host: "127.0.0.1", Port: port, Community: "public"}
+	c := New(0, 150*time.Millisecond, 0, false)
+
+	m := c.pollDevice(context.Background(), dev)
+	if m.PageCount == nil || *m.PageCount != 12345 {
+		t.Fatalf("PageCount = %v, want 12345 (read by GET)", m.PageCount)
 	}
 }
 
