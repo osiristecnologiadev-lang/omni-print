@@ -16,6 +16,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -32,6 +33,7 @@ import (
 const (
 	// System group (SNMPv2-MIB)
 	oidSysDescr    = "1.3.6.1.2.1.1.1.0"
+	oidSysObjectID = "1.3.6.1.2.1.1.2.0"
 	oidSysUpTime   = "1.3.6.1.2.1.1.3.0"
 	oidSysContact  = "1.3.6.1.2.1.1.4.0"
 	oidSysName     = "1.3.6.1.2.1.1.5.0"
@@ -216,6 +218,9 @@ type Collector struct {
 	// Hosts whose SNMP agent ignores GETBULK - see session.walk. Remembered
 	// across polls so the failed GETBULK attempt is only paid once per run.
 	noBulkHosts sync.Map
+	// Hosts whose vendor subtree was already captured this run - see
+	// captureVendorSubtree.
+	vendorCaptured sync.Map
 }
 
 // session is one device poll's SNMP connection plus how to walk it.
@@ -381,18 +386,17 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 	}()
 
 	scalarOIDs := []string{
-		oidSysDescr, oidSysUpTime, oidSysContact, oidSysName, oidSysLocation,
+		oidSysDescr, oidSysObjectID, oidSysUpTime, oidSysContact, oidSysName, oidSysLocation,
 		oidHrDeviceStatus, oidHrPrinterStatus, oidHrPrinterErrorState,
 		oidPrinterName, oidSerialNumber,
 		oidPowerOnCount,
 	}
-	result, err := g.Get(scalarOIDs)
+	vars, err := getScalars(g, scalarOIDs)
 	if err != nil {
 		m.Error = pollError(d, fmt.Sprintf("get: %v", err))
 		return m
 	}
 	m.Online = true
-	vars := varMap(result.Variables)
 
 	m.SysDescr = getString(vars, oidSysDescr)
 	m.SysName = getString(vars, oidSysName)
@@ -423,6 +427,7 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 	if c.fullRawCapture {
 		if elapsed := time.Since(start); elapsed < rawCaptureBudget {
 			m.Raw = c.walkRaw(g, oidPrinterMIB)
+			c.captureVendorSubtree(g, d.Host, getOID(vars, oidSysObjectID), &m)
 		} else {
 			log.Printf("poll: %s is slow (%s for the essential reads) - skipping the full OID capture this cycle", d.Host, elapsed.Round(time.Second))
 		}
@@ -454,13 +459,90 @@ func (c *Collector) walkPageCount(g *session) *int64 {
 		}
 		return nil // nothing came back - "unknown", not a real zero
 	}
+	// Several markers are one engine seen per colorant, not separate page
+	// streams: an OKI ES6405 (Amecor, 2026-10) reports four equal counters
+	// (16,131 each) for 16,107 pages per Printwayy - summing billed 4x. The
+	// largest is the page count; for single-marker devices nothing changes.
 	var total int64
 	for _, v := range counts {
-		if v > 0 {
-			total += v
+		if v > total {
+			total = v
 		}
 	}
 	return &total
+}
+
+// getScalars GETs several scalars at once. SNMP v1 rejects a whole request
+// with noSuchName when ANY one of its OIDs is missing - the OKI found over
+// v1 at Amecor (2026-10) lacks the Printer-MIB serial, and so lost sysDescr
+// and everything else too. Then each OID is asked on its own.
+func getScalars(g *session, oids []string) (map[string]gosnmp.SnmpPDU, error) {
+	result, err := g.Get(oids)
+	if err != nil {
+		return nil, err
+	}
+	if result.Error == gosnmp.NoError {
+		return varMap(result.Variables), nil
+	}
+	vars := map[string]gosnmp.SnmpPDU{}
+	for _, oid := range oids {
+		if g.Context.Err() != nil {
+			break
+		}
+		r, err := g.Get([]string{oid})
+		if err != nil || r.Error != gosnmp.NoError {
+			continue
+		}
+		for _, v := range r.Variables {
+			vars[v.Name] = v
+		}
+	}
+	return vars, nil
+}
+
+// vendorCaptureLimit caps one vendor-subtree capture - a Konica's private
+// MIB can run to many thousands of OIDs.
+const vendorCaptureLimit = 3000
+
+var errCaptureFull = errors.New("vendor capture limit reached")
+
+// captureVendorSubtree adds the device's own enterprise subtree (from
+// sysObjectID, e.g. 1.3.6.1.4.1.2001 for OKI) to m.Raw, once per host per
+// agent run, for devices whose serial or mono/color split the standard MIBs
+// don't give - that's where the vendor keeps them, and finding the right
+// OIDs takes real captures (OKI ES6405, Amecor 2026-10: no
+// prtGeneralSerialNumber, one counter per drum).
+func (c *Collector) captureVendorSubtree(g *session, host, sysObjectID string, m *Metric) {
+	color := false
+	for _, s := range m.Supplies {
+		if s.Colorant != "" && s.Colorant != "black" {
+			color = true
+		}
+	}
+	if m.MonoPageCount != nil || (m.SerialNumber != "" && !color) {
+		return
+	}
+	arcs := strings.Split(strings.TrimPrefix(sysObjectID, "."), ".")
+	if len(arcs) < 7 || strings.Join(arcs[:6], ".") != "1.3.6.1.4.1" {
+		return
+	}
+	if _, done := c.vendorCaptured.LoadOrStore(host, true); done {
+		return
+	}
+	root := strings.Join(arcs[:7], ".")
+	if m.Raw == nil {
+		m.Raw = map[string]string{}
+	}
+	n := 0
+	_ = g.walk(root, func(pdu gosnmp.SnmpPDU) error {
+		m.Raw[pdu.Name] = formatPDUValue(pdu)
+		n++
+		if n >= vendorCaptureLimit {
+			return errCaptureFull
+		}
+		return nil
+	})
+	log.Printf("poll: %s - captured %d OID(s) of vendor subtree %s (no serial/color split in the standard MIBs)", host, n, root)
 }
 
 // collectMarkerSplit reads HP's private mono/color total-page-count scalars
@@ -739,6 +821,15 @@ func getString(vars map[string]gosnmp.SnmpPDU, oid string) string {
 	if p, ok := vars["."+oid]; ok {
 		if b, ok := p.Value.([]byte); ok {
 			return cleanString(string(b))
+		}
+	}
+	return ""
+}
+
+func getOID(vars map[string]gosnmp.SnmpPDU, oid string) string {
+	if p, ok := vars["."+oid]; ok && p.Type == gosnmp.ObjectIdentifier {
+		if s, ok := p.Value.(string); ok {
+			return s
 		}
 	}
 	return ""

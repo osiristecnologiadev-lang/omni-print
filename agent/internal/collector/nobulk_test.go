@@ -26,6 +26,8 @@ type fakeAgent struct {
 	emptyBulk bool
 	// Answer GET only - every GETNEXT gets endOfMibView.
 	noNext bool
+	// SNMP v1 rules: a GET naming any missing OID fails whole (noSuchName).
+	v1Strict bool
 }
 
 func oidLess(a, b string) bool {
@@ -73,6 +75,7 @@ func (a *fakeAgent) serve() {
 			continue
 		}
 		var out []gosnmp.SnmpPDU
+		errStatus := gosnmp.NoError
 		switch req.PDUType {
 		case gosnmp.GetBulkRequest:
 			a.bulks++
@@ -83,13 +86,22 @@ func (a *fakeAgent) serve() {
 				out = append(out, gosnmp.SnmpPDU{Name: strings.TrimPrefix(v.Name, "."), Type: gosnmp.EndOfMibView})
 			}
 		case gosnmp.GetRequest:
+			missing := false
 			for _, v := range req.Variables {
 				name := strings.TrimPrefix(v.Name, ".")
 				if p, ok := a.vals[name]; ok {
 					out = append(out, p)
 				} else {
+					missing = true
 					out = append(out, gosnmp.SnmpPDU{Name: name, Type: gosnmp.NoSuchObject})
 				}
+			}
+			if missing && a.v1Strict {
+				out = out[:0]
+				for _, v := range req.Variables {
+					out = append(out, gosnmp.SnmpPDU{Name: strings.TrimPrefix(v.Name, "."), Type: gosnmp.Null})
+				}
+				errStatus = gosnmp.NoSuchName
 			}
 		case gosnmp.GetNextRequest:
 			for _, v := range req.Variables {
@@ -109,6 +121,7 @@ func (a *fakeAgent) serve() {
 			Community: req.Community,
 			PDUType:   gosnmp.GetResponse,
 			RequestID: req.RequestID,
+			Error:     errStatus,
 			Variables: out,
 		}
 		b, err := resp.MarshalMsg()
@@ -198,6 +211,43 @@ func TestPollUsesSNMPv1WhenFlagged(t *testing.T) {
 	}
 	if agent.bulks != 0 {
 		t.Fatalf("sent %d GETBULK requests over SNMP v1", agent.bulks)
+	}
+}
+
+// The OKI ES6405 found over SNMP v1 at Amecor (2026-10): no Printer-MIB
+// serial, so v1 rejected the batched scalar GET whole; four equal drum
+// counters; serial and split only in OKI's own subtree.
+func TestPollReadsV1OKIWithFourMarkers(t *testing.T) {
+	agent := startFakeAgent(t, []gosnmp.SnmpPDU{
+		{Name: oidSysDescr, Type: gosnmp.OctetString, Value: []byte("OKI ES6405")},
+		{Name: oidSysObjectID, Type: gosnmp.ObjectIdentifier, Value: ".1.3.6.1.4.1.2001.1.1.1.297"},
+		{Name: oidPageCountCol + ".1.1", Type: gosnmp.Counter32, Value: uint(16131)},
+		{Name: oidPageCountCol + ".1.2", Type: gosnmp.Counter32, Value: uint(16131)},
+		{Name: oidPageCountCol + ".1.3", Type: gosnmp.Counter32, Value: uint(16131)},
+		{Name: oidPageCountCol + ".1.4", Type: gosnmp.Counter32, Value: uint(16131)},
+		{Name: oidSuppliesDescr + ".1.1", Type: gosnmp.OctetString, Value: []byte("Cyan Toner")},
+		{Name: oidSuppliesColorant + ".1.1", Type: gosnmp.Integer, Value: 2},
+		{Name: oidColorantValue + ".1.2", Type: gosnmp.OctetString, Value: []byte("cyan")},
+		{Name: "1.3.6.1.4.1.2001.1.1.1.1.11.1.10.45.0", Type: gosnmp.OctetString, Value: []byte("AK99000023")},
+	}, func(a *fakeAgent) { a.v1Strict = true })
+	port := uint16(agent.conn.LocalAddr().(*net.UDPAddr).Port)
+	dev := config.Device{Name: "oki", Host: "127.0.0.1", Port: port, Community: "public", SNMPv1: true}
+	c := New(0, 150*time.Millisecond, 0, true)
+
+	m := c.pollDevice(context.Background(), dev)
+	if !m.Online || m.SysDescr != "OKI ES6405" {
+		t.Fatalf("online=%v sysDescr=%q err=%q - the v1 noSuchName GET should fall back per OID", m.Online, m.SysDescr, m.Error)
+	}
+	if m.PageCount == nil || *m.PageCount != 16131 {
+		t.Fatalf("PageCount = %v, want 16131 (largest marker, not the 4x sum)", m.PageCount)
+	}
+	if m.Raw[".1.3.6.1.4.1.2001.1.1.1.1.11.1.10.45.0"] != "AK99000023" {
+		t.Fatalf("vendor subtree not captured into Raw (%d entries)", len(m.Raw))
+	}
+	// Once per host per run.
+	m = c.pollDevice(context.Background(), dev)
+	if _, ok := m.Raw[".1.3.6.1.4.1.2001.1.1.1.1.11.1.10.45.0"]; ok {
+		t.Fatal("vendor subtree captured again on the second poll")
 	}
 }
 
