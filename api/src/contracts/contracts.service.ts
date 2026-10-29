@@ -313,6 +313,8 @@ export class ContractsService {
           // PER_DEVICE_MINIMUM: this printer's own "franquia", when it has
           // one different from the contract's default.
           minimumChargeOverride: device.minimumChargeOverride != null ? Number(device.minimumChargeOverride) : null,
+          // This printer's own color page price - see Device.colorPagePriceOverride.
+          colorPagePriceOverride: device.colorPagePriceOverride != null ? Number(device.colorPagePriceOverride) : null,
         };
       }),
     );
@@ -364,7 +366,13 @@ export class ContractsService {
         minimumPages = (contract.minimumPagesMono ?? 0) + (contract.minimumPagesColor ?? 0);
         billablePages = billableMono + billableColor;
         monoRevenueTotal = billableMono * Number(contract.pricePerPageMono ?? 0);
-        colorRevenueTotal = billableColor * Number(contract.pricePerPageColor ?? 0);
+        // Each printer's real color pages at its own rate; only the pages a
+        // color minimum adds on top (no printer printed them) go at the
+        // contract's rate.
+        const contractColorRate = Number(contract.pricePerPageColor ?? 0);
+        colorRevenueTotal =
+          perDevice.reduce((sum, d) => sum + d.colorPages * (d.colorPagePriceOverride ?? contractColorRate), 0) +
+          (billableColor - colorPages) * contractColorRate;
         usageCost = monoRevenueTotal + colorRevenueTotal;
         break;
       }
@@ -384,7 +392,16 @@ export class ContractsService {
     }
     const revenueByDevice = perDeviceCharges
       ? new Map([...perDeviceCharges].map(([id, c]) => [id, c.charge]))
-      : allocateUsageRevenue(perDevice, monoRevenueTotal, colorRevenueTotal);
+      : allocateUsageRevenue(
+          // Color revenue split by each printer's color REVENUE, not page
+          // count, so a printer with its own higher rate gets its share.
+          perDevice.map((d) => ({
+            ...d,
+            colorPages: d.colorPages * (d.colorPagePriceOverride ?? Number(contract.pricePerPageColor ?? 1)),
+          })),
+          monoRevenueTotal,
+          colorRevenueTotal,
+        );
     const perDeviceWithRevenue = perDevice.map((d) => ({
       ...d,
       usageRevenue: revenueByDevice.get(d.deviceId) ?? 0,
@@ -418,7 +435,13 @@ export class ContractsService {
 // + color x color rate). Rounded to cents per printer, since that's what
 // each line of the tenant's own invoice shows.
 export function perDeviceMinimumCharges(
-  perDevice: Array<{ deviceId: string; monoPages: number; colorPages: number; minimumChargeOverride: number | null }>,
+  perDevice: Array<{
+    deviceId: string;
+    monoPages: number;
+    colorPages: number;
+    minimumChargeOverride: number | null;
+    colorPagePriceOverride?: number | null;
+  }>,
   contract: { pricePerPageMono: unknown; pricePerPageColor: unknown; minimumChargePerDevice?: unknown },
 ): Map<string, { charge: number; minimum: number; minimumApplied: boolean }> {
   const monoRate = Number(contract.pricePerPageMono ?? 0);
@@ -427,7 +450,7 @@ export function perDeviceMinimumCharges(
   const out = new Map<string, { charge: number; minimum: number; minimumApplied: boolean }>();
   for (const d of perDevice) {
     const minimum = d.minimumChargeOverride ?? defaultMinimum;
-    const usage = Math.round((d.monoPages * monoRate + d.colorPages * colorRate) * 100) / 100;
+    const usage = Math.round((d.monoPages * monoRate + d.colorPages * (d.colorPagePriceOverride ?? colorRate)) * 100) / 100;
     out.set(d.deviceId, { charge: Math.max(minimum, usage), minimum, minimumApplied: usage < minimum });
   }
   return out;

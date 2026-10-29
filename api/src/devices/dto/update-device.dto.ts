@@ -38,6 +38,13 @@ export class UpdateDeviceDto {
   @Min(0)
   minimumChargeOverride?: number | null;
 
+  // See Device.colorPagePriceOverride - null clears back to the contract rate.
+  @ValidateIf((o) => o.colorPagePriceOverride !== null)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  colorPagePriceOverride?: number | null;
+
   // See Device.billEngineCounter.
   @IsOptional()
   @IsBoolean()

@@ -141,6 +141,7 @@ export class DevicesService {
       manualBaselinePageCount?: number | null;
       billingExcluded?: boolean;
       minimumChargeOverride?: number | null;
+      colorPagePriceOverride?: number | null;
       billEngineCounter?: boolean;
     },
   ) {
@@ -157,6 +158,7 @@ export class DevicesService {
       billingExcluded?: boolean;
       reviewPending?: boolean;
       minimumChargeOverride?: number | null;
+      colorPagePriceOverride?: number | null;
       billEngineCounter?: boolean;
     } = {};
 
@@ -194,6 +196,9 @@ export class DevicesService {
     }
     if (dto.minimumChargeOverride !== undefined) {
       data.minimumChargeOverride = dto.minimumChargeOverride;
+    }
+    if (dto.colorPagePriceOverride !== undefined) {
+      data.colorPagePriceOverride = dto.colorPagePriceOverride;
     }
     if (dto.billEngineCounter !== undefined) {
       data.billEngineCounter = dto.billEngineCounter;

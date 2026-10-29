@@ -104,7 +104,7 @@ export class DevicesController {
     // Taking a printer out of (or back into) billing changes what the
     // customer's invoice says - that's a contracts decision, not just device
     // housekeeping, so it needs that permission too.
-    if (dto.billingExcluded !== undefined || dto.minimumChargeOverride !== undefined || dto.billEngineCounter !== undefined) {
+    if (dto.billingExcluded !== undefined || dto.minimumChargeOverride !== undefined || dto.colorPagePriceOverride !== undefined || dto.billEngineCounter !== undefined) {
       assertPermission(req, 'contracts');
     }
     const device = await this.devicesService.update(req.tenantId, id, dto);
@@ -167,7 +167,7 @@ export class DevicesController {
         metadata: { billingExcluded: dto.billingExcluded },
       });
     }
-    if (dto.minimumChargeOverride !== undefined || dto.billEngineCounter !== undefined) {
+    if (dto.minimumChargeOverride !== undefined || dto.colorPagePriceOverride !== undefined || dto.billEngineCounter !== undefined) {
       await this.auditLog.log({
         tenantId: req.tenantId,
         actorType: 'USER',
@@ -177,7 +177,11 @@ export class DevicesController {
         targetType: 'Device',
         targetId: device.id,
         targetLabel,
-        metadata: { minimumChargeOverride: dto.minimumChargeOverride, billEngineCounter: dto.billEngineCounter },
+        metadata: {
+          minimumChargeOverride: dto.minimumChargeOverride,
+          colorPagePriceOverride: dto.colorPagePriceOverride,
+          billEngineCounter: dto.billEngineCounter,
+        },
       });
     }
 

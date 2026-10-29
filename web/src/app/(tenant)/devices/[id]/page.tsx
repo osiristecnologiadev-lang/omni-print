@@ -386,6 +386,20 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
                   className={`mt-1 w-36 ${fieldClass}`}
                 />
               </div>
+              <div>
+                <label htmlFor="colorPagePriceOverride" className="block text-xs text-ink-muted">
+                  Preço da página colorida (R$)
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  id="colorPagePriceOverride"
+                  name="colorPagePriceOverride"
+                  defaultValue={device.colorPagePriceOverride ? String(Number(device.colorPagePriceOverride)).replace('.', ',') : ''}
+                  placeholder="padrão do contrato"
+                  className={`mt-1 w-36 ${fieldClass}`}
+                />
+              </div>
               <label className="flex items-center gap-2 text-xs text-ink-muted">
                 <input type="checkbox" name="billEngineCounter" defaultChecked={device.billEngineCounter} />
                 Cobrar pelo contador total (mecanismo)
@@ -394,7 +408,8 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
                 Salvar
               </SubmitButton>
               <p className="w-full text-xs text-ink-faint">
-                Franquia: só para contratos &quot;Mínimo por impressora&quot; - em branco usa a do contrato. Contador total:
+                Franquia: só para contratos &quot;Mínimo por impressora&quot; - em branco usa a do contrato. Preço colorido:
+                para contratos por página ou mínimo por impressora, quando esta impressora tem preço próprio. Contador total:
                 use quando você cobra esta impressora pelo contador do mecanismo, não pelo de páginas impressas.
               </p>
             </form>

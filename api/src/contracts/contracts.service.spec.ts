@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { ContractsService } from './contracts.service';
+import { ContractsService, perDeviceMinimumCharges } from './contracts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DevicePagesService } from '../common/device-pages.service';
 
@@ -131,6 +131,49 @@ describe('ContractsService.resolveBilling', () => {
       expect(result.usageCost).toBeCloseTo(782.42 + 200 + 250, 2);
       expect(result.totalDue).toBeCloseTo(1232.42, 2);
     }
+  });
+
+  it('PER_PAGE bills each color printer at its own color rate - real Amecor prices', async () => {
+    // Amecor (Multitoner, 2026-10): mono R$ 0,04725 everywhere, color R$ 0,75
+    // by default but R$ 0,85 on one OKI. The OKI shapes come from Printwayy's
+    // Oct closing (AK99000023: 750 mono + 504 color).
+    prisma.contract.findFirst.mockResolvedValue({
+      pricingModel: 'PER_PAGE',
+      fixedFee: null,
+      pricePerPageMono: '0.04725',
+      pricePerPageColor: '0.75',
+    });
+    prisma.device.findMany.mockResolvedValue([
+      makeDevice({ id: 'oki023', colorPagePriceOverride: '0.85' }),
+      makeDevice({ id: 'oki86', colorPagePriceOverride: null }),
+    ]);
+    prisma.metric.findFirst.mockResolvedValue(null);
+    prisma.metric.findMany.mockImplementation(({ where }: { where: { deviceId: string } }) => {
+      const [m0, c0, m1, c1] = { oki023: [8468, 6385, 9218, 6889], oki86: [9830, 81939, 9839, 82112] }[where.deviceId as 'oki86']!;
+      return Promise.resolve([
+        { collectedAt: new Date('2026-09-01T01:00:00Z'), pageCount: BigInt(m0 + c0), monoPageCount: BigInt(m0), colorPageCount: BigInt(c0) },
+        { collectedAt: periodEnd, pageCount: BigInt(m1 + c1), monoPageCount: BigInt(m1), colorPageCount: BigInt(c1) },
+      ]);
+    });
+
+    const result = await service.resolveBilling('t1', 'c1', periodStart, periodEnd);
+
+    expect(result.hasContract).toBe(true);
+    if (result.hasContract) {
+      const mono = (750 + 9) * 0.04725;
+      expect(result.usageCost).toBeCloseTo(mono + 504 * 0.85 + 173 * 0.75, 2);
+      const byId = new Map(result.perDevice.map((d) => [d.deviceId, d]));
+      expect(byId.get('oki023')!.usageRevenue).toBeCloseTo(750 * 0.04725 + 504 * 0.85, 2);
+      expect(byId.get('oki86')!.usageRevenue).toBeCloseTo(9 * 0.04725 + 173 * 0.75, 2);
+    }
+  });
+
+  it('PER_DEVICE_MINIMUM uses the printer own color rate too', () => {
+    const charges = perDeviceMinimumCharges(
+      [{ deviceId: 'd', monoPages: 100, colorPages: 100, minimumChargeOverride: null, colorPagePriceOverride: 0.85 }],
+      { pricePerPageMono: '0.042', pricePerPageColor: '0.75', minimumChargePerDevice: '0' },
+    );
+    expect(charges.get('d')!.charge).toBeCloseTo(4.2 + 85, 2);
   });
 
   it('billEngineCounter bills the engine counter even when a printed-pages split exists', async () => {

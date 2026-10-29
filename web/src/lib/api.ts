@@ -389,6 +389,8 @@ export interface Device {
   reviewPending: boolean;
   // PER_DEVICE_MINIMUM: this printer's own minimum (Decimal as string).
   minimumChargeOverride: string | null;
+  // This printer's own price per color page (Decimal as string).
+  colorPagePriceOverride: string | null;
   // Bill by the total engine counter even when a printed split exists.
   billEngineCounter: boolean;
   firstSeenAt: string;
@@ -1033,7 +1035,7 @@ export function updateDeviceManualBaseline(
 
 export function updateDeviceBillingTerms(
   deviceId: string,
-  terms: { minimumChargeOverride?: number | null; billEngineCounter?: boolean },
+  terms: { minimumChargeOverride?: number | null; colorPagePriceOverride?: number | null; billEngineCounter?: boolean },
 ): Promise<Device> {
   return apiMutate<Device>(`/v1/devices/${deviceId}`, 'PATCH', terms);
 }

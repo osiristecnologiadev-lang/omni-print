@@ -749,6 +749,11 @@ model Device {
   // ("franquia"), overriding the contract's minimumChargePerDevice - real
   // contracts mix values (Rodovibe: R$250 for most printers, R$200 for one).
   minimumChargeOverride   Decimal?  @map("minimum_charge_override") @db.Decimal(12, 2)
+  // PER_PAGE / PER_DEVICE_MINIMUM: this printer's own price per COLOR page,
+  // overriding the contract's pricePerPageColor - real contracts price each
+  // color printer differently (Amecor, 2026-10: one OKI at R$0,75, the other
+  // at R$0,85, under a single mono rate).
+  colorPagePriceOverride  Decimal?  @map("color_page_price_override") @db.Decimal(12, 4)
   // Bill this printer by its total engine counter even when it reports a
   // "pages printed" split (DevicePagesService normally prefers the split).
   // Some outsourcing contracts bill the total counter for specific models

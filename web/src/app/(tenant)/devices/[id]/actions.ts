@@ -79,13 +79,18 @@ export async function updateBillingTermsAction(deviceId: string, formData: FormD
   const rawMinimum = String(formData.get('minimumChargeOverride') ?? '').trim();
   // pt-BR input: "1.250,50" -> 1250.5
   const minimumChargeOverride = rawMinimum ? Number(rawMinimum.replace(/\./g, '').replace(',', '.')) : null;
+  const rawColorPrice = String(formData.get('colorPagePriceOverride') ?? '').trim();
+  const colorPagePriceOverride = rawColorPrice ? Number(rawColorPrice.replace(/\./g, '').replace(',', '.')) : null;
   const billEngineCounter = formData.get('billEngineCounter') === 'on';
 
   try {
     if (minimumChargeOverride != null && !Number.isFinite(minimumChargeOverride)) {
       throw new Error('invalid minimum');
     }
-    await updateDeviceBillingTerms(deviceId, { minimumChargeOverride, billEngineCounter });
+    if (colorPagePriceOverride != null && !Number.isFinite(colorPagePriceOverride)) {
+      throw new Error('invalid color price');
+    }
+    await updateDeviceBillingTerms(deviceId, { minimumChargeOverride, colorPagePriceOverride, billEngineCounter });
   } catch {
     redirect(`/devices/${deviceId}?billingError=1`);
   }
