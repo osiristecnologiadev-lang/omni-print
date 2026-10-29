@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 )
 
 func TestFirstOpenPortSeesAcceptedAndRefused(t *testing.T) {
@@ -46,7 +47,7 @@ func TestAliveWithoutSNMPFlagsUpHostsOnly(t *testing.T) {
 		{IP: net.ParseIP("127.0.0.1").To4(), Community: "public", Label: "SEDE.DIR.1A"},
 		// TEST-NET-1 (RFC 5737): never routed, so nothing answers.
 		{IP: net.ParseIP("192.0.2.1").To4(), Community: "public", Label: "RETIRED"},
-	})
+	}, 100*time.Millisecond)
 	if len(devices) != 1 {
 		t.Fatalf("expected only the live host, got %v", devices)
 	}

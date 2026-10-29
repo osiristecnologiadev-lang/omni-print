@@ -198,7 +198,7 @@ func Run(ctx context.Context, opts Options) []config.Device {
 		len(found), counts.notPrinter, counts.timeout, counts.errored)
 
 	if len(silent) > 0 {
-		found = append(found, aliveWithoutSNMP(ctx, silent)...)
+		found = append(found, aliveWithoutSNMP(ctx, silent, opts.ProbeTimeout)...)
 	}
 	return found
 }
@@ -361,7 +361,7 @@ func probeAll(ctx context.Context, targets []target, opts Options) (found []conf
 		go func() {
 			defer wg.Done()
 			for t := range jobs {
-				d, isPrinter, err := probeHost(t.IP.String(), port, t.Community, opts.ProbeTimeout)
+				d, isPrinter, err := probeHost(t.IP.String(), port, t.Community, false, opts.ProbeTimeout)
 				select {
 				case results <- outcome{t, d, isPrinter, err}:
 				case <-ctx.Done():
@@ -415,12 +415,16 @@ func probeAll(ctx context.Context, targets []target, opts Options) (found []conf
 // implements the Printer-MIB (i.e. is an actual printer, not just any
 // SNMP-speaking device on the network). err is nil whenever the host
 // answered at all, printer or not - only a missing/failed reply sets it.
-func probeHost(host string, port uint16, community string, timeout time.Duration) (config.Device, bool, error) {
+func probeHost(host string, port uint16, community string, v1 bool, timeout time.Duration) (config.Device, bool, error) {
+	version := gosnmp.Version2c
+	if v1 {
+		version = gosnmp.Version1
+	}
 	g := &gosnmp.GoSNMP{
 		Target:    host,
 		Port:      port,
 		Community: community,
-		Version:   gosnmp.Version2c,
+		Version:   version,
 		Timeout:   timeout,
 		// SNMP rides on UDP - a single lost packet during a concurrent sweep
 		// shouldn't read as "not a printer". One retry was confirmed
@@ -463,5 +467,5 @@ func probeHost(host string, port uint16, community string, timeout time.Duration
 	if name == "" {
 		name = host
 	}
-	return config.Device{Name: name, Host: host, Community: community, Port: port}, true, nil
+	return config.Device{Name: name, Host: host, Community: community, Port: port, SNMPv1: v1}, true, nil
 }

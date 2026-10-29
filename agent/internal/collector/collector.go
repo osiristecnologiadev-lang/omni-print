@@ -350,12 +350,17 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 	defer cancel()
 
 	_, knownNoBulk := c.noBulkHosts.Load(d.Host)
+	version := gosnmp.Version2c
+	if d.SNMPv1 {
+		version = gosnmp.Version1 // no GETBULK in v1 at all
+		knownNoBulk = true
+	}
 	g := &session{
 		GoSNMP: &gosnmp.GoSNMP{
 			Target:    d.Host,
 			Port:      d.Port,
 			Community: d.Community,
-			Version:   gosnmp.Version2c,
+			Version:   version,
 			Timeout:   c.timeout,
 			Retries:   c.retries,
 			Context:   ctx,

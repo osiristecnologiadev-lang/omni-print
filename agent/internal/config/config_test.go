@@ -173,6 +173,29 @@ func TestMergeDevices(t *testing.T) {
 	}
 }
 
+func TestMergeDevicesUpgradesNoSNMPDevice(t *testing.T) {
+	existing := []Device{
+		{Name: "a", Host: "10.0.0.1", Community: "public"},
+		{Name: "b", Host: "10.0.0.2", Community: "public", NoSNMP: true},
+	}
+	merged, added := MergeDevices(existing, []Device{
+		{Name: "a", Host: "10.0.0.1", Community: "private"}, // already polled fine: kept as is
+		{Name: "b", Host: "10.0.0.2", Community: "public", SNMPv1: true},
+	})
+	if len(merged) != 2 || merged[0].Community != "public" {
+		t.Fatalf("merged = %+v", merged)
+	}
+	if merged[1].NoSNMP || !merged[1].SNMPv1 {
+		t.Errorf("no-SNMP device not upgraded: %+v", merged[1])
+	}
+	if len(added) != 1 || added[0].Host != "10.0.0.2" {
+		t.Errorf("added = %+v, want only the upgraded device", added)
+	}
+	if !existing[1].NoSNMP {
+		t.Error("MergeDevices modified its input slice")
+	}
+}
+
 func TestMergeDevicesEmptyInputs(t *testing.T) {
 	merged, added := MergeDevices(nil, nil)
 	if len(merged) != 0 || len(added) != 0 {

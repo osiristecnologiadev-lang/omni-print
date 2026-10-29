@@ -44,6 +44,9 @@ type Device struct {
 	// enabled later), and a failed poll is reported as "sem SNMP" instead of
 	// a plain offline. See discovery's aliveWithoutSNMP.
 	NoSNMP bool `yaml:"no_snmp,omitempty"`
+	// SNMPv1 polls with SNMP v1 instead of v2c - set by discovery when a
+	// printer only answered v1 (see discovery's findSNMPAccess).
+	SNMPv1 bool `yaml:"snmp_v1,omitempty"`
 }
 
 // Discovery sweeps the local network for printers instead of requiring every
@@ -238,18 +241,27 @@ func SaveDeviceFile(path string, devices []Device) error {
 // MergeDevices appends devices from extra that aren't already present in
 // existing (matched by Host), returning the merged list and just the ones
 // that were newly added.
+//
+// One exception: a device known only as NoSNMP that now comes back reachable
+// over SNMP (another community or v1 - see discovery's findSNMPAccess)
+// replaces the old entry, and counts as added so it gets persisted.
 func MergeDevices(existing, extra []Device) (merged []Device, added []Device) {
-	seen := make(map[string]bool, len(existing))
-	for _, d := range existing {
-		seen[d.Host] = true
+	seen := make(map[string]int, len(existing))
+	merged = append([]Device(nil), existing...)
+	for i, d := range merged {
+		seen[d.Host] = i + 1
 	}
-	merged = existing
 	for _, d := range extra {
-		if !seen[d.Host] {
-			merged = append(merged, d)
-			added = append(added, d)
-			seen[d.Host] = true
+		if i := seen[d.Host]; i > 0 {
+			if merged[i-1].NoSNMP && !d.NoSNMP {
+				merged[i-1] = d
+				added = append(added, d)
+			}
+			continue
 		}
+		merged = append(merged, d)
+		added = append(added, d)
+		seen[d.Host] = len(merged)
 	}
 	return merged, added
 }

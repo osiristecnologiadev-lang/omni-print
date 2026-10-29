@@ -105,7 +105,7 @@ func (a *fakeAgent) serve() {
 			continue
 		}
 		resp := &gosnmp.SnmpPacket{
-			Version:   gosnmp.Version2c,
+			Version:   req.Version,
 			Community: req.Community,
 			PDUType:   gosnmp.GetResponse,
 			RequestID: req.RequestID,
@@ -178,6 +178,26 @@ func TestPollFallsBackToGetNextWhenGetBulkIsEmpty(t *testing.T) {
 	}
 	if len(m.Supplies) != 1 || m.Supplies[0].Level != 40 {
 		t.Fatalf("Supplies = %+v, want the toner at 40", m.Supplies)
+	}
+}
+
+// A printer discovery found answering only SNMP v1 is polled with v1.
+func TestPollUsesSNMPv1WhenFlagged(t *testing.T) {
+	agent := startFakeAgent(t, []gosnmp.SnmpPDU{
+		{Name: oidSysDescr, Type: gosnmp.OctetString, Value: []byte("OKI ES6405")},
+		{Name: oidSerialNumber, Type: gosnmp.OctetString, Value: []byte("AK99000023")},
+		{Name: oidPageCountCol + ".1.1", Type: gosnmp.Counter32, Value: uint(16107)},
+	})
+	port := uint16(agent.conn.LocalAddr().(*net.UDPAddr).Port)
+	dev := config.Device{Name: "oki", Host: "127.0.0.1", Port: port, Community: "public", SNMPv1: true}
+	c := New(0, 150*time.Millisecond, 0, false)
+
+	m := c.pollDevice(context.Background(), dev)
+	if m.SerialNumber != "AK99000023" || m.PageCount == nil || *m.PageCount != 16107 {
+		t.Fatalf("serial %q PageCount %v", m.SerialNumber, m.PageCount)
+	}
+	if agent.bulks != 0 {
+		t.Fatalf("sent %d GETBULK requests over SNMP v1", agent.bulks)
 	}
 }
 
