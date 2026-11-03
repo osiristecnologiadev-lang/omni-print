@@ -47,6 +47,12 @@ type Device struct {
 	// SNMPv1 polls with SNMP v1 instead of v2c - set by discovery when a
 	// printer only answered v1 (see discovery's findSNMPAccess).
 	SNMPv1 bool `yaml:"snmp_v1,omitempty"`
+	// WebModel / WebSerial: what a NoSNMP printer's own web page says it is
+	// (see discovery's identifyWeb) - reported in place of the SNMP name and
+	// serial it can't give, so the panel shows "HP Color LaserJet Pro MFP
+	// 4303" instead of a bare IP.
+	WebModel  string `yaml:"web_model,omitempty"`
+	WebSerial string `yaml:"web_serial,omitempty"`
 }
 
 // Discovery sweeps the local network for printers instead of requiring every
@@ -242,9 +248,10 @@ func SaveDeviceFile(path string, devices []Device) error {
 // existing (matched by Host), returning the merged list and just the ones
 // that were newly added.
 //
-// One exception: a device known only as NoSNMP that now comes back reachable
-// over SNMP (another community or v1 - see discovery's findSNMPAccess)
-// replaces the old entry, and counts as added so it gets persisted.
+// Two exceptions, both replacing the old entry and counting as added so they
+// get persisted: a device known only as NoSNMP that now comes back reachable
+// over SNMP (another community or v1 - see discovery's findSNMPAccess), and
+// a NoSNMP device whose web page now names a model it didn't have before.
 func MergeDevices(existing, extra []Device) (merged []Device, added []Device) {
 	seen := make(map[string]int, len(existing))
 	merged = append([]Device(nil), existing...)
@@ -253,7 +260,11 @@ func MergeDevices(existing, extra []Device) (merged []Device, added []Device) {
 	}
 	for _, d := range extra {
 		if i := seen[d.Host]; i > 0 {
-			if merged[i-1].NoSNMP && !d.NoSNMP {
+			old := merged[i-1]
+			if old.NoSNMP && (!d.NoSNMP || (d.WebModel != "" && old.WebModel == "")) {
+				if d.NoSNMP && d.Name == "" {
+					d.Name = old.Name
+				}
 				merged[i-1] = d
 				added = append(added, d)
 			}

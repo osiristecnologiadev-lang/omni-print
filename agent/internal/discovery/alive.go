@@ -74,6 +74,7 @@ func aliveWithoutSNMP(ctx context.Context, silent []target, timeout time.Duratio
 		port   int
 		access *config.Device // SNMP found on another version/community
 		web    bool           // its web page (tcp/80 or 443) answers
+		id     webIdentity    // what that page says it is, when it says
 	}
 	jobs := make(chan target)
 	results := make(chan result)
@@ -89,6 +90,9 @@ func aliveWithoutSNMP(ctx context.Context, silent []target, timeout time.Duratio
 						r.access = &d
 					} else {
 						r.web = webPageAnswers(ctx, t.IP)
+						if r.web {
+							r.id, _ = identifyWeb(ctx, t.IP)
+						}
 					}
 				}
 				results <- r
@@ -134,6 +138,9 @@ func aliveWithoutSNMP(ctx context.Context, silent []target, timeout time.Duratio
 		web := "no web page either"
 		if r.web {
 			web = "its web page answers"
+			if r.id.Model != "" {
+				web = fmt.Sprintf("its web page says %q serial %q", r.id.Model, r.id.Serial)
+			}
 		}
 		log.Printf("discovery: %q at %s is up (tcp/%d) but doesn't answer SNMP (v2c/v1, %d communities tried; %s) - adding it as a printer without SNMP",
 			r.t.Label, r.t.IP, r.port, len(fallbackCommunities)+1, web)
@@ -143,6 +150,8 @@ func aliveWithoutSNMP(ctx context.Context, silent []target, timeout time.Duratio
 			Community: r.t.Community,
 			Port:      161,
 			NoSNMP:    true,
+			WebModel:  r.id.Model,
+			WebSerial: r.id.Serial,
 		})
 	}
 	log.Printf("discovery: of %d named printer(s) without SNMP reply: %d up on the network, %d unreachable", len(silent), len(devices), down)

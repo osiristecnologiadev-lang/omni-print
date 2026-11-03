@@ -242,3 +242,16 @@ func TestDatedLogPathPreservesDirectory(t *testing.T) {
 		t.Errorf("DatedLogPath = %q, want %q", got, want)
 	}
 }
+
+func TestMergeDevicesFillsInAWebModel(t *testing.T) {
+	existing := []Device{{Name: "secoesq", Host: "10.0.11.209", NoSNMP: true}}
+	merged, added := MergeDevices(existing, []Device{{Host: "10.0.11.209", NoSNMP: true, WebModel: "HP Color LaserJet Pro MFP 4303fdw", WebSerial: "BRBST4S07W"}})
+	if len(added) != 1 || merged[0].WebModel != "HP Color LaserJet Pro MFP 4303fdw" || merged[0].Name != "secoesq" {
+		t.Fatalf("merged = %+v, added = %+v", merged, added)
+	}
+	// Already has a model: the same NoSNMP find again changes nothing.
+	_, added = MergeDevices(merged, []Device{{Host: "10.0.11.209", NoSNMP: true, WebModel: "other"}})
+	if len(added) != 0 {
+		t.Fatalf("added = %+v, want nothing", added)
+	}
+}

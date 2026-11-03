@@ -328,6 +328,23 @@ feed:
 // SNMP" instead of "Offline" - keep web/src/lib/health.ts in sync.
 const NoSNMPError = "Sem resposta SNMP: a impressora está ligada na rede, mas o SNMP não responde (desativado, bloqueado ou com community diferente)"
 
+// webIdentity fills in what a NoSNMP printer's web page said (see
+// config.Device.WebModel) on a metric SNMP couldn't fill.
+func webIdentity(m *Metric, d config.Device) {
+	if !d.NoSNMP {
+		return
+	}
+	if d.WebModel != "" {
+		m.PrinterName = d.WebModel
+		if m.DeviceName == "" {
+			m.DeviceName = d.WebModel
+		}
+	}
+	if d.WebSerial != "" {
+		m.SerialNumber = d.WebSerial
+	}
+}
+
 func pollError(d config.Device, detail string) string {
 	if d.NoSNMP {
 		return NoSNMPError + " - " + detail
@@ -375,6 +392,7 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 
 	if err := g.Connect(); err != nil {
 		m.Error = pollError(d, fmt.Sprintf("connect: %v", err))
+		webIdentity(&m, d)
 		return m
 	}
 	defer g.Conn.Close()
@@ -394,6 +412,7 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 	vars, err := getScalars(g, scalarOIDs)
 	if err != nil {
 		m.Error = pollError(d, fmt.Sprintf("get: %v", err))
+		webIdentity(&m, d)
 		return m
 	}
 	m.Online = true

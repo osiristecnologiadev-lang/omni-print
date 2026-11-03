@@ -144,10 +144,15 @@ export class IngestService {
     // printer at all - so it starts "fora do contrato" until a human
     // confirms it (see Device.reviewPending). Never applied to an existing
     // device: that decision was already made.
-    const review = metric.outside_agent_network === true;
-    this.logger.log(
-      `new device for tenant ${tenantId}: ${metric.device_name} (${metric.host})${review ? ' - outside the agent network, pending review' : ''}`,
-    );
+    // Same for a new device whose first report has no page counter (a
+    // printer with SNMP off, found by its web page - agent v0.1.25): a
+    // PER_DEVICE_MINIMUM contract charges its minimum even with no reading,
+    // so it would be billed blind, like SE's 4 ghost devices (2026-10).
+    const outside = metric.outside_agent_network === true;
+    const noCounter = metric.page_count == null;
+    const review = outside || noCounter;
+    const why = outside ? ' - outside the agent network, pending review' : noCounter ? ' - no page counter yet, pending review' : '';
+    this.logger.log(`new device for tenant ${tenantId}: ${metric.device_name} (${metric.host})${why}`);
     return this.prisma.device.create({
       data: { tenantId, customerId, ...data, ...(review ? { billingExcluded: true, reviewPending: true } : {}) },
     });

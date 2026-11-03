@@ -131,6 +131,8 @@ func Run(ctx context.Context, opts Options) []config.Device {
 		targets = mergeTargets(targets, extra)
 	}
 	scanned := append(append([]*net.IPNet{}, nets...), parseRanges(opts.ExtraRanges)...)
+	others := parseRanges(opts.ExtraRanges) // for the tcp/9100 check's scope - see jetdirectScope
+	var neighbours []*net.IPNet
 	if !opts.NoAutoNetworks {
 		for _, a := range autoNetworks(ctx, scanned) {
 			hosts := hostsIn(a.Net)
@@ -141,6 +143,7 @@ func Run(ctx context.Context, opts Options) []config.Device {
 			}
 			targets = mergeTargets(targets, auto)
 			scanned = append(scanned, a.Net)
+			others = append(others, a.Net)
 		}
 	}
 	targets = mergeTargets(targets, printServerTargets(ctx, opts.Community))
@@ -159,6 +162,7 @@ func Run(ctx context.Context, opts Options) []config.Device {
 			}
 		}
 		for _, n := range neighborNets(hints, scanned, maxAutoNeighborNets) {
+			neighbours = append(neighbours, n)
 			hosts := hostsIn(n)
 			log.Printf("discovery: scanning %s (%d hosts, next to known printers)", n.String(), len(hosts))
 			near := make([]target, 0, len(hosts))
@@ -183,7 +187,7 @@ func Run(ctx context.Context, opts Options) []config.Device {
 		return nil
 	}
 
-	found, counts, silent := probeAll(ctx, targets, opts)
+	found, counts, silent, timedOut := probeAll(ctx, targets, opts)
 	// Always logged, even when found is empty - a scan that silently
 	// produces nothing is exactly the ambiguous case that cost real
 	// diagnosis time on a real customer (Amecor, 2026-09): the log alone
@@ -200,6 +204,19 @@ func Run(ctx context.Context, opts Options) []config.Device {
 	if len(silent) > 0 {
 		found = append(found, aliveWithoutSNMP(ctx, silent, opts.ProbeTimeout)...)
 	}
+
+	known := map[string]bool{}
+	for _, d := range found {
+		known[d.Host] = true
+	}
+	for _, t := range silent {
+		known[t.IP.String()] = true // named targets were already checked above
+	}
+	for _, h := range opts.KnownHosts {
+		known[h] = true
+	}
+	candidates := jetdirectCandidates(timedOut, jetdirectScope(nets, neighbours, others), known)
+	found = append(found, jetdirectPrinters(ctx, candidates, opts.Community)...)
 	return found
 }
 
@@ -334,8 +351,9 @@ type scanCounts struct {
 // doesn't take forever, while staying far short of "every host at once" -
 // each worker also pauses between requests.
 // silent returns the named targets (target.Label set) that never answered
-// - see aliveWithoutSNMP.
-func probeAll(ctx context.Context, targets []target, opts Options) (found []config.Device, counts scanCounts, silent []target) {
+// - see aliveWithoutSNMP; timedOut the plain sweep addresses that didn't -
+// see jetdirectPrinters.
+func probeAll(ctx context.Context, targets []target, opts Options) (found []config.Device, counts scanCounts, silent []target, timedOut []net.IP) {
 	concurrency := opts.Concurrency
 	if concurrency <= 0 {
 		concurrency = 8
@@ -400,6 +418,8 @@ func probeAll(ctx context.Context, targets []target, opts Options) (found []conf
 			counts.timeout++
 			if o.target.Label != "" {
 				silent = append(silent, o.target)
+			} else {
+				timedOut = append(timedOut, o.target.IP)
 			}
 		default:
 			counts.errored++
@@ -408,7 +428,7 @@ func probeAll(ctx context.Context, targets []target, opts Options) (found []conf
 			}
 		}
 	}
-	return found, counts, silent
+	return found, counts, silent, timedOut
 }
 
 // probeHost sends one lightweight SNMP GET and reports whether the host

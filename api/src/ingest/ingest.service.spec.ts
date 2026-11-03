@@ -133,11 +133,25 @@ describe('IngestService.upsertDevice (via ingest)', () => {
     prisma.device.create.mockResolvedValue({ id: 'new-id' });
     prisma.metric.create.mockResolvedValue({});
 
-    await service.ingest('t1', 'cust-1', [baseMetric({ serial_number: 'LOCAL-1', outside_agent_network: false })]);
+    await service.ingest('t1', 'cust-1', [baseMetric({ serial_number: 'LOCAL-1', outside_agent_network: false, page_count: 1000 })]);
 
     const createArg = prisma.device.create.mock.calls[0][0];
     expect(createArg.data.billingExcluded).toBeUndefined();
     expect(createArg.data.reviewPending).toBeUndefined();
+  });
+
+  it('creates a new device with no page counter (SNMP off) as fora do contrato, pending review', async () => {
+    prisma.device.findUnique.mockResolvedValue(null);
+    prisma.device.findFirst.mockResolvedValue(null);
+    prisma.device.create.mockResolvedValue({ id: 'new-id' });
+    prisma.metric.create.mockResolvedValue({});
+
+    await service.ingest('t1', 'cust-1', [
+      baseMetric({ serial_number: 'BRBST4S07W', online: false, outside_agent_network: false, printer_name: 'HP Color LaserJet Pro MFP 4303fdw' }),
+    ]);
+
+    const createArg = prisma.device.create.mock.calls[0][0];
+    expect(createArg.data).toMatchObject({ customerId: 'cust-1', billingExcluded: true, reviewPending: true, serialNumber: 'BRBST4S07W' });
   });
 
   it('never re-flags an existing device, even when reported outside the agent network', async () => {
