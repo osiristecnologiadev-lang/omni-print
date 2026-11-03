@@ -46,7 +46,11 @@ export class InvoicesController {
   @Post('generate')
   async generate(@Req() req: any, @Param('customerId') customerId: string, @Body() dto: GenerateInvoiceDto) {
     assertPermission(req, 'invoices');
-    const invoice = await this.invoicesService.generate(req.tenantId, customerId, dto.year, dto.month);
+    // A human asking for a month whose invoice was cancelled wants it billed
+    // again with current data - see InvoicesService.generate.
+    const invoice = await this.invoicesService.generate(req.tenantId, customerId, dto.year, dto.month, {
+      replaceCancelled: true,
+    });
     await this.auditLog.log({
       tenantId: req.tenantId,
       actorType: 'USER',

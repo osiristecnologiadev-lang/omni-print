@@ -56,7 +56,19 @@ export class InvoicesService {
   // double-billing. Every number is snapshotted onto the row at generation
   // time (see Invoice's schema comment) - editing the contract afterward
   // never changes an invoice that's already been generated.
-  async generate(tenantId: string, customerId: string, year: number, month: number) {
+  //
+  // replaceCancelled (manual "Gerar" only): a CANCELLED month gets a fresh
+  // snapshot in place of the cancelled one - otherwise cancel + generate
+  // hands back the cancelled row and the month can never be billed again
+  // (found for real: SE's October 2026 invoice charged 4 ghost devices). The
+  // nightly cron never passes it, so a deliberate cancel doesn't come back.
+  async generate(
+    tenantId: string,
+    customerId: string,
+    year: number,
+    month: number,
+    opts: { replaceCancelled?: boolean } = {},
+  ) {
     const customer = await this.contractsService.requireCustomer(tenantId, customerId);
     const { periodStart, periodEnd } = await this.contractsService.periodFor(customer, year, month);
 
@@ -72,7 +84,8 @@ export class InvoicesService {
     const existing = await this.prisma.invoice.findUnique({
       where: { customerId_periodStart: { customerId, periodStart } },
     });
-    if (existing) {
+    const replacing = existing?.status === 'CANCELLED' && opts.replaceCancelled === true;
+    if (existing && !replacing) {
       return existing;
     }
 
@@ -82,25 +95,30 @@ export class InvoicesService {
     }
 
     const dueDate = dueDateFor(billing.contract.billingDay, periodEnd);
+    const snapshot = {
+      contractId: billing.contract.id,
+      periodEnd,
+      dueDate,
+      pricingModel: billing.contract.pricingModel,
+      totalPages: billing.totalPages,
+      monoPages: billing.monoPages,
+      colorPages: billing.colorPages,
+      perDevice: billing.perDevice as unknown as Prisma.InputJsonValue,
+      fixedFee: billing.fixedFee,
+      usageCost: billing.usageCost,
+      totalDue: billing.totalDue,
+    };
+
+    if (replacing && existing) {
+      return this.prisma.invoice.update({
+        where: { id: existing.id },
+        data: { ...snapshot, status: 'PENDING', paidAt: null, paidAmount: null, generatedAt: new Date() },
+      });
+    }
 
     try {
       return await this.prisma.invoice.create({
-        data: {
-          tenantId,
-          customerId,
-          contractId: billing.contract.id,
-          periodStart,
-          periodEnd,
-          dueDate,
-          pricingModel: billing.contract.pricingModel,
-          totalPages: billing.totalPages,
-          monoPages: billing.monoPages,
-          colorPages: billing.colorPages,
-          perDevice: billing.perDevice as unknown as Prisma.InputJsonValue,
-          fixedFee: billing.fixedFee,
-          usageCost: billing.usageCost,
-          totalDue: billing.totalDue,
-        },
+        data: { tenantId, customerId, periodStart, ...snapshot },
       });
     } catch (err) {
       // Lost a race with another request/the cron generating the same

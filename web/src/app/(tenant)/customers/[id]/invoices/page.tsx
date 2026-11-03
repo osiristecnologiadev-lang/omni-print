@@ -92,7 +92,8 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
         <h2 className="mb-1 text-sm font-medium text-ink">Gerar fatura</h2>
         <p className="mb-4 text-xs text-ink-faint">
           Todo dia, o sistema já gera automaticamente a fatura do período que acabou de fechar. Use isto para
-          preencher um mês antigo.
+          preencher um mês antigo - ou para refazer um mês cuja fatura foi cancelada (ela é recalculada com os dados
+          atuais).
           {customer && customer.billingCycleDay > 1 && (
             <>
               {' '}

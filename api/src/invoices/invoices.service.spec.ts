@@ -120,3 +120,68 @@ describe('InvoicesService.usageRevenueReport', () => {
     expect(report.monthly.every((m) => m.totalDue === 0)).toBe(true);
   });
 });
+
+describe('InvoicesService.generate - cancelled months', () => {
+  let service: InvoicesService;
+  let prisma: { invoice: { findUnique: jest.Mock; update: jest.Mock; create: jest.Mock } };
+  let contracts: { requireCustomer: jest.Mock; periodFor: jest.Mock; resolveBilling: jest.Mock };
+  const periodStart = new Date('2026-10-01T04:00:00Z');
+  const periodEnd = new Date('2026-11-01T03:59:59Z');
+
+  beforeEach(async () => {
+    prisma = { invoice: { findUnique: jest.fn(), update: jest.fn(async (a) => a), create: jest.fn(async (a) => a) } };
+    contracts = {
+      requireCustomer: jest.fn(async () => ({ id: 'c1' })),
+      periodFor: jest.fn(async () => ({ periodStart, periodEnd })),
+      resolveBilling: jest.fn(async () => ({
+        hasContract: true,
+        contract: { id: 'k1', billingDay: 15, pricingModel: 'PER_DEVICE_MINIMUM' },
+        totalPages: 100,
+        monoPages: 100,
+        colorPages: 0,
+        perDevice: [],
+        fixedFee: 0,
+        usageCost: 2793.5,
+        totalDue: 2793.5,
+      })),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        InvoicesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ContractsService, useValue: contracts },
+      ],
+    }).compile();
+    service = moduleRef.get(InvoicesService);
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-03T18:00:00Z'));
+  });
+
+  afterEach(() => jest.useRealTimers());
+
+  it('manual generate replaces a cancelled invoice with a fresh PENDING snapshot', async () => {
+    prisma.invoice.findUnique.mockResolvedValue({ id: 'old', status: 'CANCELLED', totalDue: '3593.50' });
+    await service.generate('t1', 'c1', 2026, 10, { replaceCancelled: true });
+    expect(prisma.invoice.create).not.toHaveBeenCalled();
+    const arg = prisma.invoice.update.mock.calls[0][0];
+    expect(arg.where).toEqual({ id: 'old' });
+    expect(arg.data).toMatchObject({ status: 'PENDING', totalDue: 2793.5, paidAt: null, paidAmount: null });
+  });
+
+  it('without the flag (nightly cron) a cancelled invoice stays cancelled', async () => {
+    const cancelled = { id: 'old', status: 'CANCELLED' };
+    prisma.invoice.findUnique.mockResolvedValue(cancelled);
+    await expect(service.generate('t1', 'c1', 2026, 10)).resolves.toBe(cancelled);
+    expect(prisma.invoice.update).not.toHaveBeenCalled();
+    expect(contracts.resolveBilling).not.toHaveBeenCalled();
+  });
+
+  it('never replaces a PENDING or PAID invoice, even with the flag', async () => {
+    for (const status of ['PENDING', 'PAID']) {
+      const inv = { id: 'x', status };
+      prisma.invoice.findUnique.mockResolvedValue(inv);
+      await expect(service.generate('t1', 'c1', 2026, 10, { replaceCancelled: true })).resolves.toBe(inv);
+    }
+    expect(prisma.invoice.update).not.toHaveBeenCalled();
+  });
+});
