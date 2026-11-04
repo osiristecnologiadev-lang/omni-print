@@ -49,6 +49,9 @@ written so that OmniPrint can't take Vortex down.
 4. Start the database and restore the newest R2 backup into it. Use the
    `postgres:16` psql (≥16.10, because dumps contain `\restrict`). The only
    expected errors are the known cosmetic hypertable FK errors.
+   **Then run `VACUUM (ANALYZE)`.** A fresh restore has no planner
+   statistics, so heavy pages (pages report, dashboards) are slow until
+   autovacuum gets to them. Seen on 2026-11-04.
    ```
    docker compose -p omniprint up -d db
    gunzip -c omniprint-<date>.sql.gz | docker compose -p omniprint exec -T db psql -U omniprint -d omniprint
@@ -114,7 +117,7 @@ written so that OmniPrint can't take Vortex down.
    3. On the VPS, stop api and web, then recreate the empty database. Use
       `docker compose -p omniprint down` **inside /opt/omniprint only**,
       and remove the `omniprint_db_data` volume by name.
-   4. Restore the final dump. Set `DISABLE_CRONS=false` in `.env`, then run
+   4. Restore the final dump and run `VACUUM (ANALYZE)`. Set `DISABLE_CRONS=false` in `.env`, then run
       `./deploy.sh deploy latest`.
    5. Sync `api_storage` again, in case of uploads since Phase 1.
    6. Switch `omniprint.caddy` to Stage 2, then validate and reload.
