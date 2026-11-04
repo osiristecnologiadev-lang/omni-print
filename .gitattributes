@@ -1,0 +1,4 @@
+# Files that run on Linux (VPS, containers) must keep LF even on a Windows checkout.
+*.sh text eol=lf
+deploy/vps/** text eol=lf
+ops/** text eol=lf

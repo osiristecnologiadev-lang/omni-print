@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, raw } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -14,7 +15,16 @@ import { AppModule } from './app.module';
 };
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Behind a reverse proxy (Caddy on the VPS) every request arrives from the
+  // proxy's own address, so the global ThrottlerGuard (per-IP, 60/min) would
+  // put every agent and user in ONE shared bucket. TRUST_PROXY=<hops> tells
+  // Express to take the client IP from X-Forwarded-For instead. Unset (as on
+  // Railway today) keeps the previous behaviour.
+  if (process.env.TRUST_PROXY) {
+    app.set('trust proxy', Number(process.env.TRUST_PROXY));
+  }
 
   // Standard security response headers (X-Content-Type-Options,
   // X-Frame-Options, etc.) - this API never serves HTML of its own (JSON,

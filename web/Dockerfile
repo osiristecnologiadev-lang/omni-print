@@ -1,0 +1,31 @@
+# Production image for the dashboard on the Hostinger VPS (deploy/vps/).
+# Railway builds this service with Railpack and ignores this file.
+
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+# NEXT_PUBLIC_* values are inlined into the browser bundle at BUILD time, so
+# the Stripe publishable key (public by design, not a secret) must be passed
+# as a build arg - setting it only at runtime would leave the card form blank.
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY \
+    NEXT_TELEMETRY_DISABLED=1
+RUN npm run build && npm prune --omit=dev
+
+FROM node:22-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production \
+    TZ=UTC \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0 \
+    NEXT_TELEMETRY_DISABLED=1
+COPY --from=build --chown=node:node /app/package.json ./package.json
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/.next ./.next
+COPY --from=build --chown=node:node /app/public ./public
+COPY --from=build --chown=node:node /app/next.config.ts ./next.config.ts
+USER node
+EXPOSE 3000
+CMD ["npx", "next", "start", "-p", "3000"]

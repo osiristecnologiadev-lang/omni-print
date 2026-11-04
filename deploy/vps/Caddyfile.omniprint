@@ -1,0 +1,38 @@
+# OmniPrint site blocks, to be APPENDED to Vortex's /opt/vortex/Caddyfile.
+# Vortex's Caddy (vortex-caddy-1) owns ports 80/443 on this VPS; OmniPrint
+# never runs a proxy of its own. Before appending:
+#   1. cp /opt/vortex/Caddyfile /opt/vortex/Caddyfile.bak-$(date -u +%F-%H%M)
+#   2. docker network connect omniprint_edge vortex-caddy-1   (no restart)
+#   3. append ONE of the stages below, then validate + reload (no downtime):
+#        docker exec vortex-caddy-1 caddy validate --config /etc/caddy/Caddyfile
+#        docker exec vortex-caddy-1 caddy reload   --config /etc/caddy/Caddyfile
+#      (a failed reload keeps the old config running).
+# Rollback: restore the .bak file and reload again.
+#
+# omniprint-web / omniprint-api are network aliases on omniprint_edge
+# (deploy/vps/docker-compose.yml), unambiguous next to Vortex's services.
+
+# ---- Stage 1: test hostnames (before cutover) ------------------------------
+vps.omniprint.app.br {
+	encode gzip
+	reverse_proxy omniprint-web:3000
+}
+
+api-vps.omniprint.app.br {
+	reverse_proxy omniprint-api:3000
+}
+
+# ---- Stage 2: production hostnames (at cutover; replaces Stage 1) ----------
+# omniprint.app.br {
+# 	encode gzip
+# 	reverse_proxy omniprint-web:3000
+# }
+#
+# www.omniprint.app.br {
+# 	redir https://omniprint.app.br{uri} permanent
+# }
+#
+# # Agents + installer talk to this hostname - must not change.
+# api.omniprint.app.br {
+# 	reverse_proxy omniprint-api:3000
+# }
