@@ -123,10 +123,12 @@ networks:
     internal: true
   # Outbound internet for the backup job only.
   egress:
-  # Fixed name so Vortex's Caddy can join it (`docker network connect
-  # omniprint_edge vortex-caddy-1`). Only api and web are on it - never db.
+  # Shared with Vortex's Caddy, which joins it from Vortex's own compose.
+  # External = owned by neither project (deploy.sh creates it if missing), so
+  # neither one needs the other to start. Only api and web are on it - never db.
   edge:
     name: omniprint_edge
+    external: true
 
 volumes:
   db_data:

@@ -3,22 +3,21 @@
 #
 # Lives on the VPS as /opt/vortex/dados/caddy-config/omniprint.caddy - that
 # DIRECTORY is bind-mounted at /config in the container, so edits to this
-# file are seen by Caddy. Vortex's own Caddyfile gets ONE line, once:
-#     import /config/omniprint.caddy
-# (appended with `cat >>`: the Caddyfile is a single-file bind mount, and
-# `sed -i` / editors that write a new file change the inode, so the container
-# would keep seeing the OLD file).
+# file are seen by Caddy.
 #
-# One-time setup (store closed, Vortex owner warned):
-#   cp /opt/vortex/Caddyfile /opt/vortex/Caddyfile.bak-$(date -u +%F-%H%M)
-#   docker network connect omniprint_edge vortex-caddy-1        # no restart
-#   install -m 644 Caddyfile.omniprint /opt/vortex/dados/caddy-config/omniprint.caddy
-#   printf '\nimport /config/omniprint.caddy\n' >> /opt/vortex/Caddyfile
+# The hook lives in the VORTEX repo (vortex-pdv/deploy/), because Vortex's
+# deploy.sh re-uploads its Caddyfile and compose on every deploy - anything
+# added only on the server would be wiped:
+#   - Caddyfile: `import /config/omniprint*.caddy` (a glob: with no file,
+#     Vortex's Caddy still starts - Vortex never depends on OmniPrint);
+#   - compose: caddy joins the external network omniprint_edge.
+# Never `sed -i` the server's Caddyfile: it is a single-file bind mount, and
+# a new inode leaves the container on the OLD file.
+#
+# Any change here (e.g. Stage 1 -> Stage 2): edit omniprint.caddy, then
 #   docker exec vortex-caddy-1 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 #   docker exec vortex-caddy-1 caddy reload   --config /etc/caddy/Caddyfile --adapter caddyfile
-# Any later change (e.g. Stage 1 -> Stage 2): edit omniprint.caddy, then
-# validate + reload. A failed reload keeps the old config running.
-# Rollback: restore the Caddyfile .bak and reload.
+# A failed reload keeps the old config running.
 #
 # omniprint-web / omniprint-api are network aliases on omniprint_edge
 # (deploy/vps/docker-compose.yml), unambiguous next to Vortex's services.

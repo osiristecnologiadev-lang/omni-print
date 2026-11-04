@@ -33,6 +33,9 @@ if [ ! -t 0 ]; then
   fi
 fi
 
+# Shared with Vortex's Caddy (see docker-compose.yml) - create it if missing.
+docker network inspect omniprint_edge >/dev/null 2>&1 || docker network create omniprint_edge >/dev/null
+
 echo "==> pulling $TAG"
 "${COMPOSE[@]}" --profile backup pull api web db-backup
 
