@@ -61,7 +61,10 @@ written so that OmniPrint can't take Vortex down.
    - Run `chown -R 1000:1000` on the volume (the container user is `node`).
 6. First deploy: `./deploy.sh deploy latest`. This pulls the images, runs the
    migrations, starts api and web, and runs the health check.
-7. **Do NOT enable the backup cron yet.** The backup file name is
+7. Keep `DISABLE_CRONS=true` in `.env` until cutover. Otherwise this copy
+   would send the 7am notification e-mails to customers a second time and
+   drive Stripe from two places.
+8. **Do NOT enable the backup cron yet.** The backup file name is
    `omniprint-<date>.sql.gz` in the same bucket, so a VPS run would
    overwrite Railway's real backup of that day.
 
@@ -111,7 +114,8 @@ written so that OmniPrint can't take Vortex down.
    3. On the VPS, stop api and web, then recreate the empty database. Use
       `docker compose -p omniprint down` **inside /opt/omniprint only**,
       and remove the `omniprint_db_data` volume by name.
-   4. Restore the final dump, then run `./deploy.sh deploy latest`.
+   4. Restore the final dump. Set `DISABLE_CRONS=false` in `.env`, then run
+      `./deploy.sh deploy latest`.
    5. Sync `api_storage` again, in case of uploads since Phase 1.
    6. Switch `omniprint.caddy` to Stage 2, then validate and reload.
    7. In Cloudflare, point `omniprint.app.br`, `www` and `api` at the VPS

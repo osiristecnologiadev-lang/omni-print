@@ -32,8 +32,12 @@ import { HealthController } from './health/health.controller';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // Powers InvoicesService's @Cron nightly invoice generation.
-    ScheduleModule.forRoot(),
+    // Powers every @Cron job (2am invoices, 3am Stripe quantity sync + log
+    // prune, 7am notification e-mails). DISABLE_CRONS=true leaves the
+    // decorators inert - used while a second copy of production runs in
+    // parallel (VPS migration), so customers don't get duplicate e-mails and
+    // Stripe isn't driven from two places.
+    ...(process.env.DISABLE_CRONS === 'true' ? [] : [ScheduleModule.forRoot()]),
     // Global default: 60 req/min per IP. Login and ingest (both are
     // credential-guessing surfaces - password / agent token) set tighter
     // per-route limits with @Throttle - see auth.controller.ts and
