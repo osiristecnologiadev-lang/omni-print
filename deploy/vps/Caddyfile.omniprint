@@ -1,13 +1,24 @@
-# OmniPrint site blocks, to be APPENDED to Vortex's /opt/vortex/Caddyfile.
-# Vortex's Caddy (vortex-caddy-1) owns ports 80/443 on this VPS; OmniPrint
-# never runs a proxy of its own. Before appending:
-#   1. cp /opt/vortex/Caddyfile /opt/vortex/Caddyfile.bak-$(date -u +%F-%H%M)
-#   2. docker network connect omniprint_edge vortex-caddy-1   (no restart)
-#   3. append ONE of the stages below, then validate + reload (no downtime):
-#        docker exec vortex-caddy-1 caddy validate --config /etc/caddy/Caddyfile
-#        docker exec vortex-caddy-1 caddy reload   --config /etc/caddy/Caddyfile
-#      (a failed reload keeps the old config running).
-# Rollback: restore the .bak file and reload again.
+# OmniPrint site blocks for the Caddy of Vortex (vortex-caddy-1), which owns
+# ports 80/443 on this VPS. OmniPrint never runs a proxy of its own.
+#
+# Lives on the VPS as /opt/vortex/dados/caddy-config/omniprint.caddy - that
+# DIRECTORY is bind-mounted at /config in the container, so edits to this
+# file are seen by Caddy. Vortex's own Caddyfile gets ONE line, once:
+#     import /config/omniprint.caddy
+# (appended with `cat >>`: the Caddyfile is a single-file bind mount, and
+# `sed -i` / editors that write a new file change the inode, so the container
+# would keep seeing the OLD file).
+#
+# One-time setup (store closed, Vortex owner warned):
+#   cp /opt/vortex/Caddyfile /opt/vortex/Caddyfile.bak-$(date -u +%F-%H%M)
+#   docker network connect omniprint_edge vortex-caddy-1        # no restart
+#   install -m 644 Caddyfile.omniprint /opt/vortex/dados/caddy-config/omniprint.caddy
+#   printf '\nimport /config/omniprint.caddy\n' >> /opt/vortex/Caddyfile
+#   docker exec vortex-caddy-1 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+#   docker exec vortex-caddy-1 caddy reload   --config /etc/caddy/Caddyfile --adapter caddyfile
+# Any later change (e.g. Stage 1 -> Stage 2): edit omniprint.caddy, then
+# validate + reload. A failed reload keeps the old config running.
+# Rollback: restore the Caddyfile .bak and reload.
 #
 # omniprint-web / omniprint-api are network aliases on omniprint_edge
 # (deploy/vps/docker-compose.yml), unambiguous next to Vortex's services.

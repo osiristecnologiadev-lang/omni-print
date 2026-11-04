@@ -70,11 +70,15 @@ written so that OmniPrint can't take Vortex down.
 1. In Cloudflare, create `vps.omniprint.app.br` and
    `api-vps.omniprint.app.br` as **DNS only** (grey cloud) A records pointing
    to `187.127.60.242`.
-2. Follow the header of `Caddyfile.omniprint`, Stage 1:
+2. Follow the header of `Caddyfile.omniprint` (one-time setup):
    - back up the Caddyfile;
    - run `docker network connect omniprint_edge vortex-caddy-1`;
-   - append the blocks;
+   - copy the file to `/opt/vortex/dados/caddy-config/omniprint.caddy`;
+   - append ONE line with `>>`: `import /config/omniprint.caddy`;
    - run `caddy validate`, then `caddy reload`.
+
+   After this, every OmniPrint change, including the cutover, edits only
+   `omniprint.caddy`. Vortex's own Caddyfile is never touched again.
 3. Make the network connection permanent. Ask the Vortex owner to add this
    to the caddy service in `/opt/vortex/docker-compose.yml`, taking effect
    on Vortex's next `up`:
@@ -109,7 +113,7 @@ written so that OmniPrint can't take Vortex down.
       and remove the `omniprint_db_data` volume by name.
    4. Restore the final dump, then run `./deploy.sh deploy latest`.
    5. Sync `api_storage` again, in case of uploads since Phase 1.
-   6. Switch Caddy to Stage 2 (backup → validate → reload).
+   6. Switch `omniprint.caddy` to Stage 2, then validate and reload.
    7. In Cloudflare, point `omniprint.app.br`, `www` and `api` at the VPS
       IP (A records). Remove the Railway CNAME records and any
       Railway-related TXT records.
