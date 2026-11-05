@@ -22,7 +22,23 @@
 # omniprint-web / omniprint-api are network aliases on omniprint_edge
 # (deploy/vps/docker-compose.yml), unambiguous next to Vortex's services.
 
-# ---- Stage 1: test hostnames (before cutover) ------------------------------
+# ---- Production (live since 2026-11-05) -------------------------------------
+omniprint.app.br {
+	encode gzip
+	reverse_proxy omniprint-web:3000
+}
+
+www.omniprint.app.br {
+	redir https://omniprint.app.br{uri} permanent
+}
+
+# Agents + installer talk to this hostname - must not change.
+api.omniprint.app.br {
+	reverse_proxy omniprint-api:3000
+}
+
+# ---- Test hostnames from before the cutover - remove in Phase 4 ------------
+# (together with their Cloudflare records).
 vps.omniprint.app.br {
 	encode gzip
 	reverse_proxy omniprint-web:3000
@@ -31,18 +47,3 @@ vps.omniprint.app.br {
 api-vps.omniprint.app.br {
 	reverse_proxy omniprint-api:3000
 }
-
-# ---- Stage 2: production hostnames (at cutover; replaces Stage 1) ----------
-# omniprint.app.br {
-# 	encode gzip
-# 	reverse_proxy omniprint-web:3000
-# }
-#
-# www.omniprint.app.br {
-# 	redir https://omniprint.app.br{uri} permanent
-# }
-#
-# # Agents + installer talk to this hostname - must not change.
-# api.omniprint.app.br {
-# 	reverse_proxy omniprint-api:3000
-# }
