@@ -430,13 +430,85 @@ export class DevicesService {
   // Missing days for a given device just don't contribute that day (no
   // fabricated zero-reading), so the total is always the real sum of
   // whatever data actually exists.
+  //
+  // Same result as running deviceDailyPageDeltas per device, but Postgres
+  // reduces each device's readings to its last one per UTC day first: the
+  // per-device version pulled every reading of the window into Node (151k
+  // rows for 331 devices over 30 days, ~1.2s of the API's only CPU on the
+  // dashboard - measured 2026-11-05). Kept in step with
+  // deviceDailyPageDeltas rule by rule (see the comments below).
   async fleetPageTrend(tenantId: string, customerId: string | null, days: number): Promise<DailyPoint[]> {
     const devices = await this.prisma.device.findMany({
       where: { tenantId, ...(customerId ? { customerId } : {}) },
       select: { id: true },
     });
+    if (devices.length === 0) return [];
+    const deviceIds = devices.map((d) => d.id);
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
 
-    const perDevice = await Promise.all(devices.map((d) => this.deviceDailyPageDeltas(d.id, days)));
+    type DayRow = { device_id: string; day: string; engine: bigint | null; split: bigint | null; nsplit: number };
+    const [baselines, dayRows] = await Promise.all([
+      // deviceDailyPageDeltas' `baseline`: last real reading at or before start.
+      this.prisma.$queryRaw<Array<{ device_id: string; day: string; page_count: bigint; mono_page_count: bigint | null; color_page_count: bigint | null }>>`
+        SELECT DISTINCT ON (device_id) device_id, collected_at::date::text AS day,
+          page_count, mono_page_count, color_page_count
+        FROM metrics
+        WHERE device_id = ANY(${deviceIds}) AND collected_at <= ${start} AND page_count > 0
+        ORDER BY device_id, collected_at DESC
+      `,
+      // Per device and UTC day (collected_at is stored in UTC, the same day
+      // key as toISOString().slice(0, 10)): the day's last engine reading,
+      // its last reading carrying both split counters, and how many readings
+      // carried the split (deviceDailyPageDeltas' useSplit needs >= 2).
+      this.prisma.$queryRaw<DayRow[]>`
+        SELECT device_id, collected_at::date::text AS day,
+          (array_agg(page_count ORDER BY collected_at DESC))[1] AS engine,
+          (array_agg(mono_page_count + color_page_count ORDER BY collected_at DESC)
+            FILTER (WHERE mono_page_count IS NOT NULL AND color_page_count IS NOT NULL))[1] AS split,
+          (count(*) FILTER (WHERE mono_page_count IS NOT NULL AND color_page_count IS NOT NULL))::int AS nsplit
+        FROM metrics
+        WHERE device_id = ANY(${deviceIds}) AND collected_at > ${start} AND collected_at <= ${end} AND page_count > 0
+        GROUP BY 1, 2
+      `,
+    ]);
+
+    const byDevice = new Map<string, Map<string, { engine: number; split: number | null }>>();
+    const splitCount = new Map<string, number>();
+    const dayMap = (deviceId: string) => {
+      let m = byDevice.get(deviceId);
+      if (!m) byDevice.set(deviceId, (m = new Map()));
+      return m;
+    };
+    for (const b of baselines) {
+      const hasSplit = b.mono_page_count != null && b.color_page_count != null;
+      dayMap(b.device_id).set(b.day, {
+        engine: Number(b.page_count),
+        split: hasSplit ? Number(b.mono_page_count) + Number(b.color_page_count) : null,
+      });
+      splitCount.set(b.device_id, hasSplit ? 1 : 0);
+    }
+    for (const r of dayRows) {
+      // The baseline can fall on the same UTC day as the window's first
+      // readings (start isn't midnight) - like the Map.set overwrite in
+      // deviceDailyPageDeltas, a later reading of the day wins, per series.
+      const m = dayMap(r.device_id);
+      const prev = m.get(r.day);
+      m.set(r.day, {
+        engine: Number(r.engine),
+        split: r.split != null ? Number(r.split) : (prev?.split ?? null),
+      });
+      splitCount.set(r.device_id, (splitCount.get(r.device_id) ?? 0) + r.nsplit);
+    }
+
+    const perDevice = [...byDevice.entries()].map(([deviceId, days]) => {
+      const useSplit = (splitCount.get(deviceId) ?? 0) >= 2;
+      const daily = [...days.entries()]
+        .map(([date, v]) => ({ date, value: useSplit ? v.split : v.engine }))
+        .filter((d): d is { date: string; value: number } => d.value != null)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      return bucketDeltas(daily).map((d) => ({ date: d.date, pages: d.delta }));
+    });
 
     const totals = new Map<string, number>();
     for (const series of perDevice) {
@@ -582,15 +654,15 @@ export class DevicesService {
       replacedAt: string | null;
     }> = [];
 
+    const readingsByDevice = await this.forecastInputs(
+      devices.map((d) => d.id),
+      start,
+    );
+
     for (const device of devices) {
-      const metrics = await this.prisma.metric.findMany({
-        where: { deviceId: device.id, collectedAt: { gte: start } },
-        orderBy: { collectedAt: 'asc' },
-        select: { collectedAt: true, supplies: true },
-      });
       const deviceName = device.customLabel ?? device.printerName ?? device.name ?? device.host;
 
-      for (const [description, { colorant, readings }] of this.groupSupplyReadings(metrics)) {
+      for (const [description, { colorant, readings }] of readingsByDevice.get(device.id) ?? new Map()) {
         const forecast = forecastSupply(readings, now);
         const dueSoon = forecast.daysRemaining != null && forecast.daysRemaining <= withinDays;
         if (dueSoon || forecast.premature) {
@@ -614,6 +686,78 @@ export class DevicesService {
     }
 
     return results.sort((a, b) => (a.daysRemaining ?? Infinity) - (b.daysRemaining ?? Infinity));
+  }
+
+  // The few readings per supply that forecastSupply's result actually
+  // depends on, picked by Postgres - same groups as groupSupplyReadings, but
+  // instead of every reading of the lookback (206k metrics for 331 devices
+  // over 90 days, ~2.6s decoding supplies JSON on the API's only CPU -
+  // measured 2026-11-05) only: the last reading, and either the last
+  // replacement jump plus the reading right before it, or the first reading
+  // when there's no jump. forecastSupply only ever looks at those (current =
+  // last; segment = last jump..last, using its first and last readings and
+  // whether it has >= 2; leftover = the reading before the jump), so its
+  // result is identical - checked against the full-history version on the
+  // real production fleet.
+  // `runs` first drops readings whose supplies JSON is identical to both
+  // neighbours (most polls - only ~10% change anything); keeping each run's
+  // first and last reading preserves every jump, segment start and the
+  // series' last reading.
+  // REPLACEMENT_JUMP_THRESHOLD (15) is mirrored here: keep in step with
+  // common/supply-forecast.util.ts.
+  private async forecastInputs(
+    deviceIds: string[],
+    start: Date,
+  ): Promise<Map<string, Map<string, { colorant: string | null; readings: SupplyReading[] }>>> {
+    const result = new Map<string, Map<string, { colorant: string | null; readings: SupplyReading[] }>>();
+    if (deviceIds.length === 0) return result;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ device_id: string; description: string; colorant: string | null; collected_at: Date; pct: number }>
+    >`
+      WITH runs AS (
+        SELECT device_id, collected_at, supplies,
+          supplies IS DISTINCT FROM lag(supplies) OVER r AS starts_run,
+          supplies IS DISTINCT FROM lead(supplies) OVER r AS ends_run
+        FROM metrics
+        WHERE device_id = ANY(${deviceIds}) AND collected_at >= ${start}
+        WINDOW r AS (PARTITION BY device_id ORDER BY collected_at)
+      )
+      SELECT device_id, description, colorant, collected_at, pct FROM (
+        SELECT *, max(CASE WHEN jump >= 15 THEN rn END) OVER (PARTITION BY device_id, description) AS jrn FROM (
+          SELECT m.device_id, m.collected_at, e.value->>'description' AS description,
+            (e.value->>'level')::float8 / (e.value->>'max_level')::float8 * 100 AS pct,
+            (e.value->>'level')::float8 / (e.value->>'max_level')::float8 * 100
+              - lag((e.value->>'level')::float8 / (e.value->>'max_level')::float8 * 100) OVER g AS jump,
+            row_number() OVER g AS rn,
+            count(*) OVER (PARTITION BY m.device_id, e.value->>'description') AS cnt,
+            first_value(e.value->>'colorant') OVER g AS colorant,
+            first_value(m.collected_at) OVER g AS first_seen,
+            first_value(e.idx) OVER g AS first_idx
+          FROM runs m
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(m.supplies) = 'array' THEN m.supplies ELSE '[]'::jsonb END
+          ) WITH ORDINALITY e(value, idx)
+          WHERE (m.starts_run OR m.ends_run)
+            AND e.value->>'class' = 'supply' AND coalesce(e.value->>'description', '') <> ''
+            AND jsonb_typeof(e.value->'level') = 'number' AND jsonb_typeof(e.value->'max_level') = 'number'
+            AND (e.value->>'max_level')::float8 > 0
+          WINDOW g AS (PARTITION BY m.device_id, e.value->>'description' ORDER BY m.collected_at)
+        ) x
+      ) y
+      WHERE rn = cnt OR (jrn IS NULL AND rn = 1) OR rn = jrn OR rn = jrn - 1
+      -- Supplies in the order they first appear (then their position in the
+      -- reading), like groupSupplyReadings' Map insertion order - keeps the
+      -- final sort's ties in the same order as before.
+      ORDER BY device_id, first_seen, first_idx, collected_at
+    `;
+    for (const r of rows) {
+      let bySupply = result.get(r.device_id);
+      if (!bySupply) result.set(r.device_id, (bySupply = new Map()));
+      let group = bySupply.get(r.description);
+      if (!group) bySupply.set(r.description, (group = { colorant: r.colorant, readings: [] }));
+      group.readings.push({ collectedAt: r.collected_at, percent: r.pct });
+    }
+    return result;
   }
 
   private groupSupplyReadings(

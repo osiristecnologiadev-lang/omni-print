@@ -66,14 +66,20 @@ export class DevicePagesService {
     // entire lifetime counter as "this month" (found for real: Rodovibe,
     // 51,440 and 177,660 pages). A genuinely brand-new printer's 0 is lost
     // too, which costs at most the pages before its first non-zero reading.
+    // Only the counter columns: without `select`, Prisma also decodes every
+    // reading's supplies/alerts/error_state JSON just to throw it away - measured
+    // 2026-11-05 on 17k readings (one month, 1 CPU): 4.5s full rows vs 0.2s.
+    const select = { collectedAt: true, pageCount: true, monoPageCount: true, colorPageCount: true } as const;
     const [baseline, inPeriod] = await Promise.all([
       this.prisma.metric.findFirst({
         where: { deviceId, collectedAt: { lte: start }, pageCount: { gt: 0 } },
         orderBy: { collectedAt: 'desc' },
+        select,
       }),
       this.prisma.metric.findMany({
         where: { deviceId, collectedAt: { gt: start, lte: end } },
         orderBy: { collectedAt: 'asc' },
+        select,
       }),
     ]);
 
