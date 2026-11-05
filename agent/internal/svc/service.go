@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/omniprint/agent/internal/collector"
 	"github.com/omniprint/agent/internal/config"
 	"github.com/omniprint/agent/internal/discovery"
+	"github.com/omniprint/agent/internal/power"
 	"github.com/omniprint/agent/internal/transport"
 	"github.com/omniprint/agent/internal/updater"
 )
@@ -132,6 +134,16 @@ func (p *program) Start(s service.Service) error {
 
 func (p *program) run(ctx context.Context) {
 	defer close(p.done)
+
+	// A start line, so a log shows restarts apart from a machine waking up
+	// (both just resume logging otherwise - see internal/power for the case
+	// that needed telling apart).
+	log.Printf("omniprint-agent %s: service started", p.version)
+	if err := power.KeepAwake(ctx); err != nil {
+		log.Printf("power: could not keep the machine awake, it may idle-sleep and pause readings: %v", err)
+	} else if runtime.GOOS == "windows" {
+		log.Printf("power: idle sleep blocked while the service runs")
+	}
 
 	p.mu.Lock()
 	p.devices = append([]config.Device{}, p.cfg.Devices...)
