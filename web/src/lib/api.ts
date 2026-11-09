@@ -1507,6 +1507,18 @@ export interface ContractOverviewRow {
   devicesBilled: number;
   devicesExcluded: number;
   devicesToReview: number;
+  // Billed printers with no page counter read in the last 3 days.
+  devicesWithoutReading: number;
+  // Most recent non-cancelled invoice.
+  lastInvoice: {
+    id: string;
+    number: number;
+    periodStart: string;
+    periodEnd: string;
+    status: InvoiceStatus;
+    totalDue: string;
+    dueDate: string;
+  } | null;
   // What the current period adds up to so far (null without a contract).
   current: { periodStart: string; periodEnd: string; totalDue: number; totalPages: number } | null;
 }

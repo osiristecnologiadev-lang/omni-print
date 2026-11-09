@@ -1,4 +1,5 @@
 import { forbidden } from 'next/navigation';
+import { CustomerTabs } from '@/components/CustomerTabs';
 import { getCustomer, getInvoices, getViewerAccess, getViewerTimeZone, type Invoice } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
 import { generateInvoiceAction, markPaidAction, cancelInvoiceAction } from './actions';
@@ -70,6 +71,13 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
           ) : undefined
         }
       />
+      {hasPermission(access, 'customers') && (
+        <CustomerTabs
+          customerId={id}
+          active="faturas"
+          show={{ contract: hasPermission(access, 'contracts'), invoices: true, agents: hasPermission(access, 'agent') }}
+        />
+      )}
 
       {searchParams?.generated === '1' && <Banner tone="success">Fatura gerada.</Banner>}
       {searchParams?.error === '1' && (

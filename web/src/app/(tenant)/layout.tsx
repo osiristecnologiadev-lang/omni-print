@@ -288,6 +288,7 @@ export default async function TenantLayout({ children }: { children: React.React
           {(hasPermission(access, 'contracts') || hasPermission(access, 'invoices')) && (
             <NavGroup label="Faturamento">
               {hasPermission(access, 'contracts') && <SidebarLink href="/contracts" icon={<ContractIcon />} label="Contratos" />}
+              {hasPermission(access, 'contracts') && <SidebarSubLink href="/closing" label="Fechamento do mês" />}
               {hasPermission(access, 'invoices') && <SidebarLink href="/invoices" icon={<InvoiceIcon />} label="Faturas" />}
             </NavGroup>
           )}

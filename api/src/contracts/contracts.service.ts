@@ -241,9 +241,28 @@ export class ContractsService {
         name: true,
         billingCycleDay: true,
         contracts: { where: { status: 'ACTIVE' }, orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }], take: 1 },
-        devices: { select: { billingExcluded: true, reviewPending: true } },
+        devices: { select: { id: true, billingExcluded: true, reviewPending: true } },
+        invoices: {
+          where: { status: { not: 'CANCELLED' } },
+          orderBy: { periodEnd: 'desc' },
+          take: 1,
+          select: { id: true, number: true, periodStart: true, periodEnd: true, status: true, totalDue: true, dueDate: true },
+        },
       },
     });
+
+    // Billed printers with no page counter read in the last 3 days - the
+    // closing would use a stale reading for them (agent PC off, printer
+    // off, network change...).
+    const since = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const billedIds = customers.flatMap((c) => c.devices.filter((d) => !d.billingExcluded).map((d) => d.id));
+    const fresh = billedIds.length
+      ? await this.prisma.metric.groupBy({
+          by: ['deviceId'],
+          where: { deviceId: { in: billedIds }, collectedAt: { gte: since }, pageCount: { not: null } },
+        })
+      : [];
+    const freshIds = new Set(fresh.map((f) => f.deviceId));
 
     return Promise.all(
       customers.map(async (c) => {
@@ -251,6 +270,7 @@ export class ContractsService {
         const devicesBilled = c.devices.filter((d) => !d.billingExcluded).length;
         const devicesExcluded = c.devices.length - devicesBilled;
         const devicesToReview = c.devices.filter((d) => d.reviewPending).length;
+        const devicesWithoutReading = c.devices.filter((d) => !d.billingExcluded && !freshIds.has(d.id)).length;
         let current: { periodStart: string; periodEnd: string; totalDue: number; totalPages: number } | null = null;
         if (contract) {
           const { year, month } = cycleContaining(now, c.billingCycleDay);
@@ -271,6 +291,8 @@ export class ContractsService {
           devicesBilled,
           devicesExcluded,
           devicesToReview,
+          devicesWithoutReading,
+          lastInvoice: c.invoices[0] ?? null,
           current,
         };
       }),

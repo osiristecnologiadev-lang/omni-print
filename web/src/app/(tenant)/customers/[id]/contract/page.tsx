@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CustomerTabs } from '@/components/CustomerTabs';
 import { forbidden } from 'next/navigation';
 import {
   getActiveContract,
@@ -191,6 +192,13 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
           </Link>
         }
       />
+      {hasPermission(access, 'customers') && (
+        <CustomerTabs
+          customerId={id}
+          active="contrato"
+          show={{ contract: hasPermission(access, 'contracts'), invoices: true, agents: hasPermission(access, 'agent') }}
+        />
+      )}
 
       {searchParams?.saved === '1' && <Banner tone="success">Contrato salvo.</Banner>}
       {searchParams?.error === '1' && (

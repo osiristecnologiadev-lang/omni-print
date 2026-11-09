@@ -30,8 +30,13 @@ export function contractPriceSummary(c: Contract): string {
       return `${m(c.fixedFee)} por mês`;
     case 'ALLOWANCE_PLUS_OVERAGE':
       return `${m(c.fixedFee)}/mês com ${int.format(c.includedPagesMono ?? 0)} págs P&B + ${int.format(c.includedPagesColor ?? 0)} cor · excedente P&B ${r(c.overagePriceMono)} · cor ${r(c.overagePriceColor)}`;
-    case 'PER_PAGE':
-      return `P&B ${r(c.pricePerPageMono)} · cor ${r(c.pricePerPageColor)} por página · mínimo ${int.format(c.minimumPagesMono ?? 0)} págs P&B + ${int.format(c.minimumPagesColor ?? 0)} cor`;
+    case 'PER_PAGE': {
+      const base = `P&B ${r(c.pricePerPageMono)} · cor ${r(c.pricePerPageColor)} por página`;
+      const minMono = c.minimumPagesMono ?? 0;
+      const minColor = c.minimumPagesColor ?? 0;
+      if (minMono === 0 && minColor === 0) return `${base} · sem mínimo`;
+      return `${base} · mínimo ${int.format(minMono)} págs P&B + ${int.format(minColor)} cor`;
+    }
     case 'PER_DEVICE_MINIMUM':
       return `P&B ${r(c.pricePerPageMono)} · cor ${r(c.pricePerPageColor)} por página · mínimo ${m(c.minimumChargePerDevice)} por impressora`;
   }

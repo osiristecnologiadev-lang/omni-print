@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CustomerTabs, type CustomerTab } from '@/components/CustomerTabs';
 import { forbidden, notFound } from 'next/navigation';
 import {
   getCustomer,
@@ -15,6 +16,7 @@ import {
   type AgentCommandType,
 } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
+import { PRICING_MODEL_LABEL } from '@/lib/contract-labels';
 import { CreateEnrollmentCodeForm } from './CreateEnrollmentCodeForm';
 import { DiscoveryRangesForm } from './DiscoveryRangesForm';
 import {
@@ -151,6 +153,20 @@ function billingCycleExample(day: number): string {
   return `Hoje: fecha todo dia ${day} - ex.: a fatura de outubro cobre ${pad(day)}/09 a ${pad(day - 1)}/10, e a de novembro ${pad(day)}/10 a ${pad(day - 1)}/11.`;
 }
 
+// Which tab to show: ?tab=, or - after a form posted back with a result
+// flag (?cycleSaved=1, ?tokenRevoked=1, ...) - the tab that form lives on,
+// so its success/error message is on screen.
+const CONFIG_FLAGS = ['cycle', 'info', 'notifyEmail', 'sla', 'user'];
+const AGENT_FLAGS = ['token', 'logRequest', 'command', 'enrollmentCode'];
+function resolveTab(sp: Record<string, string | string[] | undefined> | undefined): CustomerTab {
+  const t = sp?.tab;
+  if (t === 'impressoras' || t === 'agentes' || t === 'config') return t;
+  const keys = Object.keys(sp ?? {});
+  if (keys.some((k) => CONFIG_FLAGS.some((f) => k.startsWith(f)))) return 'config';
+  if (keys.some((k) => AGENT_FLAGS.some((f) => k.startsWith(f)))) return 'agentes';
+  return 'resumo';
+}
+
 export default async function CustomerPage(props: PageProps<'/customers/[id]'>) {
   const { id } = await props.params;
   const searchParams = await props.searchParams;
@@ -189,24 +205,52 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
   const boundUpdateNotifyEmail = updateCustomerNotifyEmailAction.bind(null, id);
   const boundUpdateSla = updateCustomerSlaAction.bind(null, id);
   const boundUpdateBillingCycle = updateCustomerBillingCycleAction.bind(null, id);
+  const tab = resolveTab(searchParams);
+  const activeTokens = tokens.filter((t) => !t.revokedAt);
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
+    <main className="mx-auto max-w-5xl px-6 py-10">
       <PageHeader
         title={customer.name}
-        subtitle={`${customerDevices.length} dispositivo${customerDevices.length === 1 ? '' : 's'}`}
+        subtitle={`${customerDevices.length} impressora${customerDevices.length === 1 ? '' : 's'} · fecha todo dia ${customer.billingCycleDay}`}
         back={{ href: '/customers', label: 'Clientes' }}
-        actions={
-          <>
-            <Link href={`/customers/${id}/contract`} className={buttonClasses('secondary', 'sm')}>
-              Contrato
-            </Link>
-            <Link href={`/customers/${id}/invoices`} className={buttonClasses('secondary', 'sm')}>
-              Faturas
-            </Link>
-          </>
-        }
       />
+      <CustomerTabs
+        customerId={id}
+        active={tab}
+        show={{ contract: hasPermission(access, 'contracts'), invoices: hasPermission(access, 'invoices') || hasPermission(access, 'invoices_view'), agents: canSeeAgent }}
+      />
+
+      {tab === 'resumo' && (
+        <>
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Link href={`/customers/${id}?tab=impressoras`} className="rounded-xl border border-line bg-surface px-4 py-3 hover:border-accent">
+          <p className="text-xs text-ink-muted">Impressoras</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{customerDevices.length}</p>
+          <p className="text-[11px] text-ink-faint">{customerDevices.filter((d) => d.billingExcluded).length} fora do contrato</p>
+        </Link>
+        <Link href={`/customers/${id}/contract`} className="rounded-xl border border-line bg-surface px-4 py-3 hover:border-accent">
+          <p className="text-xs text-ink-muted">Contrato</p>
+          <p className="mt-1 text-sm font-medium text-ink">
+            {currentPeriod.hasContract ? PRICING_MODEL_LABEL[currentPeriod.contract.pricingModel] : 'Sem contrato'}
+          </p>
+          <p className="text-[11px] text-ink-faint">{currentPeriod.hasContract ? 'ver ou editar' : 'criar contrato'}</p>
+        </Link>
+        <div className="rounded-xl border border-line bg-surface px-4 py-3">
+          <p className="text-xs text-ink-muted">Fechamento</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">dia {customer.billingCycleDay}</p>
+          <p className="text-[11px] text-ink-faint">dia em que o período de leitura fecha</p>
+        </div>
+        {canSeeAgent ? (
+          <Link href={`/customers/${id}?tab=agentes`} className="rounded-xl border border-line bg-surface px-4 py-3 hover:border-accent">
+            <p className="text-xs text-ink-muted">Agentes instalados</p>
+            <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{activeTokens.length}</p>
+            <p className="text-[11px] text-ink-faint">programas que coletam as leituras</p>
+          </Link>
+        ) : (
+          <div />
+        )}
+      </div>
 
       {currentPeriod.hasContract && (
         <Panel className="mb-6">
@@ -260,6 +304,11 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
         </Panel>
       )}
 
+        </>
+      )}
+
+      {tab === 'config' && (
+        <>
       <Panel className="mb-6">
         <h2 className="mb-1 text-sm font-medium text-ink">Dia de fechamento</h2>
         <p className="mb-4 text-xs text-ink-faint">
@@ -460,9 +509,12 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
       </Panel>
       )}
 
-      {canSeeAgent && (
+        </>
+      )}
+
+      {tab === 'agentes' && canSeeAgent && (
       <>
-      <Panel className="mt-6">
+      <Panel>
         <h2 className="mb-1 text-sm font-medium text-ink">Códigos de instalação do agente</h2>
         <p className="mb-4 text-xs text-ink-faint">
           Gere um código curto para cada instalação do agente no site deste cliente e envie para quem for
@@ -640,11 +692,12 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
       </>
       )}
 
-      <div className="mt-6">
-        <h2 className="mb-3 text-sm font-medium text-ink">Dispositivos</h2>
+      {tab === 'impressoras' && (
+      <div>
+        <h2 className="mb-3 text-sm font-medium text-ink">Impressoras deste cliente</h2>
         {customerDevices.length === 0 ? (
           <p className="rounded-xl border border-dashed border-line p-5 text-sm text-ink-faint">
-            Nenhum dispositivo atribuído ainda.
+            Nenhuma impressora deste cliente ainda. Instale o agente na rede dele (aba Agentes e rede) - as impressoras aparecem sozinhas.
           </p>
         ) : (
           <DeviceFleetTable
@@ -661,6 +714,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           />
         )}
       </div>
+      )}
     </main>
   );
 }
