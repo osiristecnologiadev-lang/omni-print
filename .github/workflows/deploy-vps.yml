@@ -1,4 +1,4 @@
-# Builds the OmniPrint images on GitHub's runners (so the VPS, shared with
+# Tests everything, then builds the OmniPrint images on GitHub's runners (so the VPS, shared with
 # Vortex, never spends CPU/RAM compiling) and deploys them to the VPS.
 #
 # The deploy job only runs when the repository VARIABLE VPS_DEPLOY_ENABLED is
@@ -22,7 +22,62 @@ permissions:
   packages: write
 
 jobs:
+  # Gate: nothing is built or deployed unless every test and type-check
+  # passes (2026-11-09 - before this, a push to main went to production
+  # untested).
+  test-api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npx prisma validate && npx prisma generate
+      - run: npx tsc --noEmit -p .
+      - run: npx jest --ci
+
+  test-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx next typegen && npx tsc --noEmit
+      - run: npx vitest run
+
+  # The agent runs on customers' Windows PCs - test it on Windows.
+  test-agent:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go vet ./...
+        env:
+          GOOS: linux
+
   build:
+    needs: [test-api, test-web, test-agent]
     runs-on: ubuntu-latest
     strategy:
       matrix:
