@@ -28,7 +28,7 @@ const integer = new Intl.NumberFormat('pt-BR');
 // was purely a display bug, reported directly by a real contract). Only
 // pads to 2 decimals when the rate doesn't need more (R$0,08 still shows
 // as "R$ 0,08", not "R$ 0,0800").
-const rate = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const rate = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 6 });
 
 // Contract.startDate/endDate are calendar dates (picked via <input
 // type="date">, stored as UTC midnight) - timeZone: 'UTC' here is

@@ -404,12 +404,12 @@ model Contract {
   // ALLOWANCE_PLUS_OVERAGE only
   includedPagesMono  Int?     @map("included_pages_mono")
   includedPagesColor Int?     @map("included_pages_color")
-  overagePriceMono   Decimal? @map("overage_price_mono") @db.Decimal(12, 4)
-  overagePriceColor  Decimal? @map("overage_price_color") @db.Decimal(12, 4)
+  overagePriceMono   Decimal? @map("overage_price_mono") @db.Decimal(12, 6)
+  overagePriceColor  Decimal? @map("overage_price_color") @db.Decimal(12, 6)
 
   // PER_PAGE only
-  pricePerPageMono  Decimal? @map("price_per_page_mono") @db.Decimal(12, 4)
-  pricePerPageColor Decimal? @map("price_per_page_color") @db.Decimal(12, 4)
+  pricePerPageMono  Decimal? @map("price_per_page_mono") @db.Decimal(12, 6)
+  pricePerPageColor Decimal? @map("price_per_page_color") @db.Decimal(12, 6)
   minimumPagesMono  Int?     @map("minimum_pages_mono")
   minimumPagesColor Int?     @map("minimum_pages_color")
 
@@ -753,7 +753,7 @@ model Device {
   // overriding the contract's pricePerPageColor - real contracts price each
   // color printer differently (Amecor, 2026-10: one OKI at R$0,75, the other
   // at R$0,85, under a single mono rate).
-  colorPagePriceOverride  Decimal?  @map("color_page_price_override") @db.Decimal(12, 4)
+  colorPagePriceOverride  Decimal?  @map("color_page_price_override") @db.Decimal(12, 6)
   // Bill this printer by its total engine counter even when it reports a
   // "pages printed" split (DevicePagesService normally prefers the split).
   // Some outsourcing contracts bill the total counter for specific models
