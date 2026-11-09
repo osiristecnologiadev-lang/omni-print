@@ -227,6 +227,56 @@ export class ContractsService {
     };
   }
 
+  // Every customer of the tenant with its contract in force (if any), how
+  // many printers it bills, and what the current period adds up to so far -
+  // the "Contratos" screen, so contracts can be managed side by side
+  // instead of opening each customer.
+  async overview(tenantId: string) {
+    const now = new Date();
+    const customers = await this.prisma.customer.findMany({
+      where: { tenantId },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        billingCycleDay: true,
+        contracts: { where: { status: 'ACTIVE' }, orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }], take: 1 },
+        devices: { select: { billingExcluded: true, reviewPending: true } },
+      },
+    });
+
+    return Promise.all(
+      customers.map(async (c) => {
+        const contract = c.contracts[0] ?? null;
+        const devicesBilled = c.devices.filter((d) => !d.billingExcluded).length;
+        const devicesExcluded = c.devices.length - devicesBilled;
+        const devicesToReview = c.devices.filter((d) => d.reviewPending).length;
+        let current: { periodStart: string; periodEnd: string; totalDue: number; totalPages: number } | null = null;
+        if (contract) {
+          const { year, month } = cycleContaining(now, c.billingCycleDay);
+          const { periodStart, periodEnd } = await this.periodFor(c, year, month);
+          const billing = await this.resolveBilling(tenantId, c.id, periodStart, now);
+          current = {
+            periodStart: periodStart.toISOString(),
+            periodEnd: periodEnd.toISOString(),
+            totalDue: billing.hasContract ? billing.totalDue : 0,
+            totalPages: billing.hasContract ? billing.totalPages : 0,
+          };
+        }
+        return {
+          customerId: c.id,
+          customerName: c.name,
+          billingCycleDay: c.billingCycleDay,
+          contract,
+          devicesBilled,
+          devicesExcluded,
+          devicesToReview,
+          current,
+        };
+      }),
+    );
+  }
+
   // Same computation as calculateBilling, but for an arbitrary period and
   // without the customer-existence check (callers that already resolved the
   // customer, like InvoicesService's cron sweep across many customers,

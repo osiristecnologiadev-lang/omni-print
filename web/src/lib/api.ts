@@ -1495,3 +1495,48 @@ export function updateTicket(
 ): Promise<Ticket> {
   return apiMutate<Ticket>(`/v1/tickets/${ticketId}`, 'PATCH', input);
 }
+
+// --- Cross-customer views (the "Contratos" and "Faturas" screens) -----------
+
+export interface ContractOverviewRow {
+  customerId: string;
+  customerName: string;
+  billingCycleDay: number;
+  // The contract in force, or null when the customer has none.
+  contract: Contract | null;
+  devicesBilled: number;
+  devicesExcluded: number;
+  devicesToReview: number;
+  // What the current period adds up to so far (null without a contract).
+  current: { periodStart: string; periodEnd: string; totalDue: number; totalPages: number } | null;
+}
+
+export function getContractsOverview(): Promise<ContractOverviewRow[]> {
+  return apiFetch<ContractOverviewRow[]>('/v1/contracts');
+}
+
+export interface InvoiceOverviewRow {
+  id: string;
+  number: number;
+  customerId: string;
+  customer: { name: string };
+  periodStart: string;
+  periodEnd: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  totalPages: number;
+  totalDue: string;
+  paidAt: string | null;
+  paidAmount: string | null;
+}
+
+export function getAllInvoices(filter: { status?: InvoiceStatus; year?: number; month?: number } = {}): Promise<InvoiceOverviewRow[]> {
+  const q = new URLSearchParams();
+  if (filter.status) q.set('status', filter.status);
+  if (filter.year && filter.month) {
+    q.set('year', String(filter.year));
+    q.set('month', String(filter.month));
+  }
+  const qs = q.toString();
+  return apiFetch<InvoiceOverviewRow[]>(`/v1/invoices${qs ? `?${qs}` : ''}`);
+}

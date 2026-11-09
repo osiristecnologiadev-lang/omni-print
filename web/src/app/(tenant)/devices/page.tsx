@@ -25,13 +25,13 @@ export default async function DevicesPage() {
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       <PageHeader
-        title="Dispositivos"
-        subtitle={`${devices.length} dispositivo${devices.length === 1 ? '' : 's'} monitorado${devices.length === 1 ? '' : 's'}`}
+        title="Impressoras"
+        subtitle={`${devices.length} impressora${devices.length === 1 ? '' : 's'} monitorada${devices.length === 1 ? '' : 's'} pelos agentes. Clique numa para ver contador, suprimentos e condições de cobrança.`}
       />
 
       {devices.length === 0 ? (
         <EmptyState
-          title="Nenhum dispositivo ainda"
+          title="Nenhuma impressora ainda"
           hint="Configure o agente (agent/config.yaml) e aguarde o primeiro ciclo de coleta."
         />
       ) : (

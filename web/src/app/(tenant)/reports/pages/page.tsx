@@ -62,6 +62,7 @@ export default async function DevicePagesReportPage(props: PageProps<'/reports/p
       <PageHeader
         title="Páginas por impressora"
         subtitle="Leitura inicial, leitura final e páginas de cada impressora no mês - não depende de contrato. Clientes com dia de fechamento próprio usam o seu período."
+        back={{ href: '/reports', label: 'Relatórios' }}
       />
 
       <form method="get" className="mb-6 flex flex-wrap items-center gap-2">

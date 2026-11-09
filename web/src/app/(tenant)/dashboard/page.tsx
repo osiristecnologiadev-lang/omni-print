@@ -147,8 +147,8 @@ export default async function DashboardPage() {
         <Panel className="mb-8">
           <div className="mb-1 flex items-baseline justify-between gap-3">
             <h2 className="text-sm font-medium text-ink">Receita garantida este mês (até agora)</h2>
-            <Link href="/reports" className="text-xs text-accent hover:underline">
-              Ver relatórios
+            <Link href="/contracts" className="text-xs text-accent hover:underline">
+              Ver por contrato
             </Link>
           </div>
           <p className="mb-3 text-xs text-ink-faint">

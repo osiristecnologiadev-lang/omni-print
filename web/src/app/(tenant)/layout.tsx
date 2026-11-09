@@ -153,6 +153,41 @@ function TicketsIcon() {
   );
 }
 
+function HomeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M3.5 9 10 3.5 16.5 9v7a.5.5 0 0 1-.5.5h-3.5v-4.5h-5v4.5H4a.5.5 0 0 1-.5-.5V9Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ContractIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M5.5 2.5h6l3.5 3.5v11a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-14a.5.5 0 0 1 .5-.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M7.5 9.5h5M7.5 12.5h5M7.5 15h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function InvoiceIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M4.5 2.5h11v15l-2-1.2-2 1.2-1.5-1.2-1.5 1.2-2-1.2-2 1.2v-15Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M7.5 7h5M7.5 10h5M7.5 13h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <p className="px-3 pb-1 text-[11px] font-medium tracking-wide text-ink-faint uppercase">{label}</p>
+      {children}
+    </div>
+  );
+}
+
 export default async function TenantLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
 
@@ -224,45 +259,60 @@ export default async function TenantLayout({ children }: { children: React.React
           </div>
         )}
 
+        {/* Grouped by the job, not by how it was built (usability pass
+            2026-11-09): run the fleet, look after customers, bill them,
+            read reports, configure the account. */}
         <nav className="flex flex-1 flex-col gap-1">
+          <SidebarLink href="/dashboard" icon={<HomeIcon />} label="Visão geral" />
+
+          <NavGroup label="Operação">
+            {/* Any authenticated session - GET /v1/devices applies no
+                dedicated permission (a customer-scoped user sees their own
+                fleet); only reassigning a printer needs 'devices'. */}
+            <SidebarLink href="/devices" icon={<DevicesIcon />} label="Impressoras" />
+            <SidebarLink href="/tickets" icon={<TicketsIcon />} label="Chamados" />
+            {hasPermission(access, 'notifications') && <NotificationBell className={NAV_ROW} />}
+          </NavGroup>
+
           {hasPermission(access, 'customers') && (
-            <SidebarLink
-              href="/customers"
-              icon={<CustomersIcon />}
-              label="Clientes"
-              badge={onboarding && !onboarding.hasCustomers && <PendingDot title="Cadastre seu primeiro cliente" />}
-            />
+            <NavGroup label="Clientes">
+              <SidebarLink
+                href="/customers"
+                icon={<CustomersIcon />}
+                label="Clientes"
+                badge={onboarding && !onboarding.hasCustomers && <PendingDot title="Cadastre seu primeiro cliente" />}
+              />
+            </NavGroup>
           )}
-          {/* Same "any authenticated session, no dedicated permission gate"
-              rule GET /v1/devices itself already applies (unlike the PATCH
-              that reassigns one, which needs the 'devices' permission) - a
-              customer-scoped user browsing here just sees their own fleet,
-              same as the dashboard's own device table already shows them. */}
-          <SidebarLink href="/devices" icon={<DevicesIcon />} label="Dispositivos" />
-          {hasPermission(access, 'reports') && (
-            <div>
-              <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
-              <SidebarSubLink href="/reports" label="Uso e receita" />
-              <SidebarSubLink href="/reports/pages" label="Páginas por impressora" />
-            </div>
+
+          {(hasPermission(access, 'contracts') || hasPermission(access, 'invoices')) && (
+            <NavGroup label="Faturamento">
+              {hasPermission(access, 'contracts') && <SidebarLink href="/contracts" icon={<ContractIcon />} label="Contratos" />}
+              {hasPermission(access, 'invoices') && <SidebarLink href="/invoices" icon={<InvoiceIcon />} label="Faturas" />}
+            </NavGroup>
           )}
-          {/* Chamados is the one nav item both session types get - a
-              customer-scoped user opens/tracks their own tickets here, a
-              tenant-wide user sees the full cross-customer queue. */}
-          <SidebarLink href="/tickets" icon={<TicketsIcon />} label="Chamados" />
-          {hasPermission(access, 'notifications') && <NotificationBell className={NAV_ROW} />}
+
+          {(hasPermission(access, 'reports') || hasPermission(access, 'invoices') || hasPermission(access, 'contracts')) && (
+            <NavGroup label="Relatórios">
+              <SidebarLink href="/reports" icon={<ReportsIcon />} label="Todos os relatórios" />
+              {hasPermission(access, 'reports') && (
+                <>
+                  <SidebarSubLink href="/reports/pages" label="Páginas por impressora" />
+                  <SidebarSubLink href="/reports/revenue" label="Uso e receita" />
+                </>
+              )}
+            </NavGroup>
+          )}
 
           {showAdminGroup && (
-            <div className="mt-3 border-t border-line pt-3">
-              <p className="px-3 pb-1 text-[11px] font-medium tracking-wide text-ink-faint uppercase">Administração</p>
-              {hasPermission(access, 'users') && (
-                <SidebarLink href="/users" icon={<UsersIcon />} label="Usuários" />
-              )}
+            <NavGroup label="Configurações">
+              {hasPermission(access, 'settings') && <SidebarLink href="/settings" icon={<BuildingIcon />} label="Empresa" />}
+              {hasPermission(access, 'users') && <SidebarLink href="/users" icon={<UsersIcon />} label="Usuários" />}
               {hasPermission(access, 'agent') && (
                 <SidebarLink
                   href="/agent-download"
                   icon={<DownloadIcon />}
-                  label="Baixar Agente"
+                  label="Instalar agente"
                   badge={
                     onboarding &&
                     onboarding.hasCustomers &&
@@ -270,27 +320,16 @@ export default async function TenantLayout({ children }: { children: React.React
                   }
                 />
               )}
-              {hasPermission(access, 'agent_logs') && <SidebarLink href="/logs" icon={<LogsIcon />} label="Logs do Agent" />}
+              {hasPermission(access, 'agent_logs') && <SidebarLink href="/logs" icon={<LogsIcon />} label="Logs do agente" />}
               {hasPermission(access, 'audit_log') && (
                 <SidebarLink href="/audit-log" icon={<AuditLogIcon />} label="Log de auditoria" />
               )}
-              {hasPermission(access, 'settings') && (
-                <SidebarLink href="/settings" icon={<BuildingIcon />} label="Empresa" />
-              )}
-              {/* Its own dedicated permission, deliberately NOT bundled into
-                  'settings' - billing (payment method, invoices, cancel) was
-                  specifically asked to be restricted to whoever the outsource
-                  designates, not everyone who can edit Empresa. The backend
-                  rejects a customer-scoped caller on every route here
-                  regardless of permissions (see SubscriptionController.
-                  requireBillingAccess). Always visible now, not only while
-                  blocked - closing the audit finding that once a tenant went
-                  ACTIVE there was no way back to manage payment method/
-                  invoices/cancellation. */}
-              {hasPermission(access, 'billing') && (
-                <SidebarLink href="/subscribe" icon={<BillingIcon />} label="Assinatura" />
-              )}
-            </div>
+              {/* Its own permission, not bundled into 'settings' - billing is
+                  restricted to whoever the outsource designates (the backend
+                  also rejects customer-scoped callers, see
+                  SubscriptionController.requireBillingAccess). */}
+              {hasPermission(access, 'billing') && <SidebarLink href="/subscribe" icon={<BillingIcon />} label="Assinatura" />}
+            </NavGroup>
           )}
         </nav>
 

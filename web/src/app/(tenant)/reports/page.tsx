@@ -1,130 +1,94 @@
+import Link from 'next/link';
 import { forbidden } from 'next/navigation';
-import { getViewerAccess, getUsageRevenueReport } from '@/lib/api';
+import { getViewerAccess } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
-import { Panel } from '@/components/Panel';
-import { EmptyState } from '@/components/EmptyState';
-import { TrendChart } from '@/components/TrendChart';
 
-const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-const integer = new Intl.NumberFormat('pt-BR');
+// One place for every report - each card says what it answers, so nobody
+// has to open a report to find out whether it's the one they need.
+type Card = { href: string; title: string; answers: string; detail: string; csv?: boolean; show: boolean };
 
-function formatMonth(iso: string): string {
-  const [year, month] = iso.split('-');
-  return new Intl.DateTimeFormat('pt-BR', { month: 'short', year: '2-digit' }).format(new Date(Number(year), Number(month) - 1, 1));
-}
-
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-line bg-surface px-5 py-4">
-      <p className="text-xs font-medium text-ink-muted">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{value}</p>
-    </div>
-  );
-}
-
-const selectClass = 'rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent';
-const MONTH_OPTIONS = [3, 6, 12, 24];
-
-export default async function ReportsPage(props: PageProps<'/reports'>) {
-  const searchParams = await props.searchParams;
-
+export default async function ReportsHubPage() {
   const access = await getViewerAccess();
-  if (!hasPermission(access, 'reports')) {
+  const canReports = hasPermission(access, 'reports');
+  const canInvoices = hasPermission(access, 'invoices');
+  const canContracts = hasPermission(access, 'contracts');
+  if (!canReports && !canInvoices && !canContracts) {
     forbidden();
   }
 
-  const months = MONTH_OPTIONS.includes(Number(searchParams?.months)) ? Number(searchParams?.months) : 12;
-  const report = await getUsageRevenueReport(months);
-
-  const revenueTrend = report.monthly.map((m) => ({ label: formatMonth(m.month), value: m.totalDue }));
-  const pagesTrend = report.monthly.map((m) => ({ label: formatMonth(m.month), value: m.totalPages }));
+  const groups: Array<{ title: string; cards: Card[] }> = [
+    {
+      title: 'Impressão',
+      cards: [
+        {
+          href: '/reports/pages',
+          title: 'Páginas por impressora',
+          answers: 'Quantas páginas cada impressora imprimiu no mês?',
+          detail: 'Leitura inicial, leitura final e quantidade de cada impressora, por cliente. É a base para conferir a cobrança.',
+          csv: true,
+          show: canReports,
+        },
+      ],
+    },
+    {
+      title: 'Financeiro',
+      cards: [
+        {
+          href: '/reports/revenue',
+          title: 'Uso e receita',
+          answers: 'Quanto faturei, recebi e quanto está em aberto?',
+          detail: 'Faturamento e páginas mês a mês e o comparativo por cliente. Conta só faturas já geradas.',
+          csv: true,
+          show: canReports,
+        },
+        {
+          href: '/contracts',
+          title: 'Contratos e mês em andamento',
+          answers: 'Quanto o mês atual já soma em cada cliente?',
+          detail: 'Todos os contratos lado a lado, com o valor previsto do período que ainda não fechou.',
+          show: canContracts,
+        },
+        {
+          href: '/invoices?status=PENDING',
+          title: 'Faturas em aberto',
+          answers: 'Quem ainda não pagou?',
+          detail: 'Faturas pendentes de todos os clientes, com as atrasadas destacadas.',
+          show: canInvoices,
+        },
+      ],
+    },
+  ];
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
-      <PageHeader
-        title="Uso e receita"
-        subtitle="Visão consolidada de tudo o que foi faturado e impresso pelos seus clientes, por período."
-      />
+      <PageHeader title="Relatórios" subtitle="Todos os relatórios num lugar só. Escolha pela pergunta que você quer responder." />
 
-      <p className="mb-4 text-sm">
-        <a href="/reports/pages" className="text-accent hover:underline">
-          Ver páginas por impressora (início, fim e quantidade no mês) →
-        </a>
-      </p>
-
-      <form method="get" className="mb-6 flex items-center gap-2">
-        <label className="text-xs text-ink-muted">
-          Período
-          <select name="months" defaultValue={months} className={`ml-2 ${selectClass}`}>
-            {MONTH_OPTIONS.map((m) => (
-              <option key={m} value={m}>
-                Últimos {m} meses
-              </option>
-            ))}
-          </select>
-        </label>
-      </form>
-
-      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tile label="Receita total" value={currency.format(report.totalRevenue)} />
-        <Tile label="Recebido" value={currency.format(report.totalPaid)} />
-        <Tile label="Em aberto" value={currency.format(report.totalOutstanding)} />
-        <Tile label="Páginas impressas" value={integer.format(report.totalPages)} />
-      </div>
-
-      <Panel className="mb-6">
-        <h2 className="mb-4 text-sm font-medium text-ink">Receita por mês</h2>
-        <TrendChart data={revenueTrend} formatValue={(v) => currency.format(v)} emptyLabel="Sem faturas neste período ainda." />
-      </Panel>
-
-      <Panel className="mb-8">
-        <h2 className="mb-4 text-sm font-medium text-ink">Páginas por mês</h2>
-        <TrendChart data={pagesTrend} formatValue={(v) => integer.format(v)} emptyLabel="Sem faturas neste período ainda." />
-      </Panel>
-
-      <Panel>
-        <div className="mb-4 flex items-baseline justify-between gap-3">
-          <h2 className="text-sm font-medium text-ink">Por cliente</h2>
-          {report.byCustomer.length > 0 && (
-            <a href={`/reports/export?months=${months}`} className="text-xs text-accent hover:underline">
-              Exportar CSV
-            </a>
-          )}
-        </div>
-        {report.byCustomer.length === 0 ? (
-          <EmptyState title="Nenhum cliente faturado neste período" hint="Gere faturas para ver o comparativo aqui." />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-xs text-ink-muted">
-                  <th className="pb-2 font-medium">Cliente</th>
-                  <th className="pb-2 font-medium">Faturas</th>
-                  <th className="pb-2 text-right font-medium">Páginas</th>
-                  <th className="pb-2 text-right font-medium">Faturado</th>
-                  <th className="pb-2 text-right font-medium">Recebido</th>
-                  <th className="pb-2 text-right font-medium">Em aberto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.byCustomer.map((c) => (
-                  <tr key={c.customerId} className="border-b border-line last:border-0">
-                    <td className="py-2.5 text-ink">{c.customerName}</td>
-                    <td className="py-2.5 tabular-nums text-ink-muted">{c.invoiceCount}</td>
-                    <td className="py-2.5 text-right tabular-nums text-ink-muted">{integer.format(c.totalPages)}</td>
-                    <td className="py-2.5 text-right tabular-nums text-ink">{currency.format(c.totalDue)}</td>
-                    <td className="py-2.5 text-right tabular-nums text-ink-muted">{currency.format(c.paidAmount)}</td>
-                    <td className={`py-2.5 text-right tabular-nums ${c.outstanding > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-ink-muted'}`}>
-                      {currency.format(c.outstanding)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
+      {groups.map((g) => {
+        const cards = g.cards.filter((c) => c.show);
+        if (cards.length === 0) return null;
+        return (
+          <section key={g.title} className="mb-8">
+            <h2 className="mb-3 text-xs font-medium tracking-wide text-ink-faint uppercase">{g.title}</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {cards.map((c) => (
+                <Link
+                  key={c.href}
+                  href={c.href}
+                  className="group rounded-xl border border-line bg-surface p-5 transition-colors hover:border-accent"
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h3 className="font-medium text-ink group-hover:text-accent">{c.title}</h3>
+                    {c.csv && <span className="text-[11px] text-ink-faint">exporta CSV</span>}
+                  </div>
+                  <p className="mt-1 text-sm text-ink">{c.answers}</p>
+                  <p className="mt-2 text-xs text-ink-muted">{c.detail}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </main>
   );
 }

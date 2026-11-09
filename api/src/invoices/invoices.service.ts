@@ -42,6 +42,37 @@ export class InvoicesService {
     });
   }
 
+  // Every customer's invoices in one list - the "Faturas" screen. Optional
+  // filters: status, and the competência (year/month the period ENDS in,
+  // the same month the invoice is billed for).
+  listAll(tenantId: string, filter: { status?: 'PENDING' | 'PAID' | 'CANCELLED'; year?: number; month?: number }) {
+    let periodEnd: { gte: Date; lt: Date } | undefined;
+    if (filter.year && filter.month) {
+      periodEnd = {
+        gte: new Date(Date.UTC(filter.year, filter.month - 1, 1)),
+        lt: new Date(Date.UTC(filter.year, filter.month, 1)),
+      };
+    }
+    return this.prisma.invoice.findMany({
+      where: { tenantId, ...(filter.status ? { status: filter.status } : {}), ...(periodEnd ? { periodEnd } : {}) },
+      orderBy: [{ periodEnd: 'desc' }, { number: 'desc' }],
+      select: {
+        id: true,
+        number: true,
+        customerId: true,
+        customer: { select: { name: true } },
+        periodStart: true,
+        periodEnd: true,
+        dueDate: true,
+        status: true,
+        totalPages: true,
+        totalDue: true,
+        paidAt: true,
+        paidAmount: true,
+      },
+    });
+  }
+
   async get(tenantId: string, customerId: string, invoiceId: string) {
     const invoice = await this.prisma.invoice.findFirst({ where: { id: invoiceId, tenantId, customerId } });
     if (!invoice) {
