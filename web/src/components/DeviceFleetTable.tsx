@@ -8,7 +8,7 @@ import { Button } from './Button';
 import type { Health, HealthTone } from '@/lib/health';
 import type { Customer, Device } from '@/lib/api';
 import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
-import { printerModelLabel } from '@/lib/printer-model';
+import { deviceAddressLabel, printerModelLabel } from '@/lib/printer-model';
 
 const STATUS_FILTER_OPTIONS: Array<{ value: HealthTone | 'all'; label: string }> = [
   { value: 'all', label: 'Todos os status' },
@@ -301,7 +301,7 @@ export function DeviceFleetTable({
                     <td className="px-4 py-3 text-ink-muted">
                       {printerModelLabel(device) ?? <span className="text-ink-faint">—</span>}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-ink-muted">{device.host}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-ink-muted">{deviceAddressLabel(device.host)}</td>
                     <td className="px-4 py-3 font-mono text-xs text-ink-muted">{device.serialNumber ?? '—'}</td>
                     {isTenantWide && (
                       <td className="px-4 py-3 text-ink-muted">

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { forbidden } from 'next/navigation';
 import { getViewerAccess, getDevicePagesReport, getCustomers, getSession, getViewerTimeZone } from '@/lib/api';
+import { deviceAddressLabel } from '@/lib/printer-model';
 import { hasPermission } from '@/lib/permissions';
 import { PageHeader } from '@/components/PageHeader';
 import { Panel } from '@/components/Panel';
@@ -157,7 +158,7 @@ export default async function DevicePagesReportPage(props: PageProps<'/reports/p
                     </td>
                     <td className="py-2 pr-3 text-ink-muted">{r.model ?? '—'}</td>
                     <td className="py-2 pr-3 font-mono text-xs text-ink-muted">{r.serialNumber ?? '—'}</td>
-                    <td className="py-2 pr-3 font-mono text-xs text-ink-muted">{r.host}</td>
+                    <td className="py-2 pr-3 font-mono text-xs text-ink-muted">{deviceAddressLabel(r.host)}</td>
                     <td className="py-2 pr-3 text-right tabular-nums text-ink-muted">
                       {formatReading(r.startReading)}
                       {r.usedManualBaseline && (

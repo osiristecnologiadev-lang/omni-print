@@ -7,3 +7,10 @@ export function printerModelLabel(d: { manufacturer?: string | null; model?: str
   if (!d.manufacturer) return d.model;
   return `${d.manufacturer} ${d.model}`;
 }
+
+// Where the printer is: its IP, or for a printer plugged into a PC by USB
+// (agent >= v0.1.27, host "USB:<computer>/<port>") "USB em <computer> (<port>)".
+export function deviceAddressLabel(host: string): string {
+  const m = /^USB:(.+)\/([^/]+)$/.exec(host);
+  return m ? `USB em ${m[1]} (${m[2]})` : host;
+}

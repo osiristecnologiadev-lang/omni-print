@@ -13,7 +13,7 @@ import {
   getViewerTimeZone,
 } from '@/lib/api';
 import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
-import { printerModelLabel } from '@/lib/printer-model';
+import { deviceAddressLabel, printerModelLabel } from '@/lib/printer-model';
 import { deriveHealth } from '@/lib/health';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SupplyBar } from '@/components/SupplyBar';
@@ -179,7 +179,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
           <h1 className="text-2xl font-semibold text-balance text-ink">{device.customLabel ?? agentReportedName}</h1>
           <p className="mt-1 text-sm text-ink-muted">
             {printerModelLabel(device) ? <span className="font-medium text-ink">{printerModelLabel(device)} · </span> : null}
-            {device.host}
+            {deviceAddressLabel(device.host)}
             {device.serialNumber ? ` · S/N ${device.serialNumber}` : ''}
           </p>
           <p className="mt-0.5 text-sm text-ink-muted">

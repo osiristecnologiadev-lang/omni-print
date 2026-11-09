@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -20,11 +21,13 @@ import (
 	"github.com/omniprint/agent/internal/power"
 	"github.com/omniprint/agent/internal/transport"
 	"github.com/omniprint/agent/internal/updater"
+	"github.com/omniprint/agent/internal/usbprint"
 )
 
 type program struct {
 	cfg         *config.Config
 	version     string
+	stateDir    string // where the agent keeps its own state files (the config file's directory)
 	logBasePath string // resolved absolute base path from LogFile, or "" if not configured (see cmd/agent/main.go)
 	cancel      context.CancelFunc
 	done        chan struct{}
@@ -73,7 +76,7 @@ func New(cfg *config.Config, version string, configPath string, logPath string) 
 		Description: "Collects printer fleet metrics via SNMP and reports them to the OmniPrint cloud platform.",
 		Arguments:   []string{"-config", configPath},
 	}
-	prg := &program{cfg: cfg, version: version, logBasePath: logPath, done: make(chan struct{}), discoveryDone: make(chan int, 1)}
+	prg := &program{cfg: cfg, version: version, stateDir: filepath.Dir(configPath), logBasePath: logPath, done: make(chan struct{}), discoveryDone: make(chan int, 1)}
 	if err := prg.rotateLogIfNeeded(); err != nil {
 		return nil, fmt.Errorf("open log file: %w", err)
 	}
@@ -591,6 +594,10 @@ type pollResult struct{ online, total int }
 func (p *program) cycle(ctx context.Context, col *collector.Collector, tc *transport.Client) pollResult {
 	start := time.Now()
 	metrics := col.PollAll(ctx, p.activeDevices())
+	// Printers plugged into this PC by USB - no address, so SNMP can't see
+	// them (see package usbprint).
+	usb := usbprint.Poll(ctx, p.stateDir)
+	metrics = append(metrics, usb...)
 	// Re-read every cycle: a laptop/VM can change networks while running.
 	// No interfaces readable at all = no basis to flag anything.
 	ownNets := discovery.HostNetworks()
@@ -599,13 +606,13 @@ func (p *program) cycle(ctx context.Context, col *collector.Collector, tc *trans
 		if metrics[i].Online {
 			online++
 		}
-		if len(ownNets) > 0 {
+		if len(ownNets) > 0 && !usbprint.IsUSBHost(metrics[i].Host) {
 			metrics[i].OutsideAgentNetwork = !discovery.OnNetworks(metrics[i].Host, ownNets)
 		}
 	}
 	// Logged every cycle: a cycle's duration was invisible until a real
 	// customer's ran for 20+ minutes and nothing in the log said so.
-	log.Printf("poll: %d device(s) polled in %s, %d answered", len(metrics), time.Since(start).Round(time.Second), online)
+	log.Printf("poll: %d device(s) polled in %s, %d answered (%d by USB)", len(metrics), time.Since(start).Round(time.Second), online, len(usb))
 	if err := tc.SendMetrics(ctx, p.cfg.TenantID, metrics); err != nil {
 		log.Printf("failed to send metrics: %v", err)
 	}

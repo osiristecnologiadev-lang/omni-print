@@ -166,4 +166,42 @@ describe('IngestService.upsertDevice (via ingest)', () => {
     expect(updateArg.data.billingExcluded).toBeUndefined();
     expect(updateArg.data.reviewPending).toBeUndefined();
   });
+  it('stores brand/model worked out from the agent (a USB printer, agent v0.1.27)', async () => {
+    prisma.device.findUnique.mockResolvedValue(null);
+    prisma.device.findFirst.mockResolvedValue(null);
+    prisma.device.create.mockResolvedValue({ id: 'usb-device-id' });
+    prisma.metric.create.mockResolvedValue({});
+
+    await service.ingest('t1', 'c1', [
+      baseMetric({
+        device_name: 'HP LaserJet M1132 MFP',
+        host: 'USB:RECEPCAO-01/USB001',
+        serial_number: 'CNB9K12345',
+        model: 'HP LaserJet Professional M1132 MFP',
+        page_count: 15234,
+      }),
+    ]);
+
+    const data = prisma.device.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({
+      host: 'USB:RECEPCAO-01/USB001',
+      serialNumber: 'CNB9K12345',
+      manufacturer: 'HP',
+      model: 'LaserJet Professional M1132 MFP',
+    });
+    expect(data.reviewPending).toBeUndefined();
+  });
+
+  it('does not erase a known model on an offline poll', async () => {
+    const existing = { id: 'd1', tenantId: 't1', serialNumber: 'S1', host: '10.0.0.50', manufacturer: 'HP', model: 'LaserJet M404dn' };
+    prisma.device.findUnique.mockResolvedValue(existing);
+    prisma.device.update.mockResolvedValue(existing);
+    prisma.metric.create.mockResolvedValue({});
+
+    await service.ingest('t1', null, [baseMetric({ serial_number: 'S1', online: false, device_name: 'HPBFEAB2' })]);
+
+    const data = prisma.device.update.mock.calls[0][0].data;
+    expect(data.model).toBeUndefined();
+    expect(data.manufacturer).toBeUndefined();
+  });
 });
