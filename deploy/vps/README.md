@@ -26,8 +26,10 @@ written so that OmniPrint can't take Vortex down.
 
 - `api/Dockerfile`, `web/Dockerfile`, `ops/db-backup/Dockerfile`, built by
   `.github/workflows/deploy-vps.yml` and pushed to GHCR.
-- The deploy job is off until the repo variable `VPS_DEPLOY_ENABLED=true`
-  is set.
+- The deploy job runs when the repo variable `VPS_DEPLOY_ENABLED=true` is set
+  - **on since 2026-11-09**: every push to `main` deploys to the VPS. The CI
+  key (comment `omniprint-ci`) is in `/root/.ssh/authorized_keys`, forced to
+  `deploy.sh`. To pause auto-deploy, set the variable to anything else.
 - `api` honours `TRUST_PROXY=1` (real client IP behind Caddy, so the
   60/min throttler is per client again).
 
