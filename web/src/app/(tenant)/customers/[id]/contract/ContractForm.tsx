@@ -78,22 +78,21 @@ export function ContractForm({
 }) {
   const [model, setModel] = useState<ContractPricingModel>('ALLOWANCE_PLUS_OVERAGE');
   const formRef = useRef<HTMLFormElement>(null);
-  const [simMono, setSimMono] = useState('10000');
-  const [simColor, setSimColor] = useState('500');
-  const [simPrinters, setSimPrinters] = useState(String(Math.max(1, printers)));
   const [sim, setSim] = useState<Sim>(null);
 
-  function recalc(next?: { model?: ContractPricingModel; mono?: string; color?: string; printers?: string }) {
-    if (!formRef.current) return;
-    setSim(
-      simulate(
-        next?.model ?? model,
-        new FormData(formRef.current),
-        parseBRNumber(next?.mono ?? simMono) || 0,
-        parseBRNumber(next?.color ?? simColor) || 0,
-        parseBRNumber(next?.printers ?? simPrinters) || 1,
-      ),
-    );
+  // Reads everything straight from the form (the simulation inputs are
+  // data-sim fields with no name, so they never reach the server action) -
+  // no React state in between that could be one keystroke behind.
+  function recalc() {
+    const form = formRef.current;
+    if (!form) return;
+    const simValue = (k: string, fallback: number) => {
+      const el = form.querySelector<HTMLInputElement>(`[data-sim="${k}"]`);
+      const v = parseBRNumber(el?.value);
+      return Number.isFinite(v) ? v : fallback;
+    };
+    const currentModel = (form.querySelector<HTMLSelectElement>('select[name="pricingModel"]')?.value ?? model) as ContractPricingModel;
+    setSim(simulate(currentModel, new FormData(form), simValue('mono', 0), simValue('color', 0), simValue('printers', 1)));
   }
 
   return (
@@ -107,7 +106,7 @@ export function ContractForm({
             const m = e.target.value as ContractPricingModel;
             setModel(m);
             // Fields change with the model - recalc after they render.
-            setTimeout(() => recalc({ model: m }), 0);
+            setTimeout(recalc, 0);
           }}
           className={inputClass}
         >
@@ -230,11 +229,8 @@ export function ContractForm({
             <input
               type="text"
               inputMode="numeric"
-              value={simMono}
-              onChange={(e) => {
-                setSimMono(e.target.value);
-                recalc({ mono: e.target.value });
-              }}
+              data-sim="mono"
+              defaultValue="10000"
               className={`${inputClass} w-32`}
             />
           </label>
@@ -243,11 +239,8 @@ export function ContractForm({
             <input
               type="text"
               inputMode="numeric"
-              value={simColor}
-              onChange={(e) => {
-                setSimColor(e.target.value);
-                recalc({ color: e.target.value });
-              }}
+              data-sim="color"
+              defaultValue="500"
               className={`${inputClass} w-32`}
             />
           </label>
@@ -257,11 +250,8 @@ export function ContractForm({
               <input
                 type="text"
                 inputMode="numeric"
-                value={simPrinters}
-                onChange={(e) => {
-                  setSimPrinters(e.target.value);
-                  recalc({ printers: e.target.value });
-                }}
+                data-sim="printers"
+                defaultValue={String(Math.max(1, printers))}
                 className={`${inputClass} w-24`}
               />
             </label>
