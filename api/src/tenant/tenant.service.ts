@@ -8,7 +8,7 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 
 // Same local-disk-under-storage/ posture as TicketsService/
 // AgentReleasesService's own STORAGE_ROOT (see either's comment) - lives on
-// the same persistent Railway volume mounted at /app/storage.
+// the same persistent volume mounted at /app/storage.
 const STORAGE_ROOT = join(process.cwd(), 'storage', 'tenant-logos');
 export const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 // PNG/JPEG only, deliberately narrower than ticket attachments - pdfkit's

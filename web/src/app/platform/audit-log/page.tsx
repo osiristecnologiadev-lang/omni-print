@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getPlatformAuditLog } from '@/lib/platform-api';
 import { getViewerTimeZone } from '@/lib/api';
 
-// Server Components render on Railway (UTC) - see getViewerTimeZone.
+// Server Components render on the server (UTC) - see getViewerTimeZone.
 function formatDateTime(iso: string, timeZone?: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }

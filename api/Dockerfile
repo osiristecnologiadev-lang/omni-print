@@ -1,7 +1,5 @@
-# Production image for the API on the Hostinger VPS (deploy/vps/). Railway
-# ALSO builds from this file: it auto-detects a Dockerfile in the service's
-# root directory (switched from Railpack on 2026-11-04). The API reads $PORT,
-# so it kept working there - keep it that way (see web/Dockerfile's CMD note).
+# Production image for the API on the Hostinger VPS (deploy/vps/). The API
+# reads $PORT - keep it that way (see web/Dockerfile's CMD note).
 #
 # Debian slim, not Alpine: Prisma's query engine needs OpenSSL and a glibc
 # build, and slim avoids the musl engine variant entirely.

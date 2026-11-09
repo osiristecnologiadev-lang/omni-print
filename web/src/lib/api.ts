@@ -435,7 +435,7 @@ const TIMEZONE_COOKIE = 'omniprint_tz';
 
 // The viewer's own IANA timezone (e.g. "America/Sao_Paulo"), captured
 // client-side once (see layout.tsx's tz-sync script) and sent back on every
-// request as a cookie - Server Components render on Railway (UTC), so
+// request as a cookie - Server Components render on the server (UTC), so
 // without this every date/time shown would be in UTC regardless of where
 // the actual viewer is. Undefined on the very first request ever (before
 // the cookie exists) - Intl.DateTimeFormat's own timeZone default (the

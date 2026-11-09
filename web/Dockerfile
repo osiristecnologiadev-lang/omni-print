@@ -1,7 +1,4 @@
 # Production image for the dashboard on the Hostinger VPS (deploy/vps/).
-# Railway ALSO builds from this file: it auto-detects a Dockerfile in the
-# service's root directory (switched from Railpack on 2026-11-04), so keep it
-# working there too - see the CMD note below.
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
@@ -30,7 +27,6 @@ COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/next.config.ts ./next.config.ts
 USER node
 EXPOSE 3000
-# No `-p`: `next start` listens on $PORT. Railway injects its own PORT and
-# routes traffic there - a hard-coded `-p 3000` took omniprint.app.br down
-# (502) from 2026-11-04 20:57Z. The VPS gets 3000 from the ENV above.
+# No `-p`: `next start` listens on $PORT (3000 from the ENV above), so a
+# host that injects its own PORT still works.
 CMD ["npx", "next", "start"]

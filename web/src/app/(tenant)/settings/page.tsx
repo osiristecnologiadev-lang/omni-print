@@ -12,7 +12,7 @@ import { Banner } from '@/components/Banner';
 const inputClass =
   'mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
 
-// Server Components render on Railway (UTC) - see getViewerTimeZone.
+// Server Components render on the server (UTC) - see getViewerTimeZone.
 function formatDateTime(iso: string, timeZone?: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }

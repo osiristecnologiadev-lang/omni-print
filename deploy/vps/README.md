@@ -29,8 +29,7 @@ written so that OmniPrint can't take Vortex down.
 - The deploy job is off until the repo variable `VPS_DEPLOY_ENABLED=true`
   is set.
 - `api` honours `TRUST_PROXY=1` (real client IP behind Caddy, so the
-  60/min throttler is per client again). Unset on Railway, so Railway
-  behaves as before.
+  60/min throttler is per client again).
 
 ## Phase 1 — bring OmniPrint up in parallel (Vortex untouched)
 
@@ -140,6 +139,11 @@ written so that OmniPrint can't take Vortex down.
 
 ## Phase 4 — afterwards
 
+**Done 2026-11-09:** Railway project deleted (permanent on 2026-11-11), its
+GitHub App uninstalled, Cloudflare `vps.`/`api-vps.`/`_railway-verify`
+records and the matching Caddy blocks removed, `/opt/omniprint/restore`
+deleted. Railway is no longer a rollback path.
+
 - Keep Railway **stopped but not deleted** for ~7 days, as a rollback path:
   point DNS back and start the Railway services again.
 - Then disconnect Railway's auto-deploy and delete the project.
@@ -148,7 +152,6 @@ written so that OmniPrint can't take Vortex down.
 ## Rollback (any phase)
 
 - **Caddy:** restore `Caddyfile.bak-*`, then `caddy reload`.
-- **Cutover:** point DNS back to Railway and start Railway `api` and `web`.
-  Data written on the VPS in the meantime would need to be carried back;
-  agent readings self-heal, but manual panel edits do not.
+- **Cutover:** no longer possible - Railway was deleted in Phase 4. Disaster
+  recovery is a restore of the nightly R2 dump (see the runbook above).
 - **Bad image:** `./deploy.sh deploy $(cat .deployed-tag.prev)`.

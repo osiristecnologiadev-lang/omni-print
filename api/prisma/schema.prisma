@@ -94,7 +94,7 @@ model Tenant {
   phone        String?
   contactEmail String? @map("contact_email")
 
-  // Local-disk path under storage/tenant-logos/ (same persistent Railway
+  // Local-disk path under storage/tenant-logos/ (same persistent
   // volume as ticket attachments/agent releases - see TicketsService's
   // STORAGE_ROOT comment), null when no logo has been uploaded yet. Only
   // PNG/JPEG accepted (TenantService.ALLOWED_LOGO_MIME_TYPES) - pdfkit's
@@ -1009,7 +1009,7 @@ model TicketComment {
 // A file attached either directly to the ticket (commentId null - the
 // initial report, alongside `description`, which has no TicketComment row
 // of its own) or to one specific reply. Stored on local disk under
-// storage/ticket-attachments/ - same posture and same persistent Railway
+// storage/ticket-attachments/ - same posture and same persistent
 // volume as AgentReleasesService's STORAGE_ROOT (see that file's comment on
 // why local disk is fine at this project's current scale).
 model TicketAttachment {

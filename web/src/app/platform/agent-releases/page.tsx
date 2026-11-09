@@ -4,7 +4,7 @@ import { publishAgentReleaseAction, deleteAgentReleaseAction } from './actions';
 import { PlainSubmitButton } from '@/components/SubmitButton';
 import { PlatformBanner } from '@/components/Banner';
 
-// Server Components render on Railway (UTC) - see getViewerTimeZone.
+// Server Components render on the server (UTC) - see getViewerTimeZone.
 function formatDateTime(iso: string, timeZone?: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }

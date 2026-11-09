@@ -1,9 +1,8 @@
 #!/bin/bash
-# Nightly Postgres -> Cloudflare R2 backup. Runs as a one-shot Railway
-# service on a cron schedule (see ../../reference-railway-infra memory /
-# the deploy.cronSchedule field) - the container starts, this script runs
-# to completion, and Railway stops it until the next scheduled trigger.
-# Not a long-running daemon.
+# Nightly Postgres -> Cloudflare R2 backup. Runs as a one-shot container from
+# the VPS host crontab (05:00 UTC, `docker compose --profile backup run --rm
+# db-backup`, see deploy/vps/README.md) - the container starts, this script
+# runs to completion and exits. Not a long-running daemon.
 set -euo pipefail
 
 : "${DATABASE_URL:?DATABASE_URL is required}"
@@ -37,7 +36,7 @@ alert_failure() {
 # non-zero on its own (pg_dump, rclone, etc.), per bash's own ERR-trap
 # semantics. The too-small-dump branch calls alert_failure directly
 # instead, before its own exit.
-trap 'alert_failure "db-backup failed at line $LINENO - check the db-backup service logs on Railway"' ERR
+trap 'alert_failure "db-backup failed at line $LINENO - check /var/log/omniprint-backup.log on the VPS"' ERR
 
 # rclone's RCLONE_CONFIG_<REMOTE>_<KEY> env-var convention defines a
 # remote named "r2" without ever writing an rclone.conf file. Tried the

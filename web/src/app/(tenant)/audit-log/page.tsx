@@ -7,7 +7,7 @@ import { Panel } from '@/components/Panel';
 import { EmptyState } from '@/components/EmptyState';
 import { Button } from '@/components/Button';
 
-// Server Components render on Railway (UTC) - see getViewerTimeZone.
+// Server Components render on the server (UTC) - see getViewerTimeZone.
 function formatDateTime(iso: string, timeZone?: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium', timeZone }).format(new Date(iso));
 }

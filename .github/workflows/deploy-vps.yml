@@ -2,8 +2,7 @@
 # Vortex, never spends CPU/RAM compiling) and deploys them to the VPS.
 #
 # The deploy job only runs when the repository VARIABLE VPS_DEPLOY_ENABLED is
-# "true" - leave it unset while Railway is still production, so pushes only
-# build images. Needs:
+# "true" - while unset, pushes only build images. Needs:
 #   secrets: VPS_HOST, VPS_SSH_KEY (CI-only key, forced to deploy.sh),
 #            VPS_KNOWN_HOSTS (output of `ssh-keyscan -t ed25519 <host>`)
 #   vars:    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (public key, inlined at build)

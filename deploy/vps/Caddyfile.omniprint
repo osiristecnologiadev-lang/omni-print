@@ -37,13 +37,5 @@ api.omniprint.app.br {
 	reverse_proxy omniprint-api:3000
 }
 
-# ---- Test hostnames from before the cutover - remove in Phase 4 ------------
-# (together with their Cloudflare records).
-vps.omniprint.app.br {
-	encode gzip
-	reverse_proxy omniprint-web:3000
-}
-
-api-vps.omniprint.app.br {
-	reverse_proxy omniprint-api:3000
-}
+# The pre-cutover test hostnames vps./api-vps. were removed in Phase 4
+# (2026-11-09), together with their Cloudflare records and the Railway project.

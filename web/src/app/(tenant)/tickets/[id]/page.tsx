@@ -32,7 +32,7 @@ const STATUS_TONE: Record<TicketStatus, BadgeTone> = {
 const PRIORITY_LABEL: Record<TicketPriority, string> = { LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', URGENT: 'Urgente' };
 const PRIORITY_TONE: Record<TicketPriority, BadgeTone> = { LOW: 'neutral', MEDIUM: 'info', HIGH: 'warning', URGENT: 'critical' };
 
-// Server Components render on Railway (UTC) - see getViewerTimeZone.
+// Server Components render on the server (UTC) - see getViewerTimeZone.
 function formatDateTime(iso: string, timeZone?: string): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone }).format(new Date(iso));
 }

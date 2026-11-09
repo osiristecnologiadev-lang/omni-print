@@ -43,7 +43,7 @@ try {
 } catch (e) {}
 `;
 
-// Every date/time on this app renders server-side (Railway, UTC) - without
+// Every date/time on this app renders server-side (server, UTC) - without
 // knowing the viewer's actual timezone there's no way to show it correctly
 // there. A cookie is the only way a Server Component can know it (there's
 // no HTTP header for it) - this sets one to the browser's own resolved IANA

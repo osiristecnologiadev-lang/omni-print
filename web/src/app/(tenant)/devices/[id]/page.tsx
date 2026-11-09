@@ -39,7 +39,7 @@ function formatShortDate(dateStr: string): string {
   return `${day}/${month}`;
 }
 
-// Server Components render on Railway (UTC) - without an explicit
+// Server Components render on the server (UTC) - without an explicit
 // timeZone this would always show UTC regardless of who's actually
 // looking at the page. See getViewerTimeZone's comment.
 function formatDateTime(iso: string, timeZone?: string): string {

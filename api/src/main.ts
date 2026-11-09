@@ -21,7 +21,7 @@ async function bootstrap() {
   // proxy's own address, so the global ThrottlerGuard (per-IP, 60/min) would
   // put every agent and user in ONE shared bucket. TRUST_PROXY=<hops> tells
   // Express to take the client IP from X-Forwarded-For instead. Unset (as on
-  // Railway today) keeps the previous behaviour.
+  // before the VPS) keeps the previous behaviour.
   if (process.env.TRUST_PROXY) {
     app.set('trust proxy', Number(process.env.TRUST_PROXY));
   }

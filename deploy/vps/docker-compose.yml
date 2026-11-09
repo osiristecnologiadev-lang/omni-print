@@ -51,11 +51,11 @@ services:
       NODE_ENV: production
       TZ: UTC
       PORT: "3000"
-      # Same pool cap as Railway (2026-10-02 "too many clients" incident).
+      # Pool cap from the 2026-10-02 "too many clients" incident).
       DATABASE_URL: postgresql://omniprint:${POSTGRES_PASSWORD}@db:5432/omniprint?connection_limit=10
       TRUST_PROXY: "1"
-      # "true" while Railway is still production (no duplicate e-mails or
-      # Stripe calls from this copy); flip to "false" at cutover.
+      # "true" only on a copy that must not send e-mails or call Stripe
+      # (e.g. a restore test next to production).
       DISABLE_CRONS: ${DISABLE_CRONS:-false}
       JWT_SECRET: ${JWT_SECRET:?}
       APP_URL: https://omniprint.app.br

@@ -12,7 +12,7 @@ import { UpdateTicketDto } from './dto/update-ticket.dto';
 
 // Same local-disk-under-storage/ posture as AgentReleasesService's
 // STORAGE_ROOT (see that file's comment) - lives on the same persistent
-// Railway volume mounted at /app/storage, so it survives redeploys.
+// persistent volume mounted at /app/storage, so it survives redeploys.
 const STORAGE_ROOT = join(process.cwd(), 'storage', 'ticket-attachments');
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 // Jam photos and error-screen screenshots are the realistic use case (see
