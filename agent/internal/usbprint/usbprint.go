@@ -9,9 +9,11 @@
 //   - page counter, best source first:
 //     1. the printer's own lifetime counter, asked over USB with PJL
 //     (@PJL INFO PAGECOUNT) - what most lasers (HP, Brother, Kyocera,
-//     Lexmark, Ricoh, Samsung...) answer. Never asked while a job is
-//     queued, so a query can't land in the middle of a print job;
-//     2. if the printer never answers PJL (most inkjets): pages counted
+//     Lexmark, Ricoh, Samsung...) answer. Only sent to a printer whose
+//     IEEE 1284 id lists PJL in its command set (a host-based "GDI"
+//     printer could print an unknown command as a page of garbage), and
+//     never while a job is queued, so it can't land inside a print job;
+//     2. a printer without PJL (host-based lasers, most inkjets): pages counted
 //     from Windows' own print log (PrintService/Operational, event 307),
 //     kept by the agent from the day it starts. That only sees what is
 //     printed FROM this PC - not copies made on the printer itself.
@@ -83,6 +85,65 @@ func parsePJL(reply string) pjlReply {
 		}
 	}
 	return r
+}
+
+// deviceID is a printer's IEEE 1284 device id, which every USB printer
+// reports: "MFG:Hewlett-Packard;MDL:HP LaserJet Pro M404dn;CMD:PJL,PCL,PCLXL,POSTSCRIPT;SN:PHBL123456;".
+type deviceID struct {
+	Manufacturer, Model, Serial string
+	Commands                    []string
+}
+
+func parseDeviceID(raw string) deviceID {
+	var id deviceID
+	for _, field := range strings.Split(raw, ";") {
+		k, v, ok := strings.Cut(field, ":")
+		if !ok {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		switch strings.ToUpper(strings.TrimSpace(k)) {
+		case "MFG", "MANUFACTURER":
+			id.Manufacturer = v
+		case "MDL", "MODEL":
+			id.Model = v
+		case "SN", "SERN", "SERIALNUMBER":
+			id.Serial = v
+		case "CMD", "COMMAND SET":
+			for _, c := range strings.Split(v, ",") {
+				if c = strings.ToUpper(strings.TrimSpace(c)); c != "" {
+					id.Commands = append(id.Commands, c)
+				}
+			}
+		}
+	}
+	return id
+}
+
+// speaksPJL: only a printer that lists PJL in its command set is ever sent
+// PJL - a host-based (GDI) printer may PRINT an unknown command as a page
+// of garbage.
+func (id deviceID) speaksPJL() bool {
+	for _, c := range id.Commands {
+		if c == "PJL" {
+			return true
+		}
+	}
+	return false
+}
+
+// fullModel: "HP LaserJet Pro M404dn" (MDL usually already starts with the
+// brand; when it doesn't, MFG is put in front).
+func (id deviceID) fullModel() string {
+	if id.Model == "" {
+		return ""
+	}
+	mfg := strings.Fields(id.Manufacturer)
+	if len(mfg) > 0 && !strings.HasPrefix(strings.ToLower(id.Model), strings.ToLower(mfg[0])) &&
+		!(strings.EqualFold(mfg[0], "Hewlett-Packard") && strings.HasPrefix(strings.ToUpper(id.Model), "HP")) {
+		return id.Manufacturer + " " + id.Model
+	}
+	return id.Model
 }
 
 var driverNoise = regexp.MustCompile(`(?i)\s*(?:\(V\d\)|\bPCL[- ]?\d[\w.]*|\bPCL\b|\bPostScript\b|\bPS\b|\bXPS\b|\bGDI\b|\bUPD\b|\bClass Driver\b|\bBi-di\b|\bSeries\b|\bseries\b|\bPrinter\b)`)

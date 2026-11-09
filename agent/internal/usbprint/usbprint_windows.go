@@ -135,37 +135,75 @@ func pollQueue(ctx context.Context, q queue, dev usbDevice, ps *printerState, co
 		return m
 	}
 
-	reply, err := askPJL(ctx, dev.link, q.jobs)
-	switch {
-	case errors.Is(err, windows.ERROR_FILE_NOT_FOUND), errors.Is(err, windows.ERROR_DEVICE_NOT_CONNECTED), errors.Is(err, windows.ERROR_GEN_FAILURE):
-		m.Error = fmt.Sprintf("USB printer %q (%s) is off or unplugged", q.name, q.port)
+	h, err := openUSB(dev.link)
+	if err != nil {
+		if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) || errors.Is(err, windows.ERROR_DEVICE_NOT_CONNECTED) || errors.Is(err, windows.ERROR_GEN_FAILURE) {
+			m.Error = fmt.Sprintf("USB printer %q (%s) is off or unplugged", q.name, q.port)
+		} else {
+			m.Error = fmt.Sprintf("USB printer %q (%s): can't open it: %v", q.name, q.port, err)
+		}
 		m.SysDescr = describe(computer, q.port, ps.Source)
 		return m
-	case err != nil:
-		log.Printf("usb: %q (%s): no PJL answer this poll: %v", q.name, q.port, err)
 	}
+	defer windows.CloseHandle(h)
 	m.Online = true
-	if reply.ID != "" {
-		m.Model = reply.ID
+
+	id := deviceID{}
+	idOK := false
+	if raw, err := get1284ID(h); err == nil {
+		id = parseDeviceID(raw)
+		idOK = true
+	} else {
+		log.Printf("usb: %q (%s): no IEEE 1284 id: %v", q.name, q.port, err)
+	}
+	if model := id.fullModel(); model != "" {
+		m.Model = model
+	}
+	if id.Serial != "" {
+		m.SerialNumber = id.Serial
 	}
 
 	switch {
-	case reply.PageCount != nil:
-		if ps.Source != SourcePJL {
-			log.Printf("usb: %q (%s) answers PJL - using the printer's own counter (%d)", q.name, q.port, *reply.PageCount)
+	case id.speaksPJL() && q.jobs > 0:
+		// Busy: never interleave a PJL inquiry with a print job.
+	case id.speaksPJL():
+		reply, err := askPJL(ctx, h)
+		if reply.ID != "" {
+			m.Model = reply.ID
 		}
-		ps.Source = SourcePJL
-		ps.PJLMisses = 0
-		m.PageCount = reply.PageCount
+		if reply.PageCount != nil {
+			if ps.Source != SourcePJL {
+				log.Printf("usb: %q (%s) answers PJL - using the printer's own counter (%d)", q.name, q.port, *reply.PageCount)
+			}
+			ps.Source = SourcePJL
+			ps.PJLMisses = 0
+			m.PageCount = reply.PageCount
+		} else if ps.Source != SourcePJL {
+			// Says it speaks PJL but gives no counter: after a few idle
+			// tries, count from Windows' print log instead.
+			ps.PJLMisses++
+			log.Printf("usb: %q (%s): no PJL page counter (try %d): %v", q.name, q.port, ps.PJLMisses, err)
+			if ps.PJLMisses >= 3 {
+				ps.Source = SourceWindows
+			}
+		}
 	case ps.Source == SourcePJL:
-		// Answered before: a busy/hiccup poll, not a reason to switch.
-	case err == nil || errors.Is(err, errNoReply):
-		// Connected, idle, asked - and nothing. A few of these in a row and
-		// it's a printer without PJL: count from Windows' print log instead.
+		// Answered PJL before; its id just didn't come back this poll.
+		// Stay on the printer's own counter - switching would make it jump.
+	case idOK:
+		// No PJL in its command set (host-based lasers, most inkjets): never
+		// send it anything - count from Windows' print log.
+		if ps.Source != SourceWindows {
+			log.Printf("usb: %q (%s) doesn't speak PJL (%v) - counting pages from Windows' print log", q.name, q.port, id.Commands)
+		}
+		ps.Source = SourceWindows
+	default:
+		// No 1284 id this poll: send nothing; after a few tries in a row,
+		// settle on Windows' print log.
 		ps.PJLMisses++
 		if ps.PJLMisses >= 3 && ps.Source != SourceWindows {
+			log.Printf("usb: %q (%s) never gave its 1284 id - counting pages from Windows' print log", q.name, q.port)
 			ps.Source = SourceWindows
-			log.Printf("usb: %q (%s) doesn't answer PJL - counting pages from Windows' print log from now on", q.name, q.port)
 		}
 	}
 	if ps.Source == SourceWindows && ps.WindowsPages > 0 {
@@ -280,25 +318,50 @@ func present(link string) bool {
 }
 
 var errNoReply = errors.New("no PJL reply")
-var errBusy = errors.New("print queue has jobs - not asking")
 
 const uel = "\x1b%-12345X"
 
-// askPJL asks the printer for its id and page counter over its USB link.
-// Never while the queue has jobs: a PJL job sent in the middle of a print
-// could interleave with it.
-func askPJL(ctx context.Context, link string, jobs uint32) (pjlReply, error) {
-	if jobs > 0 {
-		return pjlReply{}, errBusy
-	}
-	h, err := windows.CreateFile(windows.StringToUTF16Ptr(link),
+func openUSB(link string) (windows.Handle, error) {
+	return windows.CreateFile(windows.StringToUTF16Ptr(link),
 		windows.GENERIC_READ|windows.GENERIC_WRITE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
 		nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OVERLAPPED, 0)
-	if err != nil {
-		return pjlReply{}, err
-	}
-	defer windows.CloseHandle(h)
+}
 
+// IOCTL_USBPRINT_GET_1284_ID = CTL_CODE(FILE_DEVICE_UNKNOWN, 13, METHOD_BUFFERED, FILE_ANY_ACCESS).
+const ioctlUSBPrintGet1284ID = 0x220034
+
+// get1284ID asks usbprint.sys for the printer's IEEE 1284 device id: two
+// big-endian length bytes, then "MFG:...;MDL:...;CMD:...;".
+func get1284ID(h windows.Handle) (string, error) {
+	ev, err := windows.CreateEvent(nil, 1, 0, nil)
+	if err != nil {
+		return "", err
+	}
+	defer windows.CloseHandle(ev)
+	ov := windows.Overlapped{HEvent: ev}
+	buf := make([]byte, 1024)
+	var n uint32
+	err = windows.DeviceIoControl(h, ioctlUSBPrintGet1284ID, nil, 0, &buf[0], uint32(len(buf)), &n, &ov)
+	if err != nil && !errors.Is(err, windows.ERROR_IO_PENDING) {
+		return "", err
+	}
+	if r, _ := windows.WaitForSingleObject(ev, 3000); r != windows.WAIT_OBJECT_0 {
+		_ = windows.CancelIoEx(h, &ov)
+		_ = windows.GetOverlappedResult(h, &ov, &n, true)
+		return "", errTimeout
+	}
+	if err := windows.GetOverlappedResult(h, &ov, &n, false); err != nil {
+		return "", err
+	}
+	if n < 2 {
+		return "", errors.New("empty 1284 id")
+	}
+	return strings.TrimSpace(string(buf[2:n])), nil
+}
+
+// askPJL asks the printer for its id and page counter. Callers make sure
+// the printer lists PJL in its 1284 command set and its queue is empty.
+func askPJL(ctx context.Context, h windows.Handle) (pjlReply, error) {
 	req := []byte(uel + "@PJL\r\n@PJL INFO ID\r\n@PJL INFO PAGECOUNT\r\n" + uel)
 	if _, err := overlappedIO(h, req, true, 5*time.Second); err != nil {
 		return pjlReply{}, fmt.Errorf("write: %w", err)

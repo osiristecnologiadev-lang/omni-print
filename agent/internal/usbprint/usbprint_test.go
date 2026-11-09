@@ -59,3 +59,22 @@ func TestUSBSerial(t *testing.T) {
 		}
 	}
 }
+
+func TestParseDeviceID(t *testing.T) {
+	id := parseDeviceID("MFG:Hewlett-Packard;CMD:PJL,PCL,PCLXL,POSTSCRIPT;MDL:HP LaserJet Pro M404dn;CLS:PRINTER;SN:PHBLB12345;")
+	if !id.speaksPJL() || id.fullModel() != "HP LaserJet Pro M404dn" || id.Serial != "PHBLB12345" {
+		t.Errorf("hp: %+v model=%q", id, id.fullModel())
+	}
+	gdi := parseDeviceID("MFG:Hewlett-Packard;MDL:HP LaserJet Professional P1102;CMD:ACL,ZJS,PJL-ZJS;CLS:PRINTER;")
+	if gdi.speaksPJL() {
+		t.Errorf("host-based printer must not be sent PJL: %+v", gdi)
+	}
+	epson := parseDeviceID("MFG:EPSON;CMD:ESCPL2,BDC,D4,D4PX,ESCPR1;MDL:L3250 Series;CLS:PRINTER;")
+	if epson.speaksPJL() || epson.fullModel() != "EPSON L3250 Series" {
+		t.Errorf("epson: %+v model=%q", epson, epson.fullModel())
+	}
+	brother := parseDeviceID("MFG:Brother;CMD:PJL,PCL,PCLXL,URF;MDL:HL-L5100DN series;CLS:PRINTER;")
+	if !brother.speaksPJL() || brother.fullModel() != "Brother HL-L5100DN series" {
+		t.Errorf("brother: %+v model=%q", brother, brother.fullModel())
+	}
+}
