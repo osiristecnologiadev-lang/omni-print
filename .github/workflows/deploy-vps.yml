@@ -30,6 +30,9 @@ jobs:
     defaults:
       run:
         working-directory: api
+    env:
+      # The schema reads it; unit tests never connect (Prisma is mocked).
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
