@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { HelpTip } from '@/components/HelpTip';
 import { forbidden } from 'next/navigation';
 import { getViewerAccess, getContractsOverview, type ContractOverviewRow } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
@@ -86,8 +87,14 @@ export default async function ClosingPage() {
                 <tr className="border-b border-line text-left text-xs text-ink-muted">
                   <th className="pb-2 pr-4 font-medium">Cliente</th>
                   <th className="pb-2 pr-4 font-medium">Próximo fechamento</th>
-                  <th className="pb-2 pr-4 text-right font-medium">Período até hoje</th>
-                  <th className="pb-2 pr-4 font-medium">Pendências</th>
+                  <th className="pb-2 pr-4 text-right font-medium">
+                    Período até hoje
+                    <HelpTip term="periodoAtual" placement="bottom" />
+                  </th>
+                  <th className="pb-2 pr-4 font-medium">
+                    Pendências
+                    <HelpTip term="semLeitura" placement="bottom" />
+                  </th>
                   <th className="pb-2 pr-4 font-medium">Última fatura</th>
                   <th className="pb-2 font-medium" />
                 </tr>

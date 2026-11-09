@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { parseBRNumber } from '@/lib/br-number';
 import { redirect } from 'next/navigation';
 import { createTenantUser, updateTenantPricing } from '@/lib/platform-api';
 
@@ -33,7 +34,7 @@ export async function updateTenantPricingAction(tenantId: string, formData: Form
   if (comp) {
     cents = 0;
   } else if (raw) {
-    const reais = Number(raw.replace(',', '.'));
+    const reais = parseBRNumber(raw);
     if (!Number.isFinite(reais) || reais < 0) {
       redirect(`/platform/tenants/${tenantId}?priceError=1`);
     }

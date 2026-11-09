@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { GLOSSARY } from '@/lib/glossary';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { StatusBadge } from './StatusBadge';
@@ -282,12 +283,15 @@ export function DeviceFleetTable({
                         <div className="font-medium text-ink">
                           {device.customLabel ?? device.printerName ?? device.name ?? device.host}
                           {device.reviewPending ? (
-                            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-normal text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                            <span
+                              title={GLOSSARY.revisar}
+                              className="ml-2 cursor-help rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-normal text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                            >
                               revisar
                             </span>
                           ) : (
                             device.billingExcluded && (
-                              <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-normal text-ink-muted">
+                              <span title={GLOSSARY.foraDoContrato} className="ml-2 cursor-help rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-normal text-ink-muted">
                                 fora do contrato
                               </span>
                             )

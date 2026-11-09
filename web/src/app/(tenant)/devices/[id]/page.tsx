@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { HelpTip } from '@/components/HelpTip';
 import { notFound } from 'next/navigation';
 import {
   getDevice,
@@ -150,7 +151,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
 
       {isTenantWide && device.reviewPending && (
         <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
-          <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">Impressora nova para revisar</h2>
+          <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">Impressora nova para revisar<HelpTip term="revisar" /></h2>
           <p className="mt-1 text-sm text-amber-900/90 dark:text-amber-200/90">
             O agente{device.customer ? ` de ${device.customer.name}` : ''} encontrou esta impressora fora da rede dele (numa rede
             compartilhada ela pode ser de outra empresa) ou ainda sem conseguir ler o contador dela - por isso entrou{' '}
@@ -262,12 +263,12 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
           <h2 className="mb-3 text-sm font-medium text-ink-muted">Informações</h2>
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between gap-4">
-              <dt className="text-ink-muted">Páginas impressas</dt>
+              <dt className="text-ink-muted">Páginas impressas<HelpTip term="paginasImpressas" /></dt>
               <dd className="tabular-nums font-medium text-ink">{formatPageCount(displayPageCount(latest ?? null))}</dd>
             </div>
             {latest && engineDisplayPageCount(latest) != null && displayPageCount(latest) !== engineDisplayPageCount(latest) && (
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-muted">Contador do mecanismo</dt>
+                <dt className="text-ink-muted">Contador do mecanismo<HelpTip term="contadorMecanismo" /></dt>
                 <dd className="tabular-nums text-ink-faint">{formatPageCount(engineDisplayPageCount(latest))}</dd>
               </div>
             )}
@@ -302,7 +303,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
             </div>
             {currentMonthPages.enginePages !== currentMonthPages.pages && (
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-muted">Mecanismo, no período</dt>
+                <dt className="text-ink-muted">Mecanismo, no período<HelpTip term="contadorMecanismo" /></dt>
                 <dd className="text-right">
                   <div className="tabular-nums text-ink-faint">{formatPageCount(currentMonthPages.enginePages)}</div>
                   <div className="text-xs text-ink-faint">
@@ -313,7 +314,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
             )}
             {isTenantWide && device.customerId && (
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-muted">Receita estimada no período</dt>
+                <dt className="text-ink-muted">Receita estimada no período<HelpTip term="receitaEstimada" /></dt>
                 <dd className="text-right">
                   {device.billingExcluded ? (
                     <span className="text-ink-faint">fora do contrato</span>
@@ -359,6 +360,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
                 ) : (
                   <span className="text-ink">entra no contrato</span>
                 )}
+                <HelpTip term={device.billingExcluded ? 'foraDoContrato' : 'entraNoContrato'} />
               </h2>
               <p className="text-xs text-ink-faint">
                 {device.billingExcluded
@@ -377,7 +379,8 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
             <form action={boundUpdateBillingTerms} className="mt-4 flex flex-wrap items-end gap-4 border-t border-line pt-4">
               <div>
                 <label htmlFor="minimumChargeOverride" className="block text-xs text-ink-muted">
-                  Franquia desta impressora (R$)
+                  Mínimo desta impressora (R$)
+                  <HelpTip term="minimoProprio" />
                 </label>
                 <input
                   type="text"
@@ -392,6 +395,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
               <div>
                 <label htmlFor="colorPagePriceOverride" className="block text-xs text-ink-muted">
                   Preço da página colorida (R$)
+                  <HelpTip term="precoCorProprio" />
                 </label>
                 <input
                   type="text"
@@ -406,12 +410,13 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
               <label className="flex items-center gap-2 text-xs text-ink-muted">
                 <input type="checkbox" name="billEngineCounter" defaultChecked={device.billEngineCounter} />
                 Cobrar pelo contador total (mecanismo)
+                <HelpTip term="cobrarPeloMecanismo" />
               </label>
               <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
                 Salvar
               </SubmitButton>
               <p className="w-full text-xs text-ink-faint">
-                Franquia: só para contratos &quot;Mínimo por impressora&quot; - em branco usa a do contrato. Preço colorido:
+                Mínimo: só para contratos &quot;Mínimo por impressora&quot; - em branco usa o do contrato. Preço colorido:
                 para contratos por página ou mínimo por impressora, quando esta impressora tem preço próprio. Contador total:
                 use quando você cobra esta impressora pelo contador do mecanismo, não pelo de páginas impressas.
               </p>
@@ -422,7 +427,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
 
       {isTenantWide && (
         <Panel className="mt-6">
-          <h2 className="mb-1 text-sm font-medium text-ink-muted">Leitura inicial manual</h2>
+          <h2 className="mb-1 text-sm font-medium text-ink-muted">Leitura inicial manual<HelpTip term="leituraInicialManual" /></h2>
           <p className="mb-4 text-xs text-ink-faint">
             Se este dispositivo já imprimia antes do monitoramento começar, informe aqui a contagem de páginas que ele
             já tinha em uma data conhecida - o faturamento passa a contar a partir desse ponto em vez de só a partir da

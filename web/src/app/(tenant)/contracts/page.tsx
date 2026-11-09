@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { HelpTip } from '@/components/HelpTip';
 import { forbidden } from 'next/navigation';
 import { getViewerAccess, getContractsOverview } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
@@ -71,13 +72,18 @@ export default async function ContractsPage() {
                   <th className="pb-2 pr-4 font-medium">Cliente</th>
                   <th className="pb-2 pr-4 font-medium">Como é cobrado</th>
                   <th className="pb-2 pr-4 font-medium">Vigência</th>
-                  <th className="pb-2 pr-4 font-medium" title="Dia do mês em que o período de leitura fecha">
+                  <th className="pb-2 pr-4 font-medium">
                     Fecha dia
+                    <HelpTip term="diaFechamento" placement="bottom" />
                   </th>
-                  <th className="pb-2 pr-4 font-medium" title="Impressoras que entram na cobrança / fora do contrato">
+                  <th className="pb-2 pr-4 font-medium">
                     Impressoras
+                    <HelpTip term="foraDoContrato" placement="bottom" />
                   </th>
-                  <th className="pb-2 pr-4 text-right font-medium">Período atual (até hoje)</th>
+                  <th className="pb-2 pr-4 text-right font-medium">
+                    Período atual (até hoje)
+                    <HelpTip term="periodoAtual" placement="bottom" />
+                  </th>
                   <th className="pb-2 font-medium" />
                 </tr>
               </thead>

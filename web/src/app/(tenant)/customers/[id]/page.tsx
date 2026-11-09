@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { HelpTip } from '@/components/HelpTip';
 import { CustomerTabs, type CustomerTab } from '@/components/CustomerTabs';
 import { forbidden, notFound } from 'next/navigation';
 import {
@@ -237,7 +238,10 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           <p className="text-[11px] text-ink-faint">{currentPeriod.hasContract ? 'ver ou editar' : 'criar contrato'}</p>
         </Link>
         <div className="rounded-xl border border-line bg-surface px-4 py-3">
-          <p className="text-xs text-ink-muted">Fechamento</p>
+          <p className="text-xs text-ink-muted">
+            Fechamento
+            <HelpTip term="diaFechamento" />
+          </p>
           <p className="mt-1 text-xl font-semibold tabular-nums text-ink">dia {customer.billingCycleDay}</p>
           <p className="text-[11px] text-ink-faint">dia em que o período de leitura fecha</p>
         </div>
@@ -515,7 +519,10 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
       {tab === 'agentes' && canSeeAgent && (
       <>
       <Panel>
-        <h2 className="mb-1 text-sm font-medium text-ink">Códigos de instalação do agente</h2>
+        <h2 className="mb-1 text-sm font-medium text-ink">
+          Códigos de instalação do agente
+          <HelpTip term="codigoInstalacao" />
+        </h2>
         <p className="mb-4 text-xs text-ink-faint">
           Gere um código curto para cada instalação do agente no site deste cliente e envie para quem for
           instalar — o assistente do instalador pede só esse código e troca ele pelos dados reais sozinho.
@@ -559,7 +566,10 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
       </Panel>
 
       <Panel className="mt-6">
-        <h2 className="mb-1 text-sm font-medium text-ink">Agentes instalados</h2>
+        <h2 className="mb-1 text-sm font-medium text-ink">
+          Agentes instalados
+          <HelpTip term="agente" />
+        </h2>
         <p className="mb-4 text-xs text-ink-faint">
           Cada instalação feita com um código de instalação aparece aqui. Toda impressora que o agente encontrar
           já chega marcada como &ldquo;{customer.name}&rdquo; automaticamente. Revogar desliga aquele agente

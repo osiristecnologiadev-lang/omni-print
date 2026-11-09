@@ -3,13 +3,17 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createContract, cancelContract, type ContractPricingModel, type CreateContractInput } from '@/lib/api';
+import { parseBRNumber } from '@/lib/br-number';
 
+// parseBRNumber: "1.500,00" used to become NaN here (only the first comma
+// was swapped for a dot, the thousands dot stayed).
 function num(formData: FormData, name: string): number {
-  return Number(String(formData.get(name) ?? '0').replace(',', '.'));
+  const raw = String(formData.get(name) ?? '').trim();
+  return raw ? parseBRNumber(raw) : 0;
 }
 function optNum(formData: FormData, name: string): number | undefined {
   const raw = String(formData.get(name) ?? '').trim();
-  return raw ? Number(raw.replace(',', '.')) : undefined;
+  return raw ? parseBRNumber(raw) : undefined;
 }
 function optStr(formData: FormData, name: string): string | undefined {
   return String(formData.get(name) ?? '').trim() || undefined;

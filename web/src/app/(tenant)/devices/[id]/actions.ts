@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { parseBRNumber } from '@/lib/br-number';
 import { redirect } from 'next/navigation';
 import {
   assignDeviceCustomer,
@@ -78,9 +79,9 @@ export async function updateBillingExcludedAction(deviceId: string, formData: Fo
 export async function updateBillingTermsAction(deviceId: string, formData: FormData) {
   const rawMinimum = String(formData.get('minimumChargeOverride') ?? '').trim();
   // pt-BR input: "1.250,50" -> 1250.5
-  const minimumChargeOverride = rawMinimum ? Number(rawMinimum.replace(/\./g, '').replace(',', '.')) : null;
+  const minimumChargeOverride = rawMinimum ? parseBRNumber(rawMinimum) : null;
   const rawColorPrice = String(formData.get('colorPagePriceOverride') ?? '').trim();
-  const colorPagePriceOverride = rawColorPrice ? Number(rawColorPrice.replace(/\./g, '').replace(',', '.')) : null;
+  const colorPagePriceOverride = rawColorPrice ? parseBRNumber(rawColorPrice) : null;
   const billEngineCounter = formData.get('billEngineCounter') === 'on';
 
   try {

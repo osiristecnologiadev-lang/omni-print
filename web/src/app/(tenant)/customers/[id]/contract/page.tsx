@@ -381,7 +381,7 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
             : 'Defina os termos comerciais deste cliente.'}
         </p>
 
-        <ContractForm action={boundCreate} isRenegotiate={!!active} />
+        <ContractForm action={boundCreate} isRenegotiate={!!active} printers={billing.hasContract ? billing.perDevice.length : 1} />
       </Panel>
 
       {/* --- History --- */}
