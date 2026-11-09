@@ -270,7 +270,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
               <p className="text-xs text-ink-faint">valor garantido</p>
             </div>
             <div>
-              <p className="text-2xl font-semibold tabular-nums text-ink">{currentPeriod.totalPages}</p>
+              <p className="text-2xl font-semibold tabular-nums text-ink">{new Intl.NumberFormat('pt-BR').format(currentPeriod.totalPages)}</p>
               <p className="text-xs text-ink-faint">páginas até agora</p>
             </div>
           </div>
