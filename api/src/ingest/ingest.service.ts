@@ -3,6 +3,7 @@ import { Device } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { IngestMetricDto } from './dto/ingest-payload.dto';
 import { deepStripNul } from '../common/sanitize.util';
+import { identifyPrinter } from '../common/printer-model.util';
 
 @Injectable()
 export class IngestService {
@@ -124,12 +125,27 @@ export class IngestService {
       }
     }
 
+    // Brand/model: only from a poll the printer answered (an offline poll
+    // carries just the name, a weaker source), and never erased by a poll
+    // that couldn't work one out - see printer-model.util.ts.
+    const identity = metric.online || !device?.model
+      ? identifyPrinter({
+          model: metric.model,
+          sysObjectId: metric.sys_object_id,
+          sysDescr: metric.sys_descr,
+          printerName: metric.printer_name,
+          deviceName: metric.device_name,
+        })
+      : { manufacturer: null, model: null };
+
     const data = {
       host: metric.host,
       name: metric.device_name,
       printerName: metric.printer_name,
       lastSeenAt: new Date(),
       ...(serial ? { serialNumber: serial } : {}),
+      ...(identity.manufacturer ? { manufacturer: identity.manufacturer } : {}),
+      ...(identity.model ? { model: identity.model } : {}),
     };
 
     if (device) {

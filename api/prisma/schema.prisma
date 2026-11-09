@@ -727,6 +727,11 @@ model Device {
   // wherever a device's name is shown - see IngestService (never touches
   // this field) and DevicesService.updateLabel.
   customLabel             String?   @map("custom_label")
+  // Brand/model worked out from what the agent reports (hrDeviceDescr,
+  // sysObjectID, sysDescr, the printer's own name) - see
+  // common/printer-model.util.ts. Refreshed on every poll the printer answers.
+  manufacturer            String?
+  model                   String?
   // A known page count from before this device was ever polled - e.g.
   // monitoring only started mid-month, but the outsourcing admin already
   // knows the printer's counter reading from an earlier manual check.

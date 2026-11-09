@@ -14,6 +14,7 @@ export async function GET(req: Request) {
   const rows = report.rows.map((r) => [
     r.customerName ?? '',
     r.deviceName,
+    r.model ?? '',
     r.serialNumber ?? '',
     r.host,
     r.startReading ?? '',
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
     r.billingExcluded ? 'fora do contrato' : '',
   ]);
   const csv = toCsv(
-    ['Cliente', 'Impressora', 'Serial', 'IP', 'Inicio', 'Data inicio', 'Fim', 'Data fim', 'Quantidade', 'Observacao'],
+    ['Cliente', 'Impressora', 'Modelo', 'Serial', 'IP', 'Inicio', 'Data inicio', 'Fim', 'Data fim', 'Quantidade', 'Observacao'],
     rows,
   );
 

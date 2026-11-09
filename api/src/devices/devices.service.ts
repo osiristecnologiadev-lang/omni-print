@@ -4,6 +4,7 @@ import { bucketDeltas, displayPageCount } from '../common/counter.util';
 import { lowestSupplyPercent } from '../common/supplies.util';
 import { forecastSupply, type SupplyReading } from '../common/supply-forecast.util';
 import { DevicePagesService } from '../common/device-pages.service';
+import { formatPrinterModel } from '../common/printer-model.util';
 import { cycleContaining, cyclePeriod } from '../common/billing-cycle.util';
 
 interface DailyPoint {
@@ -294,6 +295,7 @@ export class DevicesService {
           deviceId: d.id,
           deviceName: d.customLabel ?? d.printerName ?? d.name ?? d.host,
           printerName: d.printerName ?? d.name,
+          model: formatPrinterModel(d.manufacturer, d.model),
           serialNumber: d.serialNumber,
           host: d.host,
           customerId: d.customer?.id ?? null,

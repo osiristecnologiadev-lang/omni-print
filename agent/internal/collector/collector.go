@@ -42,6 +42,7 @@ const (
 	// Host Resources MIB - device/printer status.
 	// Single-engine assumption: hrDeviceIndex=1 (true for the vast majority
 	// of network printers/MFPs, which expose exactly one print engine).
+	oidHrDeviceDescr       = "1.3.6.1.2.1.25.3.2.1.3.1" // the model on nearly every printer
 	oidHrDeviceStatus      = "1.3.6.1.2.1.25.3.2.1.5.1"
 	oidHrPrinterStatus     = "1.3.6.1.2.1.25.3.5.1.1.1"
 	oidHrPrinterErrorState = "1.3.6.1.2.1.25.3.5.1.2.1"
@@ -161,6 +162,13 @@ type Metric struct {
 
 	PrinterName  string `json:"printer_name,omitempty"`
 	SerialNumber string `json:"serial_number,omitempty"`
+
+	// Model: hrDeviceDescr ("HP LaserJet MFP M426dw", "ECOSYS M3655idn"), the
+	// model a printer without SNMP shows on its web page, or a USB printer's
+	// PJL/driver model. SysObjectID's enterprise number names the maker. The
+	// API works out "Marca Modelo" from these (common/printer-model.util.ts).
+	Model       string `json:"model,omitempty"`
+	SysObjectID string `json:"sys_object_id,omitempty"`
 
 	// OutsideAgentNetwork: Host isn't on any subnet of the agent host's own
 	// interfaces (found via a panel range, AD, a print server or a
@@ -335,6 +343,7 @@ func webIdentity(m *Metric, d config.Device) {
 		return
 	}
 	if d.WebModel != "" {
+		m.Model = d.WebModel
 		m.PrinterName = d.WebModel
 		if m.DeviceName == "" {
 			m.DeviceName = d.WebModel
@@ -405,7 +414,7 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 
 	scalarOIDs := []string{
 		oidSysDescr, oidSysObjectID, oidSysUpTime, oidSysContact, oidSysName, oidSysLocation,
-		oidHrDeviceStatus, oidHrPrinterStatus, oidHrPrinterErrorState,
+		oidHrDeviceDescr, oidHrDeviceStatus, oidHrPrinterStatus, oidHrPrinterErrorState,
 		oidPrinterName, oidSerialNumber,
 		oidPowerOnCount,
 	}
@@ -424,6 +433,8 @@ func (c *Collector) pollDevice(ctx context.Context, d config.Device) Metric {
 	m.UptimeTicks = getInt(vars, oidSysUpTime)
 	m.PrinterName = getString(vars, oidPrinterName)
 	m.SerialNumber = getString(vars, oidSerialNumber)
+	m.Model = getString(vars, oidHrDeviceDescr)
+	m.SysObjectID = strings.TrimPrefix(getOID(vars, oidSysObjectID), ".")
 	m.DeviceStatusCode = getInt(vars, oidHrDeviceStatus)
 	m.DeviceStatus = deviceStatusLabel(m.DeviceStatusCode)
 	m.PrinterStatusCode = getInt(vars, oidHrPrinterStatus)

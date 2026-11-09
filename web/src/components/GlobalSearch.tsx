@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 // client code). See search-index/route.ts, which is the actual data
 // source for this component.
 import type { Customer, Device, Ticket } from '@/lib/api';
+import { printerModelLabel } from '@/lib/printer-model';
 
 interface SearchResult {
   type: 'Cliente' | 'Dispositivo' | 'Chamado';
@@ -36,7 +37,7 @@ function toResults(customers: Customer[], devices: Device[], tickets: Ticket[]):
       label,
       sublabel: d.customer?.name ?? 'Não atribuído',
       href: `/devices/${d.id}`,
-      haystack: [label, d.host, d.serialNumber, d.customer?.name].filter(Boolean).join(' ').toLowerCase(),
+      haystack: [label, printerModelLabel(d), d.host, d.serialNumber, d.customer?.name].filter(Boolean).join(' ').toLowerCase(),
     };
   });
   const fromTickets: SearchResult[] = tickets.map((t) => ({

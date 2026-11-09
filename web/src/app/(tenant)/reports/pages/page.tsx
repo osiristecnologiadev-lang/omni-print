@@ -124,6 +124,7 @@ export default async function DevicePagesReportPage(props: PageProps<'/reports/p
                 <tr className="border-b border-line text-left text-xs text-ink-muted">
                   {isTenantWide && !customerId && <th className="pb-2 pr-3 font-medium">Cliente</th>}
                   <th className="pb-2 pr-3 font-medium">Impressora</th>
+                  <th className="pb-2 pr-3 font-medium">Modelo</th>
                   <th className="pb-2 pr-3 font-medium">Serial</th>
                   <th className="pb-2 pr-3 font-medium">IP</th>
                   <th className="pb-2 pr-3 text-right font-medium">Início</th>
@@ -154,6 +155,7 @@ export default async function DevicePagesReportPage(props: PageProps<'/reports/p
                         </span>
                       )}
                     </td>
+                    <td className="py-2 pr-3 text-ink-muted">{r.model ?? '—'}</td>
                     <td className="py-2 pr-3 font-mono text-xs text-ink-muted">{r.serialNumber ?? '—'}</td>
                     <td className="py-2 pr-3 font-mono text-xs text-ink-muted">{r.host}</td>
                     <td className="py-2 pr-3 text-right tabular-nums text-ink-muted">

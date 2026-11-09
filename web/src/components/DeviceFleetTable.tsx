@@ -8,6 +8,7 @@ import { Button } from './Button';
 import type { Health, HealthTone } from '@/lib/health';
 import type { Customer, Device } from '@/lib/api';
 import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
+import { printerModelLabel } from '@/lib/printer-model';
 
 const STATUS_FILTER_OPTIONS: Array<{ value: HealthTone | 'all'; label: string }> = [
   { value: 'all', label: 'Todos os status' },
@@ -90,7 +91,7 @@ export function DeviceFleetTable({
     const q = query.trim().toLowerCase();
     return devices.filter((d) => {
       if (q) {
-        const haystack = [d.customLabel, d.printerName, d.name, d.host, d.serialNumber, d.customer?.name]
+        const haystack = [d.customLabel, d.printerName, d.name, printerModelLabel(d), d.host, d.serialNumber, d.customer?.name]
           .filter(Boolean)
           .join(' ')
           .toLowerCase();
@@ -249,6 +250,7 @@ export function DeviceFleetTable({
                   </th>
                 )}
                 <th className="px-4 py-3 font-medium">Dispositivo</th>
+                <th className="px-4 py-3 font-medium">Modelo</th>
                 <th className="px-4 py-3 font-medium">IP</th>
                 <th className="px-4 py-3 font-medium">Nº de série</th>
                 {isTenantWide && <th className="px-4 py-3 font-medium">Cliente</th>}
@@ -295,6 +297,9 @@ export function DeviceFleetTable({
                           Apelido: {device.customLabel ?? '—'} · Nome: {device.printerName ?? device.name ?? device.host}
                         </div>
                       </Link>
+                    </td>
+                    <td className="px-4 py-3 text-ink-muted">
+                      {printerModelLabel(device) ?? <span className="text-ink-faint">—</span>}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-ink-muted">{device.host}</td>
                     <td className="px-4 py-3 font-mono text-xs text-ink-muted">{device.serialNumber ?? '—'}</td>

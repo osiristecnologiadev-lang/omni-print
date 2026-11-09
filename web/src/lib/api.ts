@@ -377,6 +377,10 @@ export interface Device {
   name: string | null;
   printerName: string | null;
   customLabel: string | null;
+  // Brand and model worked out by the API from what the agent reports -
+  // see printerModelLabel and the API's common/printer-model.util.ts.
+  manufacturer: string | null;
+  model: string | null;
   // A known page count from before this device was ever polled - see the
   // schema comment on the API's Device model. Both null, or both set.
   manualBaselineDate: string | null;
@@ -763,6 +767,8 @@ export interface DevicePagesReportRow {
   deviceId: string;
   deviceName: string;
   printerName: string | null;
+  // "Marca Modelo", e.g. "HP LaserJet MFP M426dw" - null when unknown.
+  model: string | null;
   serialNumber: string | null;
   host: string;
   customerId: string | null;

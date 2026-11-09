@@ -35,6 +35,12 @@ export class IngestMetricDto {
   @IsOptional() @IsInt() uptime_ticks?: number;
 
   @IsOptional() @IsString() printer_name?: string;
+  // Agent >= v0.1.27: hrDeviceDescr (the model, on nearly every printer) and
+  // sysObjectID (its enterprise number names the manufacturer). For a USB
+  // printer, the model from PJL or its Windows driver. See
+  // common/printer-model.util.ts.
+  @IsOptional() @IsString() model?: string;
+  @IsOptional() @IsString() sys_object_id?: string;
   @IsOptional() @IsString() serial_number?: string;
   @IsOptional() @IsString() console_display?: string;
 
