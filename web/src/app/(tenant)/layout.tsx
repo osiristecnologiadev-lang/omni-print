@@ -9,7 +9,7 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { MobileSidebarShell } from "@/components/MobileSidebarShell";
 
 const NAV_ROW =
-  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink";
+  "flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink";
 
 // A plain dot, not a count (there's nothing to count) - signals "setup
 // pending here" on a nav item, same amber "warning" tone as Badge's
@@ -47,7 +47,7 @@ function SidebarSubLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="ml-[1.4rem] block border-l border-line py-1.5 pl-4 text-[13px] text-ink-muted transition-colors hover:border-accent hover:text-ink"
+      className="ml-[1.4rem] block border-l border-line py-1 pl-4 text-[13px] text-ink-muted transition-colors hover:border-accent hover:text-ink"
     >
       {label}
     </Link>
@@ -181,8 +181,8 @@ function InvoiceIcon() {
 
 function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="mt-3 border-t border-line pt-3">
-      <p className="px-3 pb-1 text-[11px] font-medium tracking-wide text-ink-faint uppercase">{label}</p>
+    <div className="mt-2 border-t border-line pt-2">
+      <p className="px-3 pb-0.5 text-[11px] font-medium tracking-wide text-ink-faint uppercase">{label}</p>
       {children}
     </div>
   );
@@ -271,6 +271,11 @@ export default async function TenantLayout({ children }: { children: React.React
                 fleet); only reassigning a printer needs 'devices'. */}
             <SidebarLink href="/devices" icon={<DevicesIcon />} label="Impressoras" />
             <SidebarLink href="/tickets" icon={<TicketsIcon />} label="Chamados" />
+            {/* A customer's own login allowed to see its invoices had no way
+                to reach them (found by the portal E2E, 2026-11-10). */}
+            {!isTenantWide && hasPermission(access, 'invoices_view') && (
+              <SidebarLink href={`/customers/${session.customerId}/invoices`} icon={<InvoiceIcon />} label="Minhas faturas" />
+            )}
             {hasPermission(access, 'notifications') && <NotificationBell className={NAV_ROW} />}
           </NavGroup>
 
@@ -295,13 +300,7 @@ export default async function TenantLayout({ children }: { children: React.React
 
           {(hasPermission(access, 'reports') || hasPermission(access, 'invoices') || hasPermission(access, 'contracts')) && (
             <NavGroup label="Relatórios">
-              <SidebarLink href="/reports" icon={<ReportsIcon />} label="Todos os relatórios" />
-              {hasPermission(access, 'reports') && (
-                <>
-                  <SidebarSubLink href="/reports/pages" label="Páginas por impressora" />
-                  <SidebarSubLink href="/reports/revenue" label="Uso e receita" />
-                </>
-              )}
+              <SidebarLink href="/reports" icon={<ReportsIcon />} label="Relatórios" />
             </NavGroup>
           )}
 

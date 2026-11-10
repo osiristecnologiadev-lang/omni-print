@@ -920,3 +920,13 @@ describe('ContractsService.periodFor', () => {
     ]);
   });
 });
+
+describe('toCents', () => {
+  it('rounds half away from zero, like the invoice column', () => {
+    const { toCents } = jest.requireActual('./contracts.service');
+    expect(toCents(2996.595)).toBe(2996.6);
+    expect(toCents(1.005)).toBe(1.01);
+    expect(toCents(0.004)).toBe(0);
+    expect(toCents(1750)).toBe(1750);
+  });
+});

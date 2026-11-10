@@ -133,9 +133,9 @@ describe('Por página (PER_PAGE)', () => {
 
     const bill = await contracts.calculateBilling(t.id, c.id, 2026, 9);
     if (!bill.hasContract) throw new Error('expected a contract');
-    // 63.420 x 0,04725 = 2.996,595 - computed unrounded; the invoice column
-    // (numeric 12,2) stores R$ 2.996,60.
-    expect(bill.totalDue).toBeCloseTo(2_996.595, 3);
+    // 63.420 x 0,04725 = 2.996,595 -> R$ 2.996,60, rounded in the bill itself
+    // (same as the invoice column), not left unrounded.
+    expect(bill.totalDue).toBe(2_996.6);
   });
 });
 

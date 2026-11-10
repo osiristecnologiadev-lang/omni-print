@@ -8,6 +8,9 @@ import { ContractsService } from '../src/contracts/contracts.service';
 import { InvoicesService } from '../src/invoices/invoices.service';
 import { DevicesService } from '../src/devices/devices.service';
 import { IngestService } from '../src/ingest/ingest.service';
+import { EmailService } from '../src/email/email.service';
+import { TicketsService } from '../src/tickets/tickets.service';
+import { NotificationsService } from '../src/notifications/notifications.service';
 
 export function connect() {
   const url = process.env.DATABASE_URL ?? '';
@@ -20,7 +23,11 @@ export function connect() {
   const invoices = new InvoicesService(prisma, contracts);
   const devices = new DevicesService(prisma, devicePages);
   const ingest = new IngestService(prisma);
-  return { prisma, contracts, invoices, devices, ingest };
+  // No RESEND_API_KEY in tests: EmailService is a logged no-op.
+  const email = new EmailService();
+  const tickets = new TicketsService(prisma, email);
+  const notifications = new NotificationsService(prisma, invoices, devices, tickets, email);
+  return { prisma, contracts, invoices, devices, ingest, tickets, notifications };
 }
 
 // Wipes every tenant-owned row (CASCADE follows the foreign keys).

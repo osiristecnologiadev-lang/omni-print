@@ -184,50 +184,58 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
             {deviceAddressLabel(device.host)}
             {device.serialNumber ? ` · S/N ${device.serialNumber}` : ''}
           </p>
-          <p className="mt-0.5 text-sm text-ink-muted">
-            Apelido: {device.customLabel ?? <span className="text-ink-faint">não definido</span>} · Nome do agente:{' '}
-            {agentReportedName}
-          </p>
-          {isTenantWide && (
-            <form action={boundUpdateLabel} className="mt-3 flex items-center gap-2">
-              <label htmlFor="customLabel" className="text-xs text-ink-muted">
-                Apelido:
-              </label>
-              <input
-                id="customLabel"
-                name="customLabel"
-                defaultValue={device.customLabel ?? ''}
-                placeholder="ex.: Recepção 2º andar"
-                className={fieldClass}
-              />
-              <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
-                Salvar
-              </SubmitButton>
-            </form>
+          {device.customLabel && (
+            <p className="mt-0.5 text-sm text-ink-muted">Nome informado pelo agente: {agentReportedName}</p>
           )}
-          {isTenantWide ? (
-            <form action={boundAssignCustomer} className="mt-3 flex items-center gap-2">
-              <label htmlFor="customerId" className="text-xs text-ink-muted">
-                Cliente:
-              </label>
-              <select id="customerId" name="customerId" defaultValue={device.customerId ?? ''} className={fieldClass}>
-                <option value="">Sem cliente</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
-                Salvar
-              </SubmitButton>
-            </form>
-          ) : (
-            device.customer && <p className="mt-2 text-xs text-ink-muted">Cliente: {device.customer.name}</p>
-          )}
+          {!isTenantWide && device.customer && <p className="mt-2 text-xs text-ink-muted">Cliente: {device.customer.name}</p>}
         </div>
         <StatusBadge health={health} />
       </header>
+
+      {/* Usability review 2026-11-10: apelido and cliente used to be two
+          cramped inline forms under the title. One small panel, labelled. */}
+      {isTenantWide && (
+        <Panel className="mb-6">
+          <h2 className="mb-3 text-sm font-medium text-ink-muted">Identificação</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <form action={boundUpdateLabel} className="flex flex-col gap-1">
+              <label htmlFor="customLabel" className="text-xs text-ink-muted">
+                Apelido <span className="text-ink-faint">(como a sua equipe chama esta impressora)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="customLabel"
+                  name="customLabel"
+                  defaultValue={device.customLabel ?? ''}
+                  placeholder="ex.: Recepção 2º andar"
+                  className={`min-w-0 flex-1 ${fieldClass}`}
+                />
+                <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
+                  Salvar
+                </SubmitButton>
+              </div>
+            </form>
+            <form action={boundAssignCustomer} className="flex flex-col gap-1">
+              <label htmlFor="customerId" className="text-xs text-ink-muted">
+                Cliente <span className="text-ink-faint">(de quem é esta impressora)</span>
+              </label>
+              <div className="flex gap-2">
+                <select id="customerId" name="customerId" defaultValue={device.customerId ?? ''} className={`min-w-0 flex-1 ${fieldClass}`}>
+                  <option value="">Sem cliente</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <SubmitButton variant="secondary" size="sm" pendingLabel="Salvando...">
+                  Salvar
+                </SubmitButton>
+              </div>
+            </form>
+          </div>
+        </Panel>
+      )}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Panel>

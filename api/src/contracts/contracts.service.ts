@@ -497,8 +497,10 @@ export class ContractsService {
       overagePages,
       minimumPages,
       billablePages,
-      usageCost,
-      totalDue: fixedFee + usageCost,
+      // Money in cents, here - not left to the invoice column's rounding
+      // (63.420 x 0,04725 = 2.996,595 used to reach previews unrounded).
+      usageCost: toCents(usageCost),
+      totalDue: toCents(fixedFee + usageCost),
     };
   }
 }
@@ -528,3 +530,9 @@ export function perDeviceMinimumCharges(
   return out;
 }
 
+
+// Half away from zero, like Postgres numeric(12,2) - so the value shown
+// before an invoice exists is exactly the one the invoice stores.
+export function toCents(value: number): number {
+  return Math.sign(value) * Math.round((Math.abs(value) + Number.EPSILON) * 100) / 100;
+}

@@ -20,9 +20,12 @@ test('visão geral e menu agrupado por tarefa', async ({ page }, info) => {
     for (const group of ['Operação', 'Clientes', 'Faturamento', 'Relatórios', 'Configurações']) {
       await expect(nav.getByText(group, { exact: true }).first()).toBeVisible();
     }
-    for (const link of ['Impressoras', 'Contratos', 'Faturas', 'Fechamento do mês', 'Todos os relatórios']) {
-      await expect(nav.getByRole('link', { name: link })).toBeVisible();
+    for (const link of ['Impressoras', 'Contratos', 'Faturas', 'Fechamento do mês', 'Relatórios']) {
+      await expect(nav.getByRole('link', { name: link, exact: true })).toBeVisible();
     }
+    // The whole menu fits a 1440x900 notebook screen without scrolling it.
+    const last = await nav.getByRole('link', { name: 'Assinatura', exact: true }).boundingBox();
+    expect(last!.y + last!.height).toBeLessThanOrEqual(900);
   }
 });
 

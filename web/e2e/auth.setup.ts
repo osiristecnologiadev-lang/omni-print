@@ -13,3 +13,16 @@ setup('login', async ({ page }) => {
   await page.waitForURL(/\/dashboard/);
   await page.context().storageState({ path: STORAGE });
 });
+
+// The customer's own read-only login (Distribuidora Alfa, may view invoices)
+// - seeded by api/test/e2e-seed.ts.
+export const CUSTOMER_STORAGE = 'e2e/.auth/customer.json';
+
+setup('login do cliente', async ({ page }) => {
+  await page.goto('/login');
+  await page.locator('#email').fill('cliente@alfa.test');
+  await page.locator('input[name="password"]').fill('cliente-senha-123');
+  await page.getByRole('button', { name: /entrar/i }).click();
+  await page.waitForURL(/\/dashboard/);
+  await page.context().storageState({ path: CUSTOMER_STORAGE });
+});

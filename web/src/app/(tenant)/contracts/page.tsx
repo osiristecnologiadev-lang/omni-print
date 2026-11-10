@@ -100,8 +100,9 @@ export default async function ContractsPage() {
                     <td className="py-3 pr-4">
                       {r.contract ? (
                         <>
-                          <div className="text-ink" title={PRICING_MODEL_HELP[r.contract.pricingModel]}>
+                          <div className="text-ink">
                             {PRICING_MODEL_LABEL[r.contract.pricingModel]}
+                            <HelpTip text={PRICING_MODEL_HELP[r.contract.pricingModel]} placement="bottom" />
                           </div>
                           <div className="mt-0.5 text-xs text-ink-muted">{contractPriceSummary(r.contract)}</div>
                         </>
@@ -157,7 +158,7 @@ export default async function ContractsPage() {
       <p className="mt-4 text-xs text-ink-faint">
         <strong className="font-medium text-ink-muted">Como ler:</strong> &ldquo;Período atual&rdquo; é o que a fatura daria se
         fechasse hoje - ela é gerada de verdade no dia de fechamento de cada cliente. Impressoras &ldquo;fora do contrato&rdquo;
-        continuam monitoradas, mas não entram na conta. Passe o mouse sobre o tipo de cobrança para ver como ele funciona.
+        continuam monitoradas, mas não entram na conta. O &ldquo;?&rdquo; ao lado de cada tipo de cobrança explica como ele funciona.
       </p>
     </main>
   );
