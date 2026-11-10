@@ -1,5 +1,6 @@
 'use server';
 
+import { forwardedForHeader } from '@/lib/client-ip';
 import { redirect } from 'next/navigation';
 
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3000';
@@ -17,7 +18,7 @@ export async function resetPasswordAction(formData: FormData) {
   try {
     res = await fetch(`${API_BASE_URL}/v1/auth/reset-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await forwardedForHeader()) },
       body: JSON.stringify({ token, password }),
       cache: 'no-store',
     });

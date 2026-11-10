@@ -93,6 +93,75 @@ jobs:
       - run: npx next typegen && npx tsc --noEmit
       - run: npx vitest run
 
+  # The panel end to end: real DB + API + panel with seeded data
+  # (api/test/e2e-seed.ts), Playwright on desktop and phone. Screenshots of
+  # every checked screen are kept as a build artifact for usability reviews.
+  test-e2e:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: omni
+          POSTGRES_PASSWORD: omni
+          POSTGRES_DB: omni_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U omni -d omni_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://omni:omni@localhost:5432/omni_test
+      JWT_SECRET: ci-e2e-only
+      API_BASE_URL: http://localhost:4100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            web/package-lock.json
+      - name: API - install, migrate, seed, build
+        working-directory: api
+        run: |
+          npm ci
+          npx prisma migrate deploy
+          npx ts-node --transpile-only test/e2e-seed.ts
+          npx nest build
+      - name: API - start
+        working-directory: api
+        run: PORT=4100 CORS_ORIGIN=http://localhost:3100 DISABLE_CRONS=true TZ=UTC nohup node dist/src/main.js > ../api.log 2>&1 &
+      - name: Panel - install, build, start
+        working-directory: web
+        run: |
+          npm ci
+          npx next build
+          PORT=3100 nohup npx next start -p 3100 > ../web.log 2>&1 &
+      - name: Wait for both
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:4100/v1/health >/dev/null && curl -sf -o /dev/null http://localhost:3100/login && exit 0
+            sleep 2
+          done
+          cat api.log web.log; exit 1
+      - name: Playwright
+        working-directory: web
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: Logs on failure
+        if: failure()
+        run: tail -100 api.log web.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots
+          path: |
+            web/e2e/screenshots/
+            web/test-results/
+          retention-days: 14
+
   # The agent runs on customers' Windows PCs - test it on Windows.
   test-agent:
     runs-on: windows-latest
@@ -112,7 +181,7 @@ jobs:
           GOOS: linux
 
   build:
-    needs: [test-api, test-api-db, test-web, test-agent]
+    needs: [test-api, test-api-db, test-web, test-e2e, test-agent]
     runs-on: ubuntu-latest
     strategy:
       matrix:

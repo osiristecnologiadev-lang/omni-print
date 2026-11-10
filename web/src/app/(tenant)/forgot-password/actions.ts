@@ -1,5 +1,6 @@
 'use server';
 
+import { forwardedForHeader } from '@/lib/client-ip';
 import { redirect } from 'next/navigation';
 
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:3000';
@@ -13,7 +14,7 @@ export async function requestPasswordResetAction(formData: FormData) {
   // on - always land on the "check your email" state.
   await fetch(`${API_BASE_URL}/v1/auth/forgot-password`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await forwardedForHeader()) },
     body: JSON.stringify({ email }),
     cache: 'no-store',
   }).catch(() => undefined);

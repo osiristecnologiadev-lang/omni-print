@@ -1,5 +1,6 @@
 'use server';
 
+import { forwardedForHeader } from '@/lib/client-ip';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { SESSION_COOKIE } from '@/lib/api';
@@ -14,7 +15,7 @@ export async function loginAction(formData: FormData) {
   try {
     res = await fetch(`${API_BASE_URL}/v1/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await forwardedForHeader()) },
       body: JSON.stringify({ email, password }),
       cache: 'no-store',
     });

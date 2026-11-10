@@ -1,3 +1,4 @@
+import { forwardedForHeader } from '@/lib/client-ip';
 // Server-only, parallel to lib/api.ts but deliberately not sharing any code
 // with it: this talks to a completely separate auth system
 // (PlatformAuthGuard on the backend, not UserAuthGuard) and a separate
@@ -47,7 +48,7 @@ async function authHeaders(): Promise<HeadersInit> {
   if (!token) {
     redirect('/platform/login');
   }
-  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(await forwardedForHeader()) };
 }
 
 async function apiFetch<T>(path: string): Promise<T> {
@@ -88,7 +89,7 @@ async function apiSendForm<T>(path: string, method: 'POST', form: FormData): Pro
   }
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...(await forwardedForHeader()) },
     body: form,
     cache: 'no-store',
   });
@@ -245,7 +246,7 @@ export async function isPlatformAuthenticated(): Promise<boolean> {
   const token = await getToken();
   if (!token) return false;
   const res = await fetch(`${API_BASE_URL}/v1/platform/tenants`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...(await forwardedForHeader()) },
     cache: 'no-store',
   });
   return res.ok;

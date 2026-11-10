@@ -1,3 +1,4 @@
+import { forwardedForHeader } from '@/lib/client-ip';
 // Server-only: the session token lives in an httpOnly cookie, never read by
 // browser JS. Every call here must run in a Server Component, Server
 // Action, or Route Handler - never import this from a 'use client' file.
@@ -509,7 +510,7 @@ export async function getViewerAccessSafe(): Promise<ViewerAccess | null> {
   const token = await getSessionToken();
   if (!token) return null;
   const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...(await forwardedForHeader()) },
     cache: 'no-store',
   });
   if (!res.ok) return null;
@@ -528,7 +529,7 @@ async function authHeaders(): Promise<HeadersInit> {
   if (!token) {
     redirect('/login');
   }
-  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(await forwardedForHeader()) };
 }
 
 async function apiFetch<T>(path: string): Promise<T> {
@@ -598,7 +599,7 @@ async function apiSendForm<T>(path: string, method: 'POST', form: FormData): Pro
   }
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...(await forwardedForHeader()) },
     body: form,
     cache: 'no-store',
   });
