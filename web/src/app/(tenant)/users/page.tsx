@@ -1,4 +1,5 @@
 import { forbidden } from 'next/navigation';
+import { ConfirmSubmit } from '@/components/ConfirmSubmit';
 import { getCustomers, getViewerAccess, getUsers, getViewerTimeZone } from '@/lib/api';
 import { hasPermission, permissionLabel } from '@/lib/permissions';
 import { createUserAction, revokeUserAction, updateUserPermissionsAction } from './actions';
@@ -101,9 +102,7 @@ export default async function UsersPage(props: PageProps<'/users'>) {
                 </div>
                 {!u.revokedAt && (
                   <form action={revokeUserAction.bind(null, u.id)}>
-                    <SubmitButton variant="danger" pendingLabel="Revogando...">
-                      Revogar
-                    </SubmitButton>
+                    <ConfirmSubmit label="Revogar" question="Revogar o acesso deste usuário? Ele não consegue mais entrar no painel." confirmLabel="Sim, revogar acesso" pendingLabel="Revogando..." />
                   </form>
                 )}
               </div>

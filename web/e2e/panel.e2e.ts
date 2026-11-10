@@ -32,8 +32,8 @@ test('Contratos: todos os clientes lado a lado', async ({ page }, info) => {
   await expect(page.getByRole('cell', { name: /Distribuidora Alfa/ })).toBeVisible();
   await expect(page.getByText('Mínimo por impressora').first()).toBeVisible();
   await expect(page.getByText('Por página com mínimo').first()).toBeVisible();
-  await expect(page.getByRole('main').getByRole('table').getByText('Sem contrato')).toBeVisible(); // Clínica Gama
-  await expect(page.getByRole('link', { name: 'Criar contrato' })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Clínica Gama/ }).getByText('Sem contrato')).toBeVisible();
+  await expect(page.getByRole('row', { name: /Clínica Gama/ }).getByRole('link', { name: 'Criar contrato' })).toBeVisible();
   await expect(page.getByText('sem mínimo')).toBeVisible();
   await shot(page, info, '02-contratos');
 });
@@ -42,7 +42,7 @@ test('Faturas: atrasada destacada, filtro por situação', async ({ page }, info
   await page.goto('/invoices');
   await expect(page.getByRole('heading', { name: 'Faturas' })).toBeVisible();
   await expect(page.getByRole('table').getByText('Atrasada', { exact: true })).toBeVisible();
-  await expect(page.getByRole('table').getByText('Paga', { exact: true })).toBeVisible();
+  await expect(page.getByRole('table').getByText('Paga', { exact: true }).first()).toBeVisible();
   await shot(page, info, '03-faturas');
   await page.goto('/invoices?status=PAID');
   await expect(page.getByRole('table').getByText('Atrasada', { exact: true })).toHaveCount(0);

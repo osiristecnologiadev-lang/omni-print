@@ -7,6 +7,7 @@ import { DevicePagesService } from '../src/common/device-pages.service';
 import { ContractsService } from '../src/contracts/contracts.service';
 import { InvoicesService } from '../src/invoices/invoices.service';
 import { DevicesService } from '../src/devices/devices.service';
+import { IngestService } from '../src/ingest/ingest.service';
 
 export function connect() {
   const url = process.env.DATABASE_URL ?? '';
@@ -18,7 +19,8 @@ export function connect() {
   const contracts = new ContractsService(prisma, devicePages);
   const invoices = new InvoicesService(prisma, contracts);
   const devices = new DevicesService(prisma, devicePages);
-  return { prisma, contracts, invoices, devices };
+  const ingest = new IngestService(prisma);
+  return { prisma, contracts, invoices, devices, ingest };
 }
 
 // Wipes every tenant-owned row (CASCADE follows the foreign keys).

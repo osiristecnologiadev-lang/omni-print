@@ -1,4 +1,5 @@
 import { forbidden } from 'next/navigation';
+import { ConfirmSubmit } from '@/components/ConfirmSubmit';
 import { CustomerTabs } from '@/components/CustomerTabs';
 import { getCustomer, getInvoices, getViewerAccess, getViewerTimeZone, type Invoice } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
@@ -177,9 +178,7 @@ export default async function InvoicesPage(props: PageProps<'/customers/[id]/inv
                         </PlainSubmitButton>
                       </form>
                       <form action={boundCancel}>
-                        <SubmitButton variant="danger" pendingLabel="Cancelando...">
-                          Cancelar
-                        </SubmitButton>
+                        <ConfirmSubmit label="Cancelar" question="Cancelar esta fatura? Ela deixa de valer e some dos valores em aberto. Dá para gerar o mês de novo depois, em Gerar fatura." confirmLabel="Sim, cancelar fatura" pendingLabel="Cancelando..." />
                       </form>
                     </>
                   )}

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ConfirmSubmit } from '@/components/ConfirmSubmit';
 import { HelpTip } from '@/components/HelpTip';
 import { CustomerTabs, type CustomerTab } from '@/components/CustomerTabs';
 import { forbidden, notFound } from 'next/navigation';
@@ -501,9 +502,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
                   <span className="text-xs text-ink-faint">revogado</span>
                 ) : (
                   <form action={boundRevokeUser.bind(null, u.id)}>
-                    <SubmitButton variant="danger" pendingLabel="Revogando...">
-                      Revogar
-                    </SubmitButton>
+                    <ConfirmSubmit label="Revogar" question="Revogar o acesso desta pessoa? Ela não consegue mais entrar no painel." confirmLabel="Sim, revogar acesso" pendingLabel="Revogando..." />
                   </form>
                 )}
               </li>
@@ -553,9 +552,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
                   </div>
                   {pending && (
                     <form action={boundRevokeEnrollmentCode.bind(null, c.id)}>
-                      <SubmitButton variant="danger" pendingLabel="Revogando...">
-                        Revogar
-                      </SubmitButton>
+                      <ConfirmSubmit label="Revogar" question="Revogar este código? Ninguém mais consegue instalar o agente com ele - gere outro se precisar." confirmLabel="Sim, revogar código" pendingLabel="Revogando..." />
                     </form>
                   )}
                 </li>
@@ -642,9 +639,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
                       </SubmitButton>
                     </form>
                     <form action={boundRevokeToken.bind(null, t.id)}>
-                      <SubmitButton variant="danger" pendingLabel="Revogando...">
-                        Revogar
-                      </SubmitButton>
+                      <ConfirmSubmit label="Revogar" question="Revogar este agente? Ele para de enviar leituras na hora: as impressoras deste computador ficam sem coleta até um agente novo ser instalado." confirmLabel="Sim, revogar agente" pendingLabel="Revogando..." />
                     </form>
                   </div>
                 )}

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ConfirmSubmit } from '@/components/ConfirmSubmit';
 import { CustomerTabs } from '@/components/CustomerTabs';
 import { forbidden } from 'next/navigation';
 import {
@@ -217,9 +218,7 @@ export default async function ContractPage(props: PageProps<'/customers/[id]/con
         )}
         {active && (
           <form action={boundCancel.bind(null, active.id)} className="mt-4">
-            <SubmitButton variant="danger" pendingLabel="Cancelando...">
-              Cancelar contrato
-            </SubmitButton>
+            <ConfirmSubmit label="Cancelar contrato" question="Cancelar este contrato? A partir de hoje este cliente deixa de ser cobrado - as faturas já geradas continuam valendo." confirmLabel="Sim, cancelar contrato" pendingLabel="Cancelando..." />
           </form>
         )}
       </Panel>

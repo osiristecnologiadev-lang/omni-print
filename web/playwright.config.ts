@@ -22,14 +22,23 @@ export default defineConfig({
     {
       name: 'desktop',
       testMatch: /.*\.e2e\.ts$/,
+      testIgnore: /zz-flows\.e2e\.ts$/,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, storageState: 'e2e/.auth/user.json' },
     },
     {
       name: 'mobile',
       testMatch: /.*\.e2e\.ts$/,
+      testIgnore: /zz-flows\.e2e\.ts$/,
       dependencies: ['setup'],
       use: { ...devices['Pixel 7'], storageState: 'e2e/.auth/user.json' },
+    },
+    // Flows that change data run once, after every read-only check above.
+    {
+      name: 'flows',
+      testMatch: /zz-flows\.e2e\.ts$/,
+      dependencies: ['desktop', 'mobile'],
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, storageState: 'e2e/.auth/user.json' },
     },
   ],
 });

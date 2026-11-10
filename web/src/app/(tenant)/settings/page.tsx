@@ -1,4 +1,5 @@
 import { forbidden } from 'next/navigation';
+import { ConfirmSubmit } from '@/components/ConfirmSubmit';
 import { getViewerAccess, getTenant, getApiKeys, getViewerTimeZone } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
 import { BRAZIL_TIMEZONE_OPTIONS } from '@/lib/timezones';
@@ -141,9 +142,7 @@ export default async function SettingsPage(props: PageProps<'/settings'>) {
           </div>
           {tenant.logoFilePath && (
             <form action={removeLogoAction}>
-              <SubmitButton variant="danger" size="sm" pendingLabel="Removendo...">
-                Remover
-              </SubmitButton>
+              <ConfirmSubmit label="Remover" size="sm" question="Remover o logo? As faturas em PDF passam a sair sem ele." confirmLabel="Sim, remover logo" pendingLabel="Removendo..." />
             </form>
           )}
         </div>
@@ -178,9 +177,7 @@ export default async function SettingsPage(props: PageProps<'/settings'>) {
                 </div>
                 {!k.revokedAt && (
                   <form action={revokeApiKeyAction.bind(null, k.id)}>
-                    <SubmitButton variant="danger" size="sm" pendingLabel="Revogando...">
-                      Revogar
-                    </SubmitButton>
+                    <ConfirmSubmit label="Revogar" size="sm" question="Revogar esta chave de API? Qualquer sistema que a usa para de funcionar na hora." confirmLabel="Sim, revogar chave" pendingLabel="Revogando..." />
                   </form>
                 )}
               </li>
