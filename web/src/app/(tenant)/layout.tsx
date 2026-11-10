@@ -333,17 +333,17 @@ export default async function TenantLayout({ children }: { children: React.React
           )}
         </nav>
 
-        <div className="flex flex-col gap-3 border-t border-line pt-3">
+        {/* Compact (usability review 2026-11-10): the old three stacked
+            rows pushed "Sair" below a notebook screen's fold. */}
+        <div className="flex flex-col gap-2 border-t border-line pt-2">
           <div className="px-2">
             {access.name && <div className="truncate text-xs font-medium text-ink-muted">{access.name}</div>}
             <div className="truncate text-xs text-ink-faint" title={access.email}>
               {access.email}
             </div>
           </div>
-          <div className="px-2">
+          <div className="flex items-center justify-between gap-2 px-2">
             <ThemeToggle />
-          </div>
-          <div className="px-2">
             <LogoutButton />
           </div>
         </div>

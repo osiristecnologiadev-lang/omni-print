@@ -1,7 +1,8 @@
 // Seeds a throwaway database with a realistic small tenant for the panel's
 // end-to-end tests (web/e2e). Run: DATABASE_URL=<test db> npx ts-node test/e2e-seed.ts
 // Test-only login (local test database only, never production):
-//   e2e@omniprint.test / e2e-senha-123
+//   e2e@omniprint.test / e2e-senha-123 (company), cliente@alfa.test / cliente-senha-123
+//   (customer portal), plataforma@omniprint.test / plataforma-senha-123 (/platform)
 import * as bcrypt from 'bcryptjs';
 import { ContractPricingModel } from '@prisma/client';
 import { connect, reset } from './db';
@@ -151,6 +152,12 @@ async function main() {
       { tenantId: tenant.id, actorType: 'USER', actorId: admin.id, actorLabel: E2E_EMAIL, action: 'contract.create', targetType: 'Contract', targetId: contractA.id, targetLabel: 'Contrato PER_DEVICE_MINIMUM' },
       { tenantId: tenant.id, actorType: 'USER', actorId: admin.id, actorLabel: E2E_EMAIL, action: 'device.update', targetType: 'Device', targetId: imp1.id, targetLabel: 'IMP-1' },
     ],
+  });
+
+  // OmniPrint's own operator (the /platform area) - a separate login.
+  await prisma.platformAdmin.deleteMany({ where: { email: 'plataforma@omniprint.test' } });
+  await prisma.platformAdmin.create({
+    data: { email: 'plataforma@omniprint.test', name: 'Operador E2E', passwordHash: await bcrypt.hash('plataforma-senha-123', 10) },
   });
 
   await prisma.$disconnect();

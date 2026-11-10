@@ -57,7 +57,7 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
       </div>
       <p className="mb-8 text-sm text-gray-400">
         {tenant._count?.customers ?? 0} cliente{(tenant._count?.customers ?? 0) === 1 ? '' : 's'} ·{' '}
-        {tenant._count?.devices ?? 0} dispositivo{(tenant._count?.devices ?? 0) === 1 ? '' : 's'}
+        {tenant._count?.devices ?? 0} impressora{(tenant._count?.devices ?? 0) === 1 ? '' : 's'}
         {tenant.subscriptionStatus === 'ACTIVE' && <> · {currency.format(tenant.mrrCents / 100)}/mês</>}
       </p>
 
@@ -68,8 +68,8 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
       <section className="mb-6 rounded-xl border border-gray-800 bg-gray-900/40 p-5">
         <h2 className="mb-1 text-sm font-medium text-gray-100">Preço negociado</h2>
         <p className="mb-4 text-xs text-gray-500">
-          Padrão: {currency.format(STANDARD_PRICE_PER_DEVICE_CENTS / 100)}/dispositivo/mês. Deixe em branco para usar o
-          padrão. Marque &quot;Cortesia&quot; para isentar esta empresa de cobrança (define o preço como R$ 0,00/dispositivo -
+          Padrão: {currency.format(STANDARD_PRICE_PER_DEVICE_CENTS / 100)}/impressora/mês. Deixe em branco para usar o
+          padrão. Marque &quot;Cortesia&quot; para isentar esta empresa de cobrança (define o preço como R$ 0,00/impressora -
           é o mesmo critério que o filtro &quot;Cortesia&quot; da lista usa). Se esta empresa já tem assinatura ativa, o novo
           valor entra em vigor imediatamente (o Stripe ajusta a fatura do período atual proporcionalmente).
         </p>
@@ -81,7 +81,7 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
 
         <p className="mb-3 text-sm text-gray-300">
           Vigente agora: <span className="font-medium text-gray-100">{currency.format(effectivePriceCents / 100)}</span>
-          /dispositivo/mês
+          /impressora/mês
           {tenant.pricePerDeviceCentsOverride == null && <span className="text-gray-500"> (padrão)</span>}
         </p>
 
@@ -93,7 +93,7 @@ export default async function TenantDetailPage(props: PageProps<'/platform/tenan
               </span>
               <input
                 name="pricePerDevice"
-                aria-label="Preço negociado por dispositivo, em reais"
+                aria-label="Preço negociado por impressora, em reais"
                 placeholder={(STANDARD_PRICE_PER_DEVICE_CENTS / 100).toFixed(2).replace('.', ',')}
                 defaultValue={
                   tenant.pricePerDeviceCentsOverride != null && tenant.pricePerDeviceCentsOverride !== 0

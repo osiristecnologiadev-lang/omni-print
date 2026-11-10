@@ -122,7 +122,7 @@ export default async function ContractsPage() {
                     </td>
                     <td className="py-3 pr-4 tabular-nums text-ink-muted">{r.billingCycleDay}</td>
                     <td className="py-3 pr-4 text-ink-muted">
-                      <span className="tabular-nums text-ink">{r.devicesBilled}</span> cobradas
+                      <span className="tabular-nums text-ink">{r.devicesBilled}</span> {r.devicesBilled === 1 ? 'cobrada' : 'cobradas'}
                       {r.devicesExcluded > 0 && <div className="text-xs">{r.devicesExcluded} fora do contrato</div>}
                       {r.devicesToReview > 0 && (
                         <div className="mt-1">

@@ -26,6 +26,8 @@ test('visão geral e menu agrupado por tarefa', async ({ page }, info) => {
     // The whole menu fits a 1440x900 notebook screen without scrolling it.
     const last = await nav.getByRole('link', { name: 'Assinatura', exact: true }).boundingBox();
     expect(last!.y + last!.height).toBeLessThanOrEqual(900);
+    const sair = await page.getByRole('button', { name: 'Sair' }).first().boundingBox();
+    expect(sair!.y + sair!.height).toBeLessThanOrEqual(900);
   }
 });
 

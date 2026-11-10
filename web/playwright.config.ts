@@ -29,15 +29,28 @@ export default defineConfig({
     {
       name: 'mobile',
       testMatch: /.*\.e2e\.ts$/,
-      testIgnore: /zz-flows\.e2e\.ts$/,
+      testIgnore: /(zz-flows|platform)\.e2e\.ts$/,
       dependencies: ['setup'],
       use: { ...devices['Pixel 7'], storageState: 'e2e/.auth/user.json' },
+    },
+    // Every read-only screen again in the dark theme (the panel follows the
+    // system's preference), screenshots in e2e/screenshots/dark/.
+    {
+      name: 'dark',
+      testMatch: /(panel|screens|portal)\.e2e\.ts$/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+        colorScheme: 'dark',
+        storageState: 'e2e/.auth/user.json',
+      },
     },
     // Flows that change data run once, after every read-only check above.
     {
       name: 'flows',
       testMatch: /zz-flows\.e2e\.ts$/,
-      dependencies: ['desktop', 'mobile'],
+      dependencies: ['desktop', 'mobile', 'dark'],
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, storageState: 'e2e/.auth/user.json' },
     },
   ],

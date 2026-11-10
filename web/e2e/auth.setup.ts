@@ -26,3 +26,13 @@ setup('login do cliente', async ({ page }) => {
   await page.waitForURL(/\/dashboard/);
   await page.context().storageState({ path: CUSTOMER_STORAGE });
 });
+
+// OmniPrint's own operator login (/platform), seeded by api/test/e2e-seed.ts.
+setup('login da plataforma', async ({ page }) => {
+  await page.goto('/platform/login');
+  await page.locator('#email').fill('plataforma@omniprint.test');
+  await page.locator('#password').fill('plataforma-senha-123');
+  await page.getByRole('button', { name: /entrar/i }).click();
+  await page.waitForURL(/\/platform$/);
+  await page.context().storageState({ path: 'e2e/.auth/platform.json' });
+});

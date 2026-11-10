@@ -25,7 +25,7 @@ const SORT_OPTIONS = [
   { value: 'name', label: 'Nome (A-Z)' },
   { value: 'recent', label: 'Mais recentes primeiro' },
   { value: 'mrr', label: 'Maior MRR primeiro' },
-  { value: 'devices', label: 'Mais dispositivos primeiro' },
+  { value: 'devices', label: 'Mais impressoras primeiro' },
 ] as const;
 
 type SortKey = (typeof SORT_OPTIONS)[number]['value'];
@@ -131,7 +131,7 @@ export function TenantList({ tenants, tz }: { tenants: Tenant[]; tz?: string }) 
               <div className="flex items-center gap-3">
                 <div className="text-right text-sm text-gray-400">
                   {t._count?.customers ?? 0} cliente{(t._count?.customers ?? 0) === 1 ? '' : 's'} ·{' '}
-                  {t._count?.devices ?? 0} dispositivo{(t._count?.devices ?? 0) === 1 ? '' : 's'} ·{' '}
+                  {t._count?.devices ?? 0} impressora{(t._count?.devices ?? 0) === 1 ? '' : 's'} ·{' '}
                   {t._count?.users ?? 0} usuário{(t._count?.users ?? 0) === 1 ? '' : 's'}
                   {t.subscriptionStatus === 'ACTIVE' && (
                     <span className="ml-1 tabular-nums text-gray-500">· {currency.format(t.mrrCents / 100)}/mês</span>
