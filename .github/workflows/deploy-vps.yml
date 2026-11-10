@@ -45,6 +45,38 @@ jobs:
       - run: npx tsc --noEmit -p .
       - run: npx jest --ci
 
+  # Billing math against a real Postgres+TimescaleDB (test/*.int-spec.ts),
+  # after applying every migration to an empty database - a migration that
+  # can't apply cleanly fails here, not on the production deploy.
+  test-api-db:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    services:
+      db:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: omni
+          POSTGRES_PASSWORD: omni
+          POSTGRES_DB: omni_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U omni -d omni_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://omni:omni@localhost:5432/omni_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npx prisma migrate deploy
+      - run: npm run test:int -- --ci
+
   test-web:
     runs-on: ubuntu-latest
     defaults:
@@ -80,7 +112,7 @@ jobs:
           GOOS: linux
 
   build:
-    needs: [test-api, test-web, test-agent]
+    needs: [test-api, test-api-db, test-web, test-agent]
     runs-on: ubuntu-latest
     strategy:
       matrix:
