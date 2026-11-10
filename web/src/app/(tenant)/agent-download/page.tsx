@@ -26,7 +26,7 @@ export default async function AgentDownloadPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
       <PageHeader
-        title="Baixar o agente"
+        title="Instalar o agente"
         subtitle="Instale o agente OmniPrint na rede do seu cliente para começar a monitorar as impressoras dele."
       />
 
@@ -60,7 +60,7 @@ export default async function AgentDownloadPage() {
           <Link href="/customers" className="text-accent hover:underline">
             Clientes
           </Link>{' '}
-          → escolha o cliente → seção &ldquo;Códigos de instalação do agente&rdquo;. O código vale por 24
+          → abra o cliente → aba &ldquo;Agentes e rede&rdquo; → &ldquo;Gerar código&rdquo;. O código vale por 24
           horas e só funciona uma vez — envie-o para quem for rodar o instalador; o assistente troca esse
           código pelos dados reais sozinho.
         </p>

@@ -89,7 +89,11 @@ export default async function TicketDetailPage(props: PageProps<'/tickets/[id]'>
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
-      <PageHeader title={ticket.subject} subtitle={isTenantWide ? ticket.customer.name : undefined} />
+      <PageHeader
+        title={ticket.subject}
+        subtitle={isTenantWide ? ticket.customer.name : undefined}
+        back={{ href: '/tickets', label: 'Chamados' }}
+      />
 
       {searchParams?.updated === '1' && <Banner tone="success">Chamado atualizado.</Banner>}
       {searchParams?.updateError === '1' && <Banner tone="error">Não foi possível atualizar o chamado. Tente novamente.</Banner>}

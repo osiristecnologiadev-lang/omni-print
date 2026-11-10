@@ -20,7 +20,7 @@ async function main() {
   const tenant = await prisma.tenant.create({
     data: { name: 'Outsourcing Exemplo', trialEndsAt: new Date(Date.now() + 365 * DAY), subscriptionStatus: 'ACTIVE' },
   });
-  await prisma.user.create({
+  const admin = await prisma.user.create({
     data: { tenantId: tenant.id, email: E2E_EMAIL, name: 'Usuário E2E', passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), permissions: PERMISSIONS },
   });
 
@@ -108,6 +108,49 @@ async function main() {
       periodStart: new Date(Date.UTC(2026, 9, 1)), periodEnd: new Date(Date.UTC(2026, 10, 1) - 1), dueDate: new Date(Date.UTC(2026, 10, 5)),
       totalPages: 14_100, perDevice: [], totalDue: 1_036.2, usageCost: 1_036.2, status: 'PENDING',
     },
+  });
+
+  // Help desk: an open urgent ticket past its SLA, one in progress, one resolved.
+  const imp1 = await prisma.device.findFirstOrThrow({ where: { tenantId: tenant.id, name: 'IMP-1' } });
+  const t1 = await prisma.ticket.create({
+    data: {
+      tenantId: tenant.id, customerId: a.id, deviceId: imp1.id, subject: 'Atolamento de papel na bandeja 2',
+      description: 'A impressora da recepção atola papel toda vez que usa a bandeja 2.', priority: 'URGENT',
+      createdByUserId: admin.id, slaDueAt: new Date(now - 2 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.ticketComment.create({ data: { ticketId: t1.id, authorUserId: admin.id, body: 'Técnico agendado para amanhã de manhã.' } });
+  await prisma.ticket.create({
+    data: {
+      tenantId: tenant.id, customerId: b.id, subject: 'Toner acabando na colorida', description: 'Pedido de toner ciano.',
+      status: 'IN_PROGRESS', priority: 'MEDIUM', assignedToUserId: admin.id, slaDueAt: new Date(now + 20 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.ticket.create({
+    data: {
+      tenantId: tenant.id, customerId: c.id, subject: 'Instalar impressora nova', description: 'Configurar a Epson na rede.',
+      status: 'RESOLVED', priority: 'LOW', slaDueAt: new Date(now - 5 * DAY), resolvedAt: new Date(now - 6 * DAY),
+    },
+  });
+
+  // Notifications the panel shows in the bell / Notificações.
+  await prisma.notification.createMany({
+    data: [
+      { tenantId: tenant.id, type: 'OVERDUE_INVOICE', dedupeKey: 'e2e-1', title: 'Fatura vencida', body: 'Fatura de Distribuidora Alfa vencida em 05/11/2026 (R$ 1.036,20).', customerId: a.id, linkHref: `/customers/${a.id}/invoices` },
+      { tenantId: tenant.id, type: 'DEVICE_REVIEW', dedupeKey: 'e2e-2', title: 'Impressora nova para revisar', body: 'IMP-7 (OKI ES5112) foi encontrada fora da rede do agente de Cartório Beta.', customerId: b.id },
+      { tenantId: tenant.id, type: 'TICKET_SLA_BREACH', dedupeKey: 'e2e-3', title: 'Chamado fora do SLA', body: 'Atolamento de papel na bandeja 2 passou do prazo.', customerId: a.id, readAt: new Date() },
+    ],
+  });
+
+  // A customer login (read-only portal) and some audit history.
+  await prisma.user.create({
+    data: { tenantId: tenant.id, customerId: a.id, email: 'cliente@alfa.test', name: 'Compras Alfa', passwordHash: await bcrypt.hash('cliente-senha-123', 10), permissions: ['invoices_view'] },
+  });
+  await prisma.auditLogEntry.createMany({
+    data: [
+      { tenantId: tenant.id, actorType: 'USER', actorId: admin.id, actorLabel: E2E_EMAIL, action: 'contract.create', targetType: 'Contract', targetId: contractA.id, targetLabel: 'Contrato PER_DEVICE_MINIMUM' },
+      { tenantId: tenant.id, actorType: 'USER', actorId: admin.id, actorLabel: E2E_EMAIL, action: 'device.update', targetType: 'Device', targetId: imp1.id, targetLabel: 'IMP-1' },
+    ],
   });
 
   await prisma.$disconnect();

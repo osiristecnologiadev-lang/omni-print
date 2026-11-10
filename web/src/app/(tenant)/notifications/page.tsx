@@ -32,9 +32,9 @@ function formatDateTime(iso: string, timeZone?: string): string {
 const TYPE_LABEL: Record<Notification['type'], string> = {
   OVERDUE_INVOICE: 'Fatura vencida',
   EXPIRING_CONTRACT: 'Contrato',
-  CRITICAL_DEVICE_ALERT: 'Dispositivo',
+  CRITICAL_DEVICE_ALERT: 'Alerta de impressora',
   LOW_SUPPLY: 'Suprimento',
-  UNASSIGNED_DEVICE: 'Sem cliente',
+  UNASSIGNED_DEVICE: 'Impressora sem cliente',
   TICKET_SLA_BREACH: 'Chamado',
   DEVICE_REVIEW: 'Revisar impressora',
 };
@@ -127,63 +127,6 @@ export default async function NotificationsPage(props: PageProps<'/notifications
         </form>
       </Panel>
 
-      <Panel className="mb-6">
-        <h2 className="mb-1 text-sm font-medium text-ink">Notificações por e-mail</h2>
-        <p className="mb-4 text-xs text-ink-faint">
-          Vem desativado por padrão. Quando ativo, manda no máximo um e-mail por dia (na verificação automática de
-          madrugada - clicar em &quot;Atualizar agora&quot; nunca dispara e-mail), só com o que for realmente novo, e só
-          das categorias marcadas abaixo.
-        </p>
-        <form action={updateEmailPreferencesAction} className="space-y-3">
-          <label className="flex items-center gap-2 text-sm font-medium text-ink">
-            <input type="checkbox" name="emailEnabled" defaultChecked={emailPrefs.emailEnabled} />
-            Ativar notificações por e-mail
-          </label>
-          <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-3">
-            {ALL_TYPES.map((t) => (
-              <label key={t} className="flex items-center gap-2 text-sm text-ink-muted">
-                <input type="checkbox" name="emailTypes" value={t} defaultChecked={emailPrefs.emailTypes.includes(t)} />
-                {TYPE_LABEL[t]}
-              </label>
-            ))}
-          </div>
-          <SubmitButton variant="secondary" pendingLabel="Salvando...">
-            Salvar preferências
-          </SubmitButton>
-        </form>
-      </Panel>
-
-      <Panel className="mb-6">
-        <h2 className="mb-1 text-sm font-medium text-ink">Abrir chamado automaticamente</h2>
-        <p className="mb-4 text-xs text-ink-faint">
-          Vem desativado por padrão. Quando ativo, um alerta novo das categorias marcadas abaixo abre um chamado
-          sozinho (visível em Chamados como aberto pelo sistema), sem esperar a verificação de madrugada - funciona
-          também ao clicar em &quot;Atualizar agora&quot;.
-        </p>
-        <form action={updateTicketAutomationPreferencesAction} className="space-y-3">
-          <label className="flex items-center gap-2 text-sm font-medium text-ink">
-            <input type="checkbox" name="autoTicketEnabled" defaultChecked={ticketAutomationPrefs.autoTicketEnabled} />
-            Ativar abertura automática de chamados
-          </label>
-          <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-3">
-            {AUTO_TICKETABLE_TYPES.map((t) => (
-              <label key={t} className="flex items-center gap-2 text-sm text-ink-muted">
-                <input
-                  type="checkbox"
-                  name="autoTicketTypes"
-                  value={t}
-                  defaultChecked={ticketAutomationPrefs.autoTicketTypes.includes(t)}
-                />
-                {TYPE_LABEL[t]}
-              </label>
-            ))}
-          </div>
-          <SubmitButton variant="secondary" pendingLabel="Salvando...">
-            Salvar preferências
-          </SubmitButton>
-        </form>
-      </Panel>
-
       {notifications.length === 0 ? (
         <EmptyState title="Nenhuma notificação ainda" hint="Aparecem aqui assim que houver algo que precise da sua atenção." />
       ) : (
@@ -255,6 +198,74 @@ export default async function NotificationsPage(props: PageProps<'/notifications
           )}
         </div>
       )}
+
+      {/* Settings after the list (usability review 2026-11-09): they used
+          to come first, so the notifications themselves were below the
+          fold. Open when a settings form just posted back. */}
+      <details className="mt-8" open={searchParams?.prefsSaved === '1' || searchParams?.prefsError === '1' || searchParams?.emailPrefsSaved === '1' || searchParams?.emailPrefsError === '1' || searchParams?.ticketPrefsSaved === '1' || searchParams?.ticketPrefsError === '1'}>
+        <summary className="cursor-pointer text-sm font-medium text-accent hover:underline">
+          Configurar avisos por e-mail e abertura automática de chamados
+        </summary>
+        <div className="mt-4">
+      <Panel className="mb-6">
+        <h2 className="mb-1 text-sm font-medium text-ink">Notificações por e-mail</h2>
+        <p className="mb-4 text-xs text-ink-faint">
+          Vem desativado por padrão. Quando ativo, manda no máximo um e-mail por dia (na verificação automática de
+          madrugada - clicar em &quot;Atualizar agora&quot; nunca dispara e-mail), só com o que for realmente novo, e só
+          das categorias marcadas abaixo.
+        </p>
+        <form action={updateEmailPreferencesAction} className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-ink">
+            <input type="checkbox" name="emailEnabled" defaultChecked={emailPrefs.emailEnabled} />
+            Ativar notificações por e-mail
+          </label>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-3">
+            {ALL_TYPES.map((t) => (
+              <label key={t} className="flex items-center gap-2 text-sm text-ink-muted">
+                <input type="checkbox" name="emailTypes" value={t} defaultChecked={emailPrefs.emailTypes.includes(t)} />
+                {TYPE_LABEL[t]}
+              </label>
+            ))}
+          </div>
+          <SubmitButton variant="secondary" pendingLabel="Salvando...">
+            Salvar preferências
+          </SubmitButton>
+        </form>
+      </Panel>
+
+      <Panel className="mb-6">
+        <h2 className="mb-1 text-sm font-medium text-ink">Abrir chamado automaticamente</h2>
+        <p className="mb-4 text-xs text-ink-faint">
+          Vem desativado por padrão. Quando ativo, um alerta novo das categorias marcadas abaixo abre um chamado
+          sozinho (visível em Chamados como aberto pelo sistema), sem esperar a verificação de madrugada - funciona
+          também ao clicar em &quot;Atualizar agora&quot;.
+        </p>
+        <form action={updateTicketAutomationPreferencesAction} className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-ink">
+            <input type="checkbox" name="autoTicketEnabled" defaultChecked={ticketAutomationPrefs.autoTicketEnabled} />
+            Ativar abertura automática de chamados
+          </label>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-3">
+            {AUTO_TICKETABLE_TYPES.map((t) => (
+              <label key={t} className="flex items-center gap-2 text-sm text-ink-muted">
+                <input
+                  type="checkbox"
+                  name="autoTicketTypes"
+                  value={t}
+                  defaultChecked={ticketAutomationPrefs.autoTicketTypes.includes(t)}
+                />
+                {TYPE_LABEL[t]}
+              </label>
+            ))}
+          </div>
+          <SubmitButton variant="secondary" pendingLabel="Salvando...">
+            Salvar preferências
+          </SubmitButton>
+        </form>
+      </Panel>
+
+        </div>
+      </details>
     </main>
   );
 }

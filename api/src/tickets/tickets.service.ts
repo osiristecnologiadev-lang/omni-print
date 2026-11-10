@@ -148,7 +148,7 @@ export class TicketsService {
       },
       include: TICKET_INCLUDE,
       orderBy: { createdAt: 'desc' },
-    });
+    }).then(sortByUrgency);
   }
 
   async get(tenantId: string, customerId: string | null, ticketId: string) {
@@ -428,4 +428,22 @@ function extname(filename: string): string {
   if (i === -1) return '';
   const ext = filename.slice(i);
   return /^\.[A-Za-z0-9]{1,5}$/.test(ext) ? ext : '';
+}
+
+// Usability review 2026-11-09: an urgent ticket past its SLA was listed
+// below a resolved one (plain newest-first). Now: still-open tickets first,
+// SLA already blown first among them, then priority, then the soonest
+// deadline; finished tickets last, newest first.
+const PRIORITY_RANK: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+export function sortByUrgency<T extends { status: string; priority: string; slaDueAt: Date; createdAt: Date }>(tickets: T[], now = Date.now()): T[] {
+  const open = (t: T) => t.status === 'OPEN' || t.status === 'IN_PROGRESS';
+  return [...tickets].sort((a, b) => {
+    if (open(a) !== open(b)) return open(a) ? -1 : 1;
+    if (!open(a)) return b.createdAt.getTime() - a.createdAt.getTime();
+    const late = (t: T) => t.slaDueAt.getTime() < now;
+    if (late(a) !== late(b)) return late(a) ? -1 : 1;
+    const p = (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9);
+    if (p !== 0) return p;
+    return a.slaDueAt.getTime() - b.slaDueAt.getTime();
+  });
 }

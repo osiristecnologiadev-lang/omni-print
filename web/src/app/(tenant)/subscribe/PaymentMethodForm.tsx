@@ -95,7 +95,7 @@ function CardForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-export function PaymentMethodForm() {
+export function PaymentMethodForm({ hasCard = true }: { hasCard?: boolean }) {
   const [state, setState] = useState<'idle' | 'loading' | { clientSecret: string } | { error: string }>('idle');
 
   async function open() {
@@ -107,7 +107,7 @@ export function PaymentMethodForm() {
   if (state === 'idle') {
     return (
       <button type="button" onClick={open} className={buttonClasses('secondary')}>
-        Trocar cartão
+        {hasCard ? 'Trocar cartão' : 'Cadastrar cartão'}
       </button>
     );
   }

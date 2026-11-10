@@ -55,7 +55,7 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
-      <PageHeader title="Assinatura do OmniPrint" subtitle="Cobrança por dispositivo monitorado, sem taxa mínima." />
+      <PageHeader title="Assinatura do OmniPrint" subtitle="Cobrança por impressora monitorada, sem taxa mínima." />
 
       {searchParams?.checkout === 'success' && (
         <Banner tone="success">
@@ -116,11 +116,11 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
 
         <div className="mb-5 rounded-lg border border-line bg-surface-2 p-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-ink-muted">Dispositivos monitorados</span>
+            <span className="text-ink-muted">Impressoras monitoradas</span>
             <span className="tabular-nums text-ink">{subscription.deviceCount}</span>
           </div>
           <div className="mt-1 flex items-center justify-between text-sm">
-            <span className="text-ink-muted">Preço por dispositivo</span>
+            <span className="text-ink-muted">Preço por impressora</span>
             <span className="tabular-nums text-ink">{currency.format(subscription.pricePerDeviceCents / 100)}/mês</span>
           </div>
           <div className="mt-2 flex items-center justify-between border-t border-line pt-2 text-sm font-medium">
@@ -128,7 +128,7 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
             <span className="tabular-nums text-ink">{currency.format(subscription.estimatedMonthlyCents / 100)}</span>
           </div>
           <p className="mt-2 text-xs text-ink-faint">
-            Sem taxa mínima - a cobrança acompanha exatamente a quantidade de dispositivos monitorados, ajustada
+            Sem taxa mínima - a cobrança acompanha exatamente a quantidade de impressoras monitoradas, ajustada
             automaticamente quando ela muda.
           </p>
         </div>
@@ -164,7 +164,7 @@ export default async function SubscribePage(props: PageProps<'/subscribe'>) {
           ) : (
             <p className="mb-3 text-sm text-ink-faint">Nenhum cartão salvo ainda.</p>
           )}
-          <PaymentMethodForm />
+          <PaymentMethodForm hasCard={!!subscription.paymentMethod} />
         </Panel>
       )}
 

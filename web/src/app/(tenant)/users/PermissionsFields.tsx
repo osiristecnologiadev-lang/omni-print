@@ -40,10 +40,16 @@ export function PermissionsFields({
         {customerId === '' ? (
           // No pre-existing target to retain from on a create - a key can
           // only be granted here if the viewer holds it themselves (see
-          // TenantPermissionCheckboxGrid). Defaults to exactly what the
-          // viewer holds (everything else would show checked-but-disabled,
-          // which silently wouldn't submit).
-          <TenantPermissionCheckboxGrid defaultChecked={viewerPermissions} retainable={[]} viewerPermissions={viewerPermissions} />
+          // TenantPermissionCheckboxGrid). Starts with NOTHING checked
+          // (usability review 2026-11-09: it used to start with everything
+          // the viewer holds, so a quick "create user" silently gave full
+          // access) - pick a profile above the boxes or tick modules.
+          <>
+            <p className="mb-2 text-xs text-ink-faint">
+              Escolha um perfil (Administrador, Financeiro, Suporte técnico) ou marque só os módulos que essa pessoa precisa.
+            </p>
+            <TenantPermissionCheckboxGrid defaultChecked={[]} retainable={[]} viewerPermissions={viewerPermissions} />
+          </>
         ) : (
           // invoices_view is the one customer-scoped key - not an
           // escalation vector for a (necessarily tenant-wide) viewer, see

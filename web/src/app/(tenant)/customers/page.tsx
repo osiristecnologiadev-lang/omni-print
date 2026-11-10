@@ -22,7 +22,7 @@ export default async function CustomersPage(props: PageProps<'/customers'>) {
     <main className="mx-auto max-w-3xl px-6 py-10">
       <PageHeader
         title="Clientes"
-        subtitle="Empresas que você atende. Atribua impressoras a um cliente na página de cada dispositivo."
+        subtitle="Empresas que você atende. Abra um cliente para ver as impressoras, o contrato, as faturas e os agentes dele."
       />
 
       {searchParams?.created === '1' && <Banner tone="success">Cliente adicionado.</Banner>}
@@ -52,7 +52,7 @@ export default async function CustomersPage(props: PageProps<'/customers'>) {
                 {c.name}
               </Link>
               <span className="text-sm text-ink-muted">
-                {c._count?.devices ?? 0} dispositivo{(c._count?.devices ?? 0) === 1 ? '' : 's'}
+                {c._count?.devices ?? 0} impressora{(c._count?.devices ?? 0) === 1 ? '' : 's'}
               </span>
             </li>
           ))}
