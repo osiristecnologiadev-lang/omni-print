@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ScrollHint } from '@/components/ScrollHint';
 import { HelpTip } from '@/components/HelpTip';
 import { forbidden } from 'next/navigation';
 import { getViewerAccess, getContractsOverview } from '@/lib/api';
@@ -66,6 +67,7 @@ export default async function ContractsPage() {
           />
         ) : (
           <div className="overflow-x-auto">
+            <ScrollHint />
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-ink-muted">

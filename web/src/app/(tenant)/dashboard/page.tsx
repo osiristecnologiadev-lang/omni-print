@@ -13,7 +13,7 @@ import {
   getViewerAccess,
 } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
-import { deriveHealth } from '@/lib/health';
+import { deriveCurrentHealth } from '@/lib/health';
 import { Badge, type BadgeTone } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { DeviceFleetTable } from '@/components/DeviceFleetTable';
@@ -97,7 +97,7 @@ export default async function DashboardPage() {
   const hasAlerts = !!alerts && (alerts.expiringContracts.length > 0 || alerts.overdueInvoices.length > 0);
   const trendData = pageTrend.map((p) => ({ label: formatShortDate(p.date), value: p.pages }));
 
-  const healths = devices.map((d) => deriveHealth(d.latestMetric));
+  const healths = devices.map((d) => deriveCurrentHealth(d.latestMetric));
   const criticalCount = healths.filter((h) => h.tone === 'critical').length;
   const warningCount = healths.filter((h) => h.tone === 'warning').length;
   const okCount = devices.length - criticalCount - warningCount;
@@ -116,7 +116,7 @@ export default async function DashboardPage() {
     <main className="mx-auto max-w-5xl px-6 py-10">
       <PageHeader
         title="Parque de impressoras"
-        subtitle={`${devices.length} dispositivo${devices.length === 1 ? '' : 's'} monitorado${devices.length === 1 ? '' : 's'}`}
+        subtitle={`${devices.length} impressora${devices.length === 1 ? '' : 's'} monitorada${devices.length === 1 ? '' : 's'}`}
       />
 
       {!subscription.isComped && subscription.status === 'TRIALING' && (
@@ -320,7 +320,7 @@ export default async function DashboardPage() {
       {devices.length === 0 ? (
         canManageCustomers && customers.length === 0 ? (
           <EmptyState
-            title="Nenhum dispositivo ainda"
+            title="Nenhuma impressora ainda"
             hint="Primeiro passo: cadastre o cliente cujas impressoras você vai monitorar."
             action={
               <Link href="/customers">
@@ -330,7 +330,7 @@ export default async function DashboardPage() {
           />
         ) : canManageCustomers ? (
           <EmptyState
-            title="Nenhum dispositivo ainda"
+            title="Nenhuma impressora ainda"
             hint="Gere um código de instalação para o cliente e instale o agente na rede dele - as impressoras aparecem aqui sozinhas depois do primeiro ciclo de coleta (a cada ~30 min)."
             action={
               <Link href="/agent-download">
@@ -346,7 +346,7 @@ export default async function DashboardPage() {
         )
       ) : (
         <DeviceFleetTable
-          devices={devices.map((d) => ({ ...d, health: deriveHealth(d.latestMetric) }))}
+          devices={devices.map((d) => ({ ...d, health: deriveCurrentHealth(d.latestMetric) }))}
           isTenantWide={isTenantWide}
         />
       )}

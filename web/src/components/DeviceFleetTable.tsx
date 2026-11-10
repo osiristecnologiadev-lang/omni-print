@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { StatusBadge } from './StatusBadge';
 import { Button } from './Button';
+import { ScrollHint } from './ScrollHint';
 import type { Health, HealthTone } from '@/lib/health';
 import type { Customer, Device } from '@/lib/api';
 import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
@@ -237,6 +238,7 @@ export function DeviceFleetTable({
         // this container instead of getting clipped by the outer
         // overflow-hidden (which exists only to round the card's corners).
         <div className="overflow-x-auto">
+          <ScrollHint />
           <table className="w-full text-left text-sm">
             <thead className="bg-surface-2 text-xs uppercase tracking-wide text-ink-muted">
               <tr>
@@ -250,7 +252,7 @@ export function DeviceFleetTable({
                     />
                   </th>
                 )}
-                <th className="px-4 py-3 font-medium">Dispositivo</th>
+                <th className="px-4 py-3 font-medium">Impressora</th>
                 <th className="px-4 py-3 font-medium">Modelo</th>
                 <th className="px-4 py-3 font-medium">IP</th>
                 <th className="px-4 py-3 font-medium">Nº de série</th>
@@ -297,9 +299,13 @@ export function DeviceFleetTable({
                             )
                           )}
                         </div>
-                        <div className="text-xs text-ink-faint">
-                          Apelido: {device.customLabel ?? '—'} · Nome: {device.printerName ?? device.name ?? device.host}
-                        </div>
+                        {/* Only when there's an apelido: then the title shows it and
+                            this line keeps the name the agent reports visible. */}
+                        {device.customLabel && (
+                          <div className="text-xs text-ink-faint">
+                            Nome do agente: {device.printerName ?? device.name ?? device.host}
+                          </div>
+                        )}
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-ink-muted">

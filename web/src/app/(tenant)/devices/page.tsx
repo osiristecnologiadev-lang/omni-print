@@ -1,6 +1,6 @@
 import { getCustomers, getDevices, getSession, getViewerAccess } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
-import { deriveHealth } from '@/lib/health';
+import { deriveCurrentHealth } from '@/lib/health';
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { DeviceFleetTable } from '@/components/DeviceFleetTable';
@@ -36,7 +36,7 @@ export default async function DevicesPage() {
         />
       ) : (
         <DeviceFleetTable
-          devices={devices.map((d) => ({ ...d, health: deriveHealth(d.latestMetric) }))}
+          devices={devices.map((d) => ({ ...d, health: deriveCurrentHealth(d.latestMetric) }))}
           isTenantWide={isTenantWide}
           customers={isTenantWide ? customers : undefined}
           showStatusFilter

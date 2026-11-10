@@ -111,3 +111,18 @@ describe('deriveHealth', () => {
     expect(deriveHealth(m).label).not.toContain('crítico');
   });
 });
+
+describe('deriveCurrentHealth', () => {
+  const now = Date.parse('2026-11-10T12:00:00Z');
+  it('flags a last reading older than 2 days instead of showing its OK', async () => {
+    const { deriveCurrentHealth } = await import('./health');
+    expect(deriveCurrentHealth(metric({ collected_at: '2026-11-04T12:00:00Z' }), now)).toEqual({
+      tone: 'warning',
+      label: 'Sem leitura há 6d',
+    });
+  });
+  it('a fresh reading keeps the regular status', async () => {
+    const { deriveCurrentHealth } = await import('./health');
+    expect(deriveCurrentHealth(metric({ collected_at: '2026-11-10T09:00:00Z' }), now)).toEqual(deriveHealth(metric({})));
+  });
+});

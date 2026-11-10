@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ScrollHint } from '@/components/ScrollHint';
 import { forbidden } from 'next/navigation';
 import { getViewerAccess, getAllInvoices, type InvoiceOverviewRow, type InvoiceStatus } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
@@ -125,6 +126,7 @@ export default async function InvoicesPage(props: PageProps<'/invoices'>) {
           />
         ) : (
           <div className="overflow-x-auto">
+            <ScrollHint />
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-ink-muted">

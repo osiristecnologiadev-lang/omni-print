@@ -40,7 +40,7 @@ import { Banner } from '@/components/Banner';
 import { Badge } from '@/components/Badge';
 import { SupplyForecastFacts } from '@/components/SupplyForecastFacts';
 import { DeviceFleetTable } from '@/components/DeviceFleetTable';
-import { deriveHealth } from '@/lib/health';
+import { deriveCurrentHealth } from '@/lib/health';
 
 const fieldClass =
   'w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent';
@@ -711,7 +711,7 @@ export default async function CustomerPage(props: PageProps<'/customers/[id]'>) 
           </p>
         ) : (
           <DeviceFleetTable
-            devices={customerDevices.map((d) => ({ ...d, health: deriveHealth(d.latestMetric) }))}
+            devices={customerDevices.map((d) => ({ ...d, health: deriveCurrentHealth(d.latestMetric) }))}
             isTenantWide={false}
             revenueByDeviceId={
               // Omitted (no column) when there's no active contract, or the

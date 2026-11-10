@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ScrollHint } from '@/components/ScrollHint';
 import { forbidden } from 'next/navigation';
 import { getViewerAccess, getDevicePagesReport, getCustomers, getSession, getViewerTimeZone } from '@/lib/api';
 import { deviceAddressLabel } from '@/lib/printer-model';
@@ -121,6 +122,7 @@ export default async function DevicePagesReportPage(props: PageProps<'/reports/p
           <EmptyState title="Nenhuma impressora encontrada" hint="Escolha outro cliente ou mês." />
         ) : (
           <div className="overflow-x-auto">
+            <ScrollHint />
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-ink-muted">

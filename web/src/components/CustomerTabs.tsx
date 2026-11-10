@@ -25,7 +25,7 @@ export function CustomerTabs({
     { key: 'config', label: 'Configurações', href: `${base}?tab=config`, visible: true },
   ];
   return (
-    <nav aria-label="Áreas do cliente" className="-mt-4 mb-8 flex gap-1 overflow-x-auto border-b border-line">
+    <nav aria-label="Áreas do cliente" className="-mt-4 mb-8 flex flex-wrap gap-x-1 border-b border-line">
       {tabs
         .filter((t) => t.visible)
         .map((t) => (

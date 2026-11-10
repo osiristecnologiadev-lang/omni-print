@@ -91,3 +91,21 @@ export function deriveHealth(metric: LatestMetric | Metric | null | undefined): 
   const label = (m.printerStatus && STATUS_LABELS[m.printerStatus]) || m.printerStatus || 'OK';
   return { tone: m.printerStatus === 'printing' ? 'info' : 'ok', label };
 }
+
+// A printer's status RIGHT NOW: like deriveHealth, but a last reading older
+// than 2 days says so instead of showing that old reading's "OK" - a printer
+// whose agent PC was off for a week used to look perfectly healthy
+// (usability review 2026-11-09). Not for history rows, where old readings
+// are the point.
+export const STALE_AFTER_MS = 2 * 24 * 60 * 60 * 1000;
+
+export function deriveCurrentHealth(metric: LatestMetric | Metric | null | undefined, now = Date.now()): Health {
+  if (metric) {
+    const at = 'collected_at' in metric ? metric.collected_at : metric.collectedAt;
+    const age = now - new Date(at).getTime();
+    if (age > STALE_AFTER_MS) {
+      return { tone: 'warning', label: `Sem leitura há ${Math.round(age / (24 * 60 * 60 * 1000))}d` };
+    }
+  }
+  return deriveHealth(metric);
+}

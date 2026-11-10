@@ -12,10 +12,11 @@ import {
   getCustomers,
   getSession,
   getViewerTimeZone,
+  type Metric,
 } from '@/lib/api';
 import { displayPageCount, engineDisplayPageCount } from '@/lib/pages';
 import { deviceAddressLabel, printerModelLabel } from '@/lib/printer-model';
-import { deriveHealth } from '@/lib/health';
+import { deriveCurrentHealth, deriveHealth } from '@/lib/health';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SupplyBar } from '@/components/SupplyBar';
 import { SupplyForecastFacts } from '@/components/SupplyForecastFacts';
@@ -114,7 +115,7 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
     .filter((p): p is { date: string; percent: number } => p.percent != null)
     .map((p) => ({ label: formatShortDate(p.date), value: p.percent }));
 
-  const health = deriveHealth(device.latestMetric);
+  const health = deriveCurrentHealth(device.latestMetric);
   const latest = metrics[0];
   const boundAssignCustomer = assignCustomerAction.bind(null, device.id);
   const boundUpdateLabel = updateLabelAction.bind(null, device.id);
@@ -496,19 +497,45 @@ export default async function DevicePage(props: PageProps<'/devices/[id]'>) {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {metrics.map((m) => (
-                <tr key={m.id}>
-                  <td className="px-5 py-2 text-ink-muted">{formatDateTime(m.collectedAt, tz)}</td>
-                  <td className="px-5 py-2">
-                    <StatusBadge health={deriveHealth(m)} />
-                  </td>
-                  <td className="px-5 py-2 tabular-nums text-ink-muted">{formatPageCount(displayPageCount(m))}</td>
-                </tr>
+              {metrics.slice(0, HISTORY_VISIBLE).map((m) => (
+                <HistoryRow key={m.id} m={m} tz={tz} />
               ))}
             </tbody>
           </table>
         </div>
+        {/* The full history pushed the rest of the page out of sight - the
+            latest readings are what people look for; the rest on demand. */}
+        {metrics.length > HISTORY_VISIBLE && (
+          <details className="border-t border-line">
+            <summary className="cursor-pointer px-5 py-3 text-sm text-accent hover:underline">
+              Ver as outras {metrics.length - HISTORY_VISIBLE} coletas
+            </summary>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <tbody className="divide-y divide-line">
+                  {metrics.slice(HISTORY_VISIBLE).map((m) => (
+                    <HistoryRow key={m.id} m={m} tz={tz} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
       </PanelSection>
     </main>
+  );
+}
+
+const HISTORY_VISIBLE = 10;
+
+function HistoryRow({ m, tz }: { m: Metric; tz: string | undefined }) {
+  return (
+    <tr>
+      <td className="px-5 py-2 text-ink-muted">{formatDateTime(m.collectedAt, tz)}</td>
+      <td className="px-5 py-2">
+        <StatusBadge health={deriveHealth(m)} />
+      </td>
+      <td className="px-5 py-2 tabular-nums text-ink-muted">{formatPageCount(displayPageCount(m))}</td>
+    </tr>
   );
 }
